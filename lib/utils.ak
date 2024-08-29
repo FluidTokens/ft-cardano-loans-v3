@@ -1,0 +1,102 @@
+use aiken/interval.{Finite}
+use aiken/list.{length}
+use aiken/transaction.{Input, Output, ScriptPurpose, Spend, Transaction}
+use aiken/transaction/credential.{
+  Address, ScriptCredential, VerificationKeyCredential,
+}
+use aiken/transaction/value.{AssetName, PolicyId, Value, quantity_of}
+
+pub fn is_nft_burnt(policyId: PolicyId, assetName: AssetName, mints: Value) {
+  quantity_of(mints, policyId, assetName) == -1
+}
+
+pub fn is_nft_spent(
+  policyId: PolicyId,
+  assetName: AssetName,
+  inputWithBond: Input,
+) {
+  quantity_of(inputWithBond.output.value, policyId, assetName) == 1
+}
+
+pub fn validity_range_within_an_hour(tx: Transaction) {
+  when tx.validity_range.upper_bound.bound_type is {
+    Finite(end) ->
+      when tx.validity_range.lower_bound.bound_type is {
+        Finite(start) -> end - start <= 3600000
+        // 1 hour in millis
+        _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn is_output_to_sc(output: Output, scHash: ByteArray) -> Bool {
+  when output.address.payment_credential is {
+    ScriptCredential(hash) -> hash == scHash
+    _ -> False
+  }
+}
+
+pub fn get_outputs_to_sc(
+  outputs: List<Output>,
+  scHash: ByteArray,
+) -> List<Output> {
+  list.filter(outputs, fn(output) { is_output_to_sc(output, scHash) })
+}
+
+pub fn get_inputs_from_sc(inputs: List<Input>, scHash: ByteArray) -> List<Input> {
+  list.filter(inputs, fn(input) { is_output_to_sc(input.output, scHash) })
+}
+
+pub fn is_script_output(output: Output) -> Bool {
+  when output.address.payment_credential is {
+    ScriptCredential(_) -> True
+    _ -> False
+  }
+}
+
+pub fn only_one_sc_used(inputs: List<Input>, scHash: ByteArray) {
+  let inputsWithDatum =
+    list.filter(inputs, fn(input) { is_script_output(input.output) })
+  length(get_inputs_from_sc(inputs, scHash)) == length(inputsWithDatum)
+}
+
+pub fn must_be_signed_by(transaction: Transaction, address: Address) {
+  expect VerificationKeyCredential(hash) = address.payment_credential
+  list.has(transaction.extra_signatories, hash)
+}
+
+pub fn get_own_hash(purpose: ScriptPurpose, txInputs: List<Input>) {
+  expect Spend(output_reference) = purpose
+
+  let inputList =
+    list.filter(txInputs, fn(x) { x.output_reference == output_reference })
+
+  expect Some(input) = list.head(inputList)
+  when input.output.address.payment_credential is {
+    ScriptCredential(hash) -> hash
+    _ -> fail
+  }
+}
+
+pub fn tokens_sent_to_lender_and_borrower(
+  txOutputs: List<Output>,
+  assetName: AssetName,
+  lenderAddress: Address,
+  borrowerAddress: Address,
+  borrowersNftCs: ByteArray,
+  lendersNftCs: ByteArray,
+) {
+  let outputListToLenderAndBorrower = list.filter(txOutputs, fn(output) { or {
+          and {
+            output.address == lenderAddress,
+            quantity_of(output.value, lendersNftCs, assetName) == 1,
+          },
+          and {
+            output.address == borrowerAddress,
+            quantity_of(output.value, borrowersNftCs, assetName) == 1,
+          },
+        } })
+
+  length(outputListToLenderAndBorrower) == 2
+}

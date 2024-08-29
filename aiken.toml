@@ -1,0 +1,14 @@
+name = "aiken-lang/p2p_lending_v3"
+version = "0.0.0"
+license = "Apache-2.0"
+description = "Aiken contracts for project 'aiken-lang/p2p_lending_v3'"
+
+[repository]
+user = "aiken-lang"
+project = "p2p_lending_v3"
+platform = "github"
+
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "main"
+source = "github"
