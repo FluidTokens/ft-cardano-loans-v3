@@ -1,14 +1,16 @@
-name = "aiken-lang/p2p_lending_v3"
+name = "ft/loans-v4"
 version = "0.0.0"
+compiler = "v1.0.29-alpha"
+plutus = "v2"
 license = "Apache-2.0"
-description = "Aiken contracts for project 'aiken-lang/p2p_lending_v3'"
+description = "Aiken contracts for project 'ft/loans-v4'"
 
 [repository]
-user = "aiken-lang"
-project = "p2p_lending_v3"
+user = "ft"
+project = "loans-v4"
 platform = "github"
 
 [[dependencies]]
 name = "aiken-lang/stdlib"
-version = "main"
+version = "1.9.0"
 source = "github"

@@ -1,10 +1,17 @@
+use aiken/dict
 use aiken/interval.{Finite}
 use aiken/list.{length}
-use aiken/transaction.{Input, Output, ScriptPurpose, Spend, Transaction}
+use aiken/transaction.{
+  Input, Output, Redeemer, ScriptPurpose, Spend, Transaction, WithdrawFrom,
+}
 use aiken/transaction/credential.{
-  Address, ScriptCredential, VerificationKeyCredential,
+  Address, Inline, ScriptCredential, VerificationKeyCredential,
 }
 use aiken/transaction/value.{AssetName, PolicyId, Value, quantity_of}
+use types/general.{Asset}
+use types/redeemer.{
+  Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
+}
 
 pub fn is_nft_burnt(policyId: PolicyId, assetName: AssetName, mints: Value) {
   quantity_of(mints, policyId, assetName) == -1
@@ -99,4 +106,42 @@ pub fn tokens_sent_to_lender_and_borrower(
         } })
 
   length(outputListToLenderAndBorrower) == 2
+}
+
+pub fn retrieve_oracle_data(
+  oracleInput: Input,
+  redeemers: dict.Dict<ScriptPurpose, Redeemer>,
+  transaction_valid_to: Int,
+) -> Option<OraclePriceFeed> {
+  expect Some(loan_oracle_redeemer) = None
+
+  //  dict.get(
+  //    redeemers,
+  //    WithdrawFrom(Inline(oracleInput.output.address.payment_credential)),
+  //  )
+  expect loan_tokens_price: OracleRedeemer = loan_oracle_redeemer
+
+  when loan_tokens_price.data is {
+    Pooled(data) ->
+      if data.valid_to >= transaction_valid_to {
+        Some(Pooled(data))
+      } else {
+        trace @"oracle is expired"
+        None
+      }
+    Aggregated(data) ->
+      if data.valid_to >= transaction_valid_to {
+        Some(Aggregated(data))
+      } else {
+        trace @"oracle is expired"
+        None
+      }
+    Dedicated(data) ->
+      if data.valid_to >= transaction_valid_to {
+        Some(Dedicated(data))
+      } else {
+        trace @"oracle is expired"
+        None
+      }
+  }
 }
