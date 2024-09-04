@@ -1,6 +1,6 @@
-use aiken/hash.{Blake2b_224, Hash}
-use aiken/transaction/credential.{Address, VerificationKey}
-use aiken/transaction/value.{AssetName, PolicyId, Value}
+use aiken/crypto.{Blake2b_224, Hash}
+use cardano/address.{Address}
+use cardano/assets.{AssetName, PolicyId, Value}
 
 pub type Asset {
   policyId: PolicyId,
@@ -12,6 +12,3 @@ pub type CollateralAsset {
   maybeAssetName: Option<AssetName>,
   oracleTokenAsset: Option<Asset>,
 }
-
-pub type VerificationKeyHash =
-  Hash<Blake2b_224, VerificationKey>

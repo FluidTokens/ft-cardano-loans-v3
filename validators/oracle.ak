@@ -1,45 +1,37 @@
 use aiken/builtin
-use aiken/list
-use aiken/transaction.{ScriptContext, Spend, Transaction, WithdrawFrom}
-use aiken/transaction/credential.{Inline}
+use aiken/collection/list
+use cardano/address.{Credential}
+use cardano/script_context.{ScriptContext}
+use cardano/transaction.{InlineDatum, OutputReference, Spend, Transaction}
 use nft_pointers
 use types/general.{Asset}
 use types/redeemer.{OraclePriceFeed, OracleRedeemer}
 
-validator(
+validator oracle(
   verification_keys: List<ByteArray>,
   threshold: Int,
   _oracle_asset: Asset,
   governance_token: Asset,
 ) {
   // Allow to move Oracle NFT if governance have signed off.
-  fn spend(_datum: Data, _r, ctx: ScriptContext) {
-    expect ScriptContext {
-      transaction: Transaction {
-        withdrawals,
-        reference_inputs,
-        extra_signatories,
-        ..
-      },
-      purpose: Spend(_own_oref),
-    } = ctx
+  spend(
+    _datum_opt: Option<Data>,
+    _redeemer: Data,
+    input: OutputReference,
+    self: Transaction,
+  ) {
     // Governance approval (transaction signed by governance NFT holder)
     nft_pointers.nft_validator(
       governance_token.policyId,
       governance_token.assetName,
-      reference_inputs,
-      withdrawals,
-      extra_signatories,
+      self.reference_inputs,
+      self.withdrawals,
+      self.extra_signatories,
     )
   }
 
   // Validate that n/m oracles have signed on this TX
-  fn withdraw_validate(redeemer: OracleRedeemer, ctx: ScriptContext) -> Bool {
-    expect ScriptContext {
-      transaction: Transaction { .. },
-      purpose: WithdrawFrom(Inline(_own_credential)),
-    } = ctx
-
+  withdraw(redeemer: OracleRedeemer, credential: Credential, self: Transaction) {
     let unique_signatures = list.unique(redeemer.signatures)
     let valid_signatures =
       list.foldl(
@@ -62,5 +54,9 @@ validator(
         },
       )
     valid_signatures >= threshold
+  }
+
+  else(_) {
+    fail
   }
 }

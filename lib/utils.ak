@@ -1,13 +1,12 @@
-use aiken/dict
+use aiken/collection/dict
+use aiken/collection/list.{length}
 use aiken/interval.{Finite}
-use aiken/list.{length}
-use aiken/transaction.{
-  Input, Output, Redeemer, ScriptPurpose, Spend, Transaction, WithdrawFrom,
+use cardano/address.{Address, Inline, Script, VerificationKey}
+use cardano/assets.{AssetName, PolicyId, Value, quantity_of}
+use cardano/transaction.{
+  Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend, Transaction,
+  Withdraw,
 }
-use aiken/transaction/credential.{
-  Address, Inline, ScriptCredential, VerificationKeyCredential,
-}
-use aiken/transaction/value.{AssetName, PolicyId, Value, quantity_of}
 use types/general.{Asset}
 use types/redeemer.{
   Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
@@ -39,7 +38,7 @@ pub fn validity_range_within_an_hour(tx: Transaction) {
 
 pub fn is_output_to_sc(output: Output, scHash: ByteArray) -> Bool {
   when output.address.payment_credential is {
-    ScriptCredential(hash) -> hash == scHash
+    Script(hash) -> hash == scHash
     _ -> False
   }
 }
@@ -57,7 +56,7 @@ pub fn get_inputs_from_sc(inputs: List<Input>, scHash: ByteArray) -> List<Input>
 
 pub fn is_script_output(output: Output) -> Bool {
   when output.address.payment_credential is {
-    ScriptCredential(_) -> True
+    Script(_) -> True
     _ -> False
   }
 }
@@ -69,19 +68,16 @@ pub fn only_one_sc_used(inputs: List<Input>, scHash: ByteArray) {
 }
 
 pub fn must_be_signed_by(transaction: Transaction, address: Address) {
-  expect VerificationKeyCredential(hash) = address.payment_credential
+  expect VerificationKey(hash) = address.payment_credential
   list.has(transaction.extra_signatories, hash)
 }
 
-pub fn get_own_hash(purpose: ScriptPurpose, txInputs: List<Input>) {
-  expect Spend(output_reference) = purpose
+pub fn get_own_hash(output_reference: OutputReference, txInputs: List<Input>) {
+  expect Some(input) =
+    list.find(txInputs, fn(x) { x.output_reference == output_reference })
 
-  let inputList =
-    list.filter(txInputs, fn(x) { x.output_reference == output_reference })
-
-  expect Some(input) = list.head(inputList)
   when input.output.address.payment_credential is {
-    ScriptCredential(hash) -> hash
+    Script(hash) -> hash
     _ -> fail
   }
 }
@@ -110,15 +106,11 @@ pub fn tokens_sent_to_lender_and_borrower(
 
 pub fn retrieve_oracle_data(
   oracleInput: Input,
-  redeemers: dict.Dict<ScriptPurpose, Redeemer>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
   transaction_valid_to: Int,
 ) -> Option<OraclePriceFeed> {
   expect Some(loan_oracle_redeemer) = None
-
-  //  dict.get(
-  //    redeemers,
-  //    WithdrawFrom(Inline(oracleInput.output.address.payment_credential)),
-  //  )
+  //TODO Readd this dict.get(redeemers, Withdraw(oracleInput.output.address.payment_credential))
   expect loan_tokens_price: OracleRedeemer = loan_oracle_redeemer
 
   when loan_tokens_price.data is {

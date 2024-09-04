@@ -1,6 +1,6 @@
-use aiken/hash.{Blake2b_224, Hash}
-use aiken/transaction/credential.{Address, VerificationKey}
-use aiken/transaction/value.{AssetName, PolicyId, Value}
+use aiken/crypto.{Blake2b_224, Hash}
+use cardano/address.{Address}
+use cardano/assets.{AssetName, PolicyId, Value}
 use types/general.{Asset, CollateralAsset}
 
 pub type OracleLTVPoolRedeemer {

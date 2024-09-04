@@ -1,23 +1,22 @@
 //// NFT Pointers
 //// This module is for upgradable contracts. Already public.
 
-use aiken/dict.{Dict}
-use aiken/hash.{Blake2b_224, Hash}
-use aiken/list
-use aiken/transaction.{Input, Output}
-use aiken/transaction/credential.{
+use aiken/collection/dict.{Dict}
+use aiken/collection/list
+use aiken/crypto.{Blake2b_224, Hash, VerificationKeyHash}
+use cardano/address.{
   Address, Credential, Inline, StakeCredential, VerificationKey,
-  VerificationKeyCredential,
 }
-use aiken/transaction/value.{quantity_of}
+use cardano/assets.{Lovelace, quantity_of}
+use cardano/transaction.{Input, Output}
 
 fn cred_validator(
   validating_credential: Credential,
-  withdrawals: Pairs<StakeCredential, Int>,
-  extra_signatories: List<Hash<Blake2b_224, VerificationKey>>,
+  withdrawals: Pairs<Credential, Lovelace>,
+  extra_signatories: List<VerificationKeyHash>,
 ) -> Bool {
   when validating_credential is {
-    VerificationKeyCredential(pubkey_hash) ->
+    VerificationKey(pubkey_hash) ->
       list.any(extra_signatories, fn(signatory) { signatory == pubkey_hash })
     //TODO READD script_credential -> dict.has_key(withdrawals, Inline(script_credential))
     _ -> True
@@ -32,8 +31,8 @@ pub fn nft_validator(
   nft_name: ByteArray,
   // Gov NFT name
   reference_inputs: List<Input>,
-  withdrawals: Pairs<StakeCredential, Int>,
-  extra_signatories: List<Hash<Blake2b_224, VerificationKey>>,
+  withdrawals: Pairs<Credential, Lovelace>,
+  extra_signatories: List<VerificationKeyHash>,
 ) -> Bool {
   when
     reference_inputs
