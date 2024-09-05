@@ -29,8 +29,3 @@ pub type ActiveDatum {
   totalInstallments: Int,
   installmentsRepaid: Int,
 }
-
-pub type MyDatum {
-  amount: Int,
-  tokens: Pairs<PolicyId, Pairs<AssetName, Int>>,
-}
