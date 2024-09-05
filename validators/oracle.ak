@@ -1,11 +1,10 @@
 use aiken/builtin
 use aiken/collection/list
 use cardano/address.{Credential}
-use cardano/script_context.{ScriptContext}
-use cardano/transaction.{InlineDatum, OutputReference, Spend, Transaction}
+use cardano/transaction.{OutputReference, Transaction}
 use nft_pointers
 use types/general.{Asset}
-use types/redeemer.{OraclePriceFeed, OracleRedeemer}
+use types/redeemer.{OracleRedeemer}
 
 validator oracle(
   verification_keys: List<ByteArray>,
@@ -17,7 +16,7 @@ validator oracle(
   spend(
     _datum_opt: Option<Data>,
     _redeemer: Data,
-    input: OutputReference,
+    _input: OutputReference,
     self: Transaction,
   ) {
     // Governance approval (transaction signed by governance NFT holder)
@@ -31,7 +30,11 @@ validator oracle(
   }
 
   // Validate that n/m oracles have signed on this TX
-  withdraw(redeemer: OracleRedeemer, credential: Credential, self: Transaction) {
+  withdraw(
+    redeemer: OracleRedeemer,
+    _credential: Credential,
+    _self: Transaction,
+  ) {
     let unique_signatures = list.unique(redeemer.signatures)
     let valid_signatures =
       list.foldl(

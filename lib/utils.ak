@@ -1,13 +1,14 @@
 use aiken/collection/dict
 use aiken/collection/list.{length}
+use aiken/collection/pairs
+use aiken/crypto.{VerificationKeyHash}
 use aiken/interval.{Finite}
-use cardano/address.{Address, Inline, Script, VerificationKey}
-use cardano/assets.{AssetName, PolicyId, Value, quantity_of}
+use aiken/math/rational.{Rational}
+use cardano/address.{Address, Script, VerificationKey}
+use cardano/assets.{AssetName, PolicyId, Value, quantity_of, to_dict, tokens}
 use cardano/transaction.{
-  Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend, Transaction,
-  Withdraw,
+  Input, Output, OutputReference, Redeemer, ScriptPurpose, Transaction, Withdraw,
 }
-use types/general.{Asset}
 use types/redeemer.{
   Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
 }
@@ -19,9 +20,9 @@ pub fn is_nft_burnt(policyId: PolicyId, assetName: AssetName, mints: Value) {
 pub fn is_nft_spent(
   policyId: PolicyId,
   assetName: AssetName,
-  inputWithBond: Input,
+  inputWithToken: Input,
 ) {
-  quantity_of(inputWithBond.output.value, policyId, assetName) == 1
+  quantity_of(inputWithToken.output.value, policyId, assetName) == 1
 }
 
 pub fn validity_range_within_an_hour(tx: Transaction) {
@@ -72,6 +73,14 @@ pub fn must_be_signed_by(transaction: Transaction, address: Address) {
   list.has(transaction.extra_signatories, hash)
 }
 
+pub fn address_in_signatures(
+  extra_signatories: List<VerificationKeyHash>,
+  address: Address,
+) {
+  expect VerificationKey(hash) = address.payment_credential
+  list.has(extra_signatories, hash)
+}
+
 pub fn get_own_hash(output_reference: OutputReference, txInputs: List<Input>) {
   expect Some(input) =
     list.find(txInputs, fn(x) { x.output_reference == output_reference })
@@ -80,6 +89,29 @@ pub fn get_own_hash(output_reference: OutputReference, txInputs: List<Input>) {
     Script(hash) -> hash
     _ -> fail
   }
+}
+
+/// Returns the quantity of all tokens with the policyId
+pub fn quantity_of_policy_id(value: Value, policyId: PolicyId) {
+  dict.foldl(tokens(value, policyId), 0, fn(_k, v, result) { v + result })
+}
+
+pub fn safe_list_at(list: List<a>, index: Int) {
+  safe_expect(list.at(list, index))
+}
+
+pub fn safe_expect(maybeElem: Option<a>) {
+  expect Some(elem) = maybeElem
+  elem
+}
+
+pub fn value_to_pairs(value: Value) -> Pairs<PolicyId, Pairs<AssetName, Int>> {
+  //This gives us Dict<PolicyId, Dict<ByteArray, Int>>
+  let valueAsDict = to_dict(value)
+  //This gives us Dict<PolicyId, Pairs<ByteArray, Int>>
+  let dictOfPairs =
+    dict.map(valueAsDict, fn(_k, innerDict) { dict.to_pairs(innerDict) })
+  dict.to_pairs(dictOfPairs)
 }
 
 pub fn tokens_sent_to_lender_and_borrower(
@@ -109,8 +141,11 @@ pub fn retrieve_oracle_data(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   transaction_valid_to: Int,
 ) -> Option<OraclePriceFeed> {
-  expect Some(loan_oracle_redeemer) = None
-  //TODO Readd this dict.get(redeemers, Withdraw(oracleInput.output.address.payment_credential))
+  expect Some(loan_oracle_redeemer) =
+    pairs.get_first(
+      redeemers,
+      Withdraw(oracleInput.output.address.payment_credential),
+    )
   expect loan_tokens_price: OracleRedeemer = loan_oracle_redeemer
 
   when loan_tokens_price.data is {
@@ -136,4 +171,18 @@ pub fn retrieve_oracle_data(
         None
       }
   }
+}
+
+// Calculate the tokenB (the pool asset such as ADA or stablecoin) required to purchase buy_amount of tokenA
+pub fn token_b_needed_to_purchase_token_a(
+  buy_amount: Rational,
+  token_a_amount: Int,
+  token_b_amount: Int,
+) -> Int {
+  let buy_amount_int = buy_amount |> rational.truncate()
+
+  let nominator = buy_amount_int * 1000 * token_b_amount
+  let denominator = ( token_a_amount - buy_amount_int ) * 997
+  let token_b_required = nominator / denominator
+  token_b_required
 }

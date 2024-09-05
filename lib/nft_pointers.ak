@@ -1,12 +1,10 @@
 //// NFT Pointers
 //// This module is for upgradable contracts. Already public.
 
-use aiken/collection/dict.{Dict}
 use aiken/collection/list
-use aiken/crypto.{Blake2b_224, Hash, VerificationKeyHash}
-use cardano/address.{
-  Address, Credential, Inline, StakeCredential, VerificationKey,
-}
+use aiken/collection/pairs
+use aiken/crypto.{VerificationKeyHash}
+use cardano/address.{Address, Credential, Script, VerificationKey}
 use cardano/assets.{Lovelace, quantity_of}
 use cardano/transaction.{Input, Output}
 
@@ -18,8 +16,7 @@ fn cred_validator(
   when validating_credential is {
     VerificationKey(pubkey_hash) ->
       list.any(extra_signatories, fn(signatory) { signatory == pubkey_hash })
-    //TODO READD script_credential -> dict.has_key(withdrawals, Inline(script_credential))
-    _ -> True
+    Script(_script_hash) -> pairs.has_key(withdrawals, validating_credential)
   }
 }
 

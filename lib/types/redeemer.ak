@@ -1,23 +1,20 @@
-use aiken/crypto.{Blake2b_224, Hash}
-use cardano/address.{Address}
-use cardano/assets.{AssetName, PolicyId, Value}
-use types/general.{Asset, CollateralAsset}
+use types/general.{Asset}
 
 pub type OracleLTVPoolRedeemer {
   Cancel
   Accept {
-    currentRequestInputIndex: Int,
+    currentPoolInputIndex: Int,
     outputWithBorrowerTokenIndex: Int,
     outputWithLenderTokenIndex: Int,
     //Asset that the borrower is providing, must be accepted by the pool
-    chosenCollateral: CollateralAsset,
+    chosenCollateralIndex: Int,
     //If collateral doesn't use oracle, this must be -1
     chosenCollateralOracleInputIndex: Int,
     wantedPrincipal: Int,
   }
 }
 
-//Tokens that have a lot of liquidity is in CEX
+//Tokens that have a lot of liquidity is in CEX. The price is in lovelace
 pub type AggregatedFeed {
   token: Asset,
   token_price_in_lovelaces: Int,
@@ -25,7 +22,7 @@ pub type AggregatedFeed {
   valid_to: Int,
 }
 
-//Tokens that have lower liquidity and pool data is used to calculate the price
+//Tokens that have lower liquidity and AMM pool data is used to calculate the price
 pub type PooledFeed {
   token: Asset,
   token_a_amount: Int,
@@ -33,10 +30,11 @@ pub type PooledFeed {
   valid_to: Int,
 }
 
-//Complex vaults can have a dedicated oracle that calculates the sum of all collateral assets
+//Complex vaults can have a dedicated oracle that calculates the value of all collateral assets in a custom currency
 pub type DedicatedFeed {
-  tokens: Value,
-  token_price_in_lovelaces: Int,
+  token: Asset,
+  token_price_currency: Asset,
+  token_price: Int,
   denominator: Int,
   valid_to: Int,
 }

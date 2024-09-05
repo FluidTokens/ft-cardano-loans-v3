@@ -1,6 +1,4 @@
-use aiken/crypto.{Blake2b_224, Hash}
-use cardano/address.{Address}
-use cardano/assets.{AssetName, PolicyId, Value}
+use cardano/assets.{AssetName, PolicyId}
 
 pub type Asset {
   policyId: PolicyId,
