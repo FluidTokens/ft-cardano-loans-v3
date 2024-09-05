@@ -10,3 +10,6 @@ pub type CollateralAsset {
   maybeAssetName: Option<AssetName>,
   oracleTokenAsset: Option<Asset>,
 }
+//TODO Controllare che token nel redeemer dell'oracolo sia effettivamente quello voluto, altrimenti si spende un redeemer falso
+
+//TODO Usare withdraw 0

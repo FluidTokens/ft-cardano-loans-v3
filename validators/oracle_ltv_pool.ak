@@ -41,7 +41,7 @@ validator pool(
             address_in_signatures(self.extra_signatories, datum.lenderAddress)
           Accept(
             currentPoolInputIndex,
-            outputWithBorrowerTokenIndex,
+            borrowerAddress,
             outputWithLenderTokenIndex,
             chosenCollateralIndex,
             chosenCollateralOracleInputIndex,
@@ -49,7 +49,7 @@ validator pool(
           ) -> {
             let inputUtxoId =
               sha2_256(bytearray.push(input.transaction_id, input.output_index))
-            expect Some(actualRequestInput) =
+            expect Some(actualPoolInput) =
               list.at(
                 get_inputs_from_sc(self.inputs, ownScriptHash),
                 currentPoolInputIndex,
@@ -59,8 +59,6 @@ validator pool(
                 get_outputs_to_sc(self.outputs, activeLoanScriptHash),
                 currentPoolInputIndex,
               )
-            expect Some(outputWithBorrowerToken) =
-              list.at(self.outputs, outputWithBorrowerTokenIndex)
             expect Some(outputWithLenderToken) =
               list.at(self.outputs, outputWithLenderTokenIndex)
             expect Finite(end) = self.validity_range.upper_bound.bound_type
@@ -68,18 +66,18 @@ validator pool(
               list.at(datum.collateralOptions, chosenCollateralIndex)
             let remainingAmount =
               quantity_of(
-                actualRequestInput.output.value,
+                actualPoolInput.output.value,
                 datum.poolAsset.policyId,
                 datum.poolAsset.assetName,
               ) - wantedPrincipal
 
             let basicChecks = and {
-                input == actualRequestInput.output_reference,
+                input == actualPoolInput.output_reference,
                 wantedPrincipal > 0,
                 remainingAmount >= 0,
                 validity_range_within_an_hour(self),
                 tokens_sent_to_both_parties(
-                  outputWithBorrowerToken,
+                  self.mint,
                   outputWithLenderToken,
                   borrowerTokenPolicyId,
                   lenderTokenPolicyId,
@@ -108,11 +106,12 @@ validator pool(
                       wantedPrincipal,
                       inputUtxoId,
                       end,
+                      borrowerAddress,
                       oraclePriceFeed,
                     ),
                   }
                 } else {
-                  validate_output_to_active(
+                  validate_output_to_active_no_oracle(
                     activeOutput,
                     activeLoanScriptHash,
                     datum,
@@ -121,6 +120,7 @@ validator pool(
                     wantedPrincipal,
                     inputUtxoId,
                     end,
+                    borrowerAddress,
                   )
                 },
               }
@@ -159,7 +159,7 @@ fn validate_oracle_ref_input(
 }
 
 fn tokens_sent_to_both_parties(
-  outputWithBorrowerToken: Output,
+  mintedValue: Value,
   outputWithLenderToken: Output,
   borrowerTokenPolicyId: ByteArray,
   lenderTokenPolicyId: ByteArray,
@@ -167,18 +167,14 @@ fn tokens_sent_to_both_parties(
   lenderAddress: Address,
 ) {
   and {
+    quantity_of(mintedValue, borrowerTokenPolicyId, inputUtxoId) == 1,
     outputWithLenderToken.address == lenderAddress,
-    quantity_of(
-      outputWithBorrowerToken.value,
-      borrowerTokenPolicyId,
-      inputUtxoId,
-    ) == 1,
     quantity_of(outputWithLenderToken.value, lenderTokenPolicyId, inputUtxoId) == 1,
     length(flatten(outputWithLenderToken.value)) <= 5,
   }
 }
 
-fn validate_output_to_active(
+fn validate_output_to_active_no_oracle(
   output: Output,
   activeLoanScriptHash: ByteArray,
   poolDatum: OracleLTVPoolDatum,
@@ -187,6 +183,7 @@ fn validate_output_to_active(
   wantedPrincipal: Int,
   inputUtxoId: ByteArray,
   end: Int,
+  borrowerAddress: Address,
 ) {
   expect Some(singleRequiredAmount) =
     list.at(poolDatum.principalLTV, chosenCollateralIndex)
@@ -233,9 +230,11 @@ fn validate_output_to_active(
 
   let isDatumCorrect = parsedDatum == newDatum
 
+  let toCorrectStaking =
+    output.address.stake_credential == borrowerAddress.stake_credential
   let dosProtection = length(flatten(output.value)) <= 21
   and {
-    //TODO Anything to enforce regarding stake credentials?
+    toCorrectStaking,
     is_output_to_sc(output, activeLoanScriptHash),
     containsCorrectCollateral,
     isDatumCorrect,
@@ -252,6 +251,7 @@ fn validate_output_to_active_with_oracle(
   wantedPrincipal: Int,
   inputUtxoId: ByteArray,
   end: Int,
+  borrowerAddress: Address,
   oraclePriceFeed: OraclePriceFeed,
 ) {
   expect Some(ltv) = list.at(poolDatum.principalLTV, chosenCollateralIndex)
@@ -320,9 +320,12 @@ fn validate_output_to_active_with_oracle(
 
   let isDatumCorrect = parsedDatum == newDatum
 
+  let toCorrectStaking =
+    output.address.stake_credential == borrowerAddress.stake_credential
+
   let dosProtection = length(flatten(output.value)) <= 21
   and {
-    //TODO Anything to enforce regarding stake credentials?
+    toCorrectStaking,
     is_output_to_sc(output, activeLoanScriptHash),
     containsCorrectCollateral,
     isDatumCorrect,

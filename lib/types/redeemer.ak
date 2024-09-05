@@ -1,10 +1,11 @@
+use cardano/address.{Address}
 use types/general.{Asset}
 
 pub type OracleLTVPoolRedeemer {
   Cancel
   Accept {
     currentPoolInputIndex: Int,
-    outputWithBorrowerTokenIndex: Int,
+    borrowerAddress: Address,
     outputWithLenderTokenIndex: Int,
     //Asset that the borrower is providing, must be accepted by the pool
     chosenCollateralIndex: Int,
