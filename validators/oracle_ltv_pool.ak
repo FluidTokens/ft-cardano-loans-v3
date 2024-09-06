@@ -3,14 +3,15 @@ use aiken/crypto.{sha2_256}
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use aiken/primitive/bytearray
-use cardano/address.{Address}
+use cardano/address.{Address, Credential, Script}
 use cardano/assets.{Value, flatten, quantity_of, without_lovelace}
 use cardano/script_context.{ScriptContext}
 use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
 use types/datum.{ActiveDatum, OracleLTVPoolDatum}
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
-  Accept, Aggregated, Cancel, Dedicated, OracleLTVPoolRedeemer, OraclePriceFeed,
+  Aggregated, Borrow, Cancel, Dedicated, OracleLTVPoolAction,
+  OracleLTVPoolSpendRedeemer, OracleLTVPoolWithdrawRedeemer, OraclePriceFeed,
   Pooled,
 }
 use utils.{
@@ -28,126 +29,151 @@ validator pool(
 ) {
   spend(
     datumOpt: Option<OracleLTVPoolDatum>,
-    redeemer: OracleLTVPoolRedeemer,
+    redeemer: OracleLTVPoolSpendRedeemer,
     input: OutputReference,
     self: Transaction,
   ) {
-    when datumOpt is {
-      None -> address_in_signatures(self.extra_signatories, adminAddress)
-      Some(datum) -> {
-        let ownScriptHash = get_own_hash(input, self.inputs)
-        when redeemer is {
-          Cancel ->
-            address_in_signatures(self.extra_signatories, datum.lenderAddress)
-          Accept(
-            currentPoolInputIndex,
-            borrowerAddress,
-            outputWithLenderTokenIndex,
-            chosenCollateralIndex,
-            chosenCollateralOracleInputIndex,
-            wantedPrincipal,
-          ) -> {
-            let inputUtxoId =
-              sha2_256(bytearray.push(input.transaction_id, input.output_index))
-            expect Some(actualPoolInput) =
-              list.at(
-                get_inputs_from_sc(self.inputs, ownScriptHash),
-                currentPoolInputIndex,
-              )
-            expect Some(activeOutput) =
-              list.at(
-                get_outputs_to_sc(self.outputs, activeLoanScriptHash),
-                currentPoolInputIndex,
-              )
-            expect Some(outputWithLenderToken) =
-              list.at(self.outputs, outputWithLenderTokenIndex)
-            expect Finite(end) = self.validity_range.upper_bound.bound_type
-            expect Some(chosenCollateral) =
-              list.at(datum.collateralOptions, chosenCollateralIndex)
-            let remainingAmount =
-              quantity_of(
-                actualPoolInput.output.value,
-                datum.poolAsset.policyId,
-                datum.poolAsset.assetName,
-              ) - wantedPrincipal
-
-            let basicChecks = and {
-                input == actualPoolInput.output_reference,
-                wantedPrincipal > 0,
-                remainingAmount >= 0,
-                validity_range_within_an_hour(self),
-                tokens_sent_to_both_parties(
-                  self.mint,
-                  outputWithLenderToken,
-                  borrowerTokenPolicyId,
-                  lenderTokenPolicyId,
-                  inputUtxoId,
-                  datum.lenderAddress,
-                ),
-                if chosenCollateralOracleInputIndex >= 0 {
-                  expect Some(oracleRefInput) =
-                    list.at(
-                      self.reference_inputs,
-                      chosenCollateralOracleInputIndex,
-                    )
-                  expect Some(oraclePriceFeed) =
-                    retrieve_oracle_data(
-                      oracleRefInput,
-                      self.redeemers,
-                      end,
-                      chosenCollateral,
-                    )
-                  and {
-                    validate_oracle_ref_input(
-                      oracleRefInput.output.value,
-                      chosenCollateral,
-                    ),
-                    validate_output_to_active_with_oracle(
-                      activeOutput,
-                      activeLoanScriptHash,
-                      datum,
-                      chosenCollateral,
-                      chosenCollateralIndex,
-                      wantedPrincipal,
-                      inputUtxoId,
-                      end,
-                      borrowerAddress,
-                      oraclePriceFeed,
-                    ),
-                  }
-                } else {
-                  validate_output_to_active_no_oracle(
-                    activeOutput,
-                    activeLoanScriptHash,
-                    datum,
-                    chosenCollateral,
-                    chosenCollateralIndex,
-                    wantedPrincipal,
-                    inputUtxoId,
-                    end,
-                    borrowerAddress,
-                  )
-                },
-              }
-            and {
-              basicChecks,
-              or {
-                remainingAmount == 0,
-                and {
-                  remainingAmount > 0,
-                  validate_eventual_output_to_pool(
-                    safe_list_at(self.outputs, currentPoolInputIndex),
-                    datum,
-                    remainingAmount,
-                    ownScriptHash,
-                  ),
-                },
-              },
-            }
+    if datumOpt == None {
+      address_in_signatures(self.extra_signatories, adminAddress)
+    } else {
+      when redeemer is {
+        Cancel -> {
+          expect Some(datum) = datumOpt
+          address_in_signatures(self.extra_signatories, datum.lenderAddress)
+        }
+        Borrow(withdrawIndex) -> {
+          let ownScriptHash = get_own_hash(input, self.inputs)
+          expect Some(withdrawScript) = list.at(self.withdrawals, withdrawIndex)
+          when withdrawScript is {
+            Pair(Script(script), _amnt) -> script == ownScriptHash
+            _ -> False
           }
         }
       }
     }
+  }
+
+  withdraw(
+    redeemer: OracleLTVPoolWithdrawRedeemer,
+    credential: Credential,
+    self: Transaction,
+  ) {
+    expect Script(ownScriptHash) = credential
+    let scInputs = get_inputs_from_sc(self.inputs, ownScriptHash)
+    //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
+    expect length(scInputs) == length(redeemer.actionForEachInput)
+
+    list.indexed_foldr(
+      scInputs,
+      True,
+      fn(index, input, result) {
+        //As all inputs must return True, if any of previous input returned False, then fail
+        //The last input is not checked but will return its value at the end, so if False withdraw will fail
+        expect result
+
+        let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
+        expect InlineDatum(inputDatum) = input.output.datum
+        expect datum: OracleLTVPoolDatum = inputDatum
+        let ownScriptHash = get_own_hash(input.output_reference, self.inputs)
+        let OracleLTVPoolAction {
+          borrowerAddress,
+          outputWithLenderTokenIndex,
+          chosenCollateralIndex,
+          chosenCollateralOracleInputIndex,
+          wantedPrincipal,
+        } = redeemerAction
+        let inputUtxoId =
+          sha2_256(
+            bytearray.push(
+              input.output_reference.transaction_id,
+              input.output_reference.output_index,
+            ),
+          )
+        expect Some(activeOutput) =
+          list.at(get_outputs_to_sc(self.outputs, activeLoanScriptHash), index)
+        expect Some(outputWithLenderToken) =
+          list.at(self.outputs, outputWithLenderTokenIndex)
+        expect Finite(end) = self.validity_range.upper_bound.bound_type
+        expect Some(chosenCollateral) =
+          list.at(datum.collateralOptions, chosenCollateralIndex)
+        let remainingAmount =
+          quantity_of(
+            input.output.value,
+            datum.poolAsset.policyId,
+            datum.poolAsset.assetName,
+          ) - wantedPrincipal
+
+        let basicChecks = and {
+            wantedPrincipal > 0,
+            remainingAmount >= 0,
+            validity_range_within_an_hour(self),
+            tokens_sent_to_both_parties(
+              self.mint,
+              outputWithLenderToken,
+              borrowerTokenPolicyId,
+              lenderTokenPolicyId,
+              inputUtxoId,
+              datum.lenderAddress,
+            ),
+            if chosenCollateralOracleInputIndex >= 0 {
+              expect Some(oracleRefInput) =
+                list.at(self.reference_inputs, chosenCollateralOracleInputIndex)
+              expect Some(oraclePriceFeed) =
+                retrieve_oracle_data(
+                  oracleRefInput,
+                  self.redeemers,
+                  end,
+                  chosenCollateral,
+                )
+              and {
+                validate_oracle_ref_input(
+                  oracleRefInput.output.value,
+                  chosenCollateral,
+                ),
+                validate_output_to_active_with_oracle(
+                  activeOutput,
+                  activeLoanScriptHash,
+                  datum,
+                  chosenCollateral,
+                  chosenCollateralIndex,
+                  wantedPrincipal,
+                  inputUtxoId,
+                  end,
+                  borrowerAddress,
+                  oraclePriceFeed,
+                ),
+              }
+            } else {
+              validate_output_to_active_no_oracle(
+                activeOutput,
+                activeLoanScriptHash,
+                datum,
+                chosenCollateral,
+                chosenCollateralIndex,
+                wantedPrincipal,
+                inputUtxoId,
+                end,
+                borrowerAddress,
+              )
+            },
+          }
+        and {
+          basicChecks,
+          or {
+            remainingAmount == 0,
+            and {
+              remainingAmount > 0,
+              validate_eventual_output_to_pool(
+                safe_list_at(self.outputs, index),
+                datum,
+                remainingAmount,
+                ownScriptHash,
+              ),
+            },
+          },
+        }
+      },
+    )
   }
 
   else(ctx: ScriptContext) {
