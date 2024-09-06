@@ -91,7 +91,12 @@ validator pool(
                       chosenCollateralOracleInputIndex,
                     )
                   expect Some(oraclePriceFeed) =
-                    retrieve_oracle_data(oracleRefInput, self.redeemers, end)
+                    retrieve_oracle_data(
+                      oracleRefInput,
+                      self.redeemers,
+                      end,
+                      chosenCollateral,
+                    )
                   and {
                     validate_oracle_ref_input(
                       oracleRefInput.output.value,

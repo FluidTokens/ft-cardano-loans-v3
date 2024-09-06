@@ -9,6 +9,7 @@ use cardano/assets.{AssetName, PolicyId, Value, quantity_of, to_dict, tokens}
 use cardano/transaction.{
   Input, Output, OutputReference, Redeemer, ScriptPurpose, Transaction, Withdraw,
 }
+use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
   Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
 }
@@ -136,10 +137,24 @@ pub fn tokens_sent_to_lender_and_borrower(
   length(outputListToLenderAndBorrower) == 2
 }
 
+pub fn is_feed_token_correct(
+  expectedCollateral: CollateralAsset,
+  feedToken: Asset,
+) {
+  when expectedCollateral.maybeAssetName is {
+    Some(assetName) -> and {
+        feedToken.policyId == expectedCollateral.policyId,
+        feedToken.assetName == assetName,
+      }
+    None -> feedToken.policyId == expectedCollateral.policyId
+  }
+}
+
 pub fn retrieve_oracle_data(
   oracleInput: Input,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   transaction_valid_to: Int,
+  expectedCollateral: CollateralAsset,
 ) -> Option<OraclePriceFeed> {
   expect Some(loan_oracle_redeemer) =
     pairs.get_first(
@@ -150,24 +165,33 @@ pub fn retrieve_oracle_data(
 
   when loan_tokens_price.data is {
     Pooled(data) ->
-      if data.valid_to >= transaction_valid_to {
+      if and {
+        data.valid_to >= transaction_valid_to,
+        is_feed_token_correct(expectedCollateral, data.token),
+      } {
         Some(Pooled(data))
       } else {
-        trace @"oracle is expired"
+        trace @"oracle is expired or has wrong token"
         None
       }
     Aggregated(data) ->
-      if data.valid_to >= transaction_valid_to {
+      if and {
+        data.valid_to >= transaction_valid_to,
+        is_feed_token_correct(expectedCollateral, data.token),
+      } {
         Some(Aggregated(data))
       } else {
-        trace @"oracle is expired"
+        trace @"oracle is expired or has wrong token"
         None
       }
     Dedicated(data) ->
-      if data.valid_to >= transaction_valid_to {
+      if and {
+        data.valid_to >= transaction_valid_to,
+        is_feed_token_correct(expectedCollateral, data.token),
+      } {
         Some(Dedicated(data))
       } else {
-        trace @"oracle is expired"
+        trace @"oracle is expired or has wrong token"
         None
       }
   }
