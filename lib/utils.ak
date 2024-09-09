@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/collection/pairs
@@ -27,15 +28,11 @@ pub fn is_nft_spent(
 }
 
 pub fn validity_range_within_an_hour(tx: Transaction) {
-  when tx.validity_range.upper_bound.bound_type is {
-    Finite(end) ->
-      when tx.validity_range.lower_bound.bound_type is {
-        Finite(start) -> end - start <= 3600000
-        // 1 hour in millis
-        _ -> False
-      }
-    _ -> False
-  }
+  expect Finite(start) = tx.validity_range.lower_bound.bound_type
+  expect Finite(end) = tx.validity_range.upper_bound.bound_type
+
+  // 1 hour in millis
+  end - start <= 3600000
 }
 
 pub fn is_output_to_sc(output: Output, scHash: ByteArray) -> Bool {
@@ -86,10 +83,8 @@ pub fn get_own_hash(output_reference: OutputReference, txInputs: List<Input>) {
   expect Some(input) =
     list.find(txInputs, fn(x) { x.output_reference == output_reference })
 
-  when input.output.address.payment_credential is {
-    Script(hash) -> hash
-    _ -> fail
-  }
+  expect Script(hash) = input.output.address.payment_credential
+  hash
 }
 
 /// Returns the quantity of all tokens with the policyId
@@ -115,27 +110,13 @@ pub fn value_to_pairs(value: Value) -> Pairs<PolicyId, Pairs<AssetName, Int>> {
   dict.to_pairs(dictOfPairs)
 }
 
-pub fn tokens_sent_to_lender_and_borrower(
-  txOutputs: List<Output>,
-  assetName: AssetName,
-  lenderAddress: Address,
-  borrowerAddress: Address,
-  borrowersNftCs: ByteArray,
-  lendersNftCs: ByteArray,
-) {
-  let outputListToLenderAndBorrower = list.filter(txOutputs, fn(output) { or {
-          and {
-            output.address == lenderAddress,
-            quantity_of(output.value, lendersNftCs, assetName) == 1,
-          },
-          and {
-            output.address == borrowerAddress,
-            quantity_of(output.value, borrowersNftCs, assetName) == 1,
-          },
-        } })
-
-  length(outputListToLenderAndBorrower) == 2
-}
+//pub fn value_to_pairs(value: Data) -> Pairs<PolicyId, Pairs<AssetName, Int>> {
+//  let vAsData: Data = value
+//  expect vAsPairList: List<Pair<PolicyId, Pairs<AssetName, Int>>> =
+//    builtin.un_map_data(vAsData)
+//  expect vAsPairs: Pairs<PolicyId, Pairs<AssetName, Int>> = vAsPairList
+//  vAsPairs
+//}
 
 pub fn is_feed_token_correct(
   expectedCollateral: CollateralAsset,

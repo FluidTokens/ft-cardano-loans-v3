@@ -10,4 +10,5 @@ pub type CollateralAsset {
   maybeAssetName: Option<AssetName>,
   oracleTokenAsset: Option<Asset>,
 }
-//TODO Usare withdraw 0 nella Pool
+//TODO chiede il formato di oracoli Butane
+//TODO aggiungi field di liquidazione nel datum pool
