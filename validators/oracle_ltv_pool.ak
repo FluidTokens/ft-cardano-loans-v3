@@ -4,10 +4,10 @@ use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{Value, flatten, quantity_of, without_lovelace}
+use cardano/assets.{Value, flatten, quantity_of}
 use cardano/script_context.{ScriptContext}
 use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
-use types/datum.{ActiveDatum, OracleLTVPoolDatum}
+use types/datum.{ActiveLoanDatum, OracleLTVPoolDatum}
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
   Aggregated, Borrow, Cancel, Dedicated, OracleLTVPoolAction,
@@ -15,10 +15,10 @@ use types/redeemer.{
   Pooled,
 }
 use utils.{
-  address_in_signatures, get_inputs_from_sc, get_outputs_to_sc, get_own_hash,
-  is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data, safe_list_at,
-  token_b_needed_to_purchase_token_a, validity_range_within_an_hour,
-  value_to_pairs,
+  address_in_signatures, authorize_action, get_inputs_from_sc, get_outputs_to_sc,
+  get_own_hash, is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data,
+  safe_list_at, token_b_needed_to_purchase_token_a,
+  validity_range_within_an_hour,
 }
 
 validator pool(
@@ -37,9 +37,18 @@ validator pool(
       address_in_signatures(self.extra_signatories, adminAddress)
     } else {
       when redeemer is {
-        Cancel -> {
+        Cancel(auth) -> {
           expect Some(datum) = datumOpt
-          address_in_signatures(self.extra_signatories, datum.lenderAddress)
+          and {
+            datum.lenderAuthHash == auth.hash,
+            authorize_action(
+              auth,
+              self.inputs,
+              self.withdrawals,
+              self.extra_signatories,
+              self.mint,
+            ),
+          }
         }
         Borrow(withdrawIndex) -> {
           let ownScriptHash = get_own_hash(input, self.inputs)
@@ -101,8 +110,8 @@ validator pool(
         let remainingAmount =
           quantity_of(
             input.output.value,
-            datum.poolAsset.policyId,
-            datum.poolAsset.assetName,
+            datum.commonLoanData.poolAsset.policyId,
+            datum.commonLoanData.poolAsset.assetName,
           ) - wantedPrincipal
 
         let basicChecks = and {
@@ -118,7 +127,7 @@ validator pool(
               datum.lenderAddress,
             ),
             //No oracle case
-            if chosenCollateral.oracleTokenAsset == None {
+            if chosenCollateral.maybeOracleTokenAsset == None {
               validate_output_to_active_no_oracle(
                 activeOutput,
                 activeLoanScriptHash,
@@ -191,7 +200,7 @@ fn validate_oracle_ref_input(
   oracleInputValue: Value,
   chosenCollateral: CollateralAsset,
 ) {
-  expect Some(oracleToken) = chosenCollateral.oracleTokenAsset
+  expect Some(oracleToken) = chosenCollateral.maybeOracleTokenAsset
   quantity_of(oracleInputValue, oracleToken.policyId, oracleToken.assetName) > 0
 }
 
@@ -223,9 +232,9 @@ fn validate_output_to_active_no_oracle(
   borrowerAddress: Address,
 ) {
   expect Some(singleRequiredAmount) =
-    list.at(poolDatum.principalLTV, chosenCollateralIndex)
+    list.at(poolDatum.commonLoanData.principalLTV, chosenCollateralIndex)
   expect Some(principalDivider) =
-    list.at(poolDatum.principalLTVDivider, chosenCollateralIndex)
+    list.at(poolDatum.commonLoanData.principalLTVDivider, chosenCollateralIndex)
   expect Some(singleRequiredAmountAsRational) =
     rational.new(singleRequiredAmount, principalDivider)
   expect Some(minNeededCollateralAmountAsRational) =
@@ -249,19 +258,14 @@ fn validate_output_to_active_no_oracle(
     }
 
   expect InlineDatum(outputDatum) = output.datum
-  expect parsedDatum: ActiveDatum = outputDatum
+  expect parsedDatum: ActiveLoanDatum = outputDatum
   let newDatum =
-    ActiveDatum {
-      borrowerNFT: inputUtxoId,
-      loan: poolDatum.poolAsset,
-      loanAmnt: wantedPrincipal,
-      interest: poolDatum.poolAsset,
-      interestAmnt: wantedPrincipal * poolDatum.interestRate / 1000,
-      collateral: value_to_pairs(without_lovelace(output.value)),
-      loanDuration: poolDatum.loanDuration,
-      lenderNFT: inputUtxoId,
+    ActiveLoanDatum {
+      commonLoanData: poolDatum.commonLoanData,
+      borrowerAssetName: inputUtxoId,
+      lenderAssetName: inputUtxoId,
+      collateral: chosenCollateral,
       lendDate: end,
-      totalInstallments: poolDatum.totalInstallments,
       installmentsRepaid: 0,
     }
 
@@ -291,9 +295,10 @@ fn validate_output_to_active_with_oracle(
   borrowerAddress: Address,
   oraclePriceFeed: OraclePriceFeed,
 ) {
-  expect Some(ltv) = list.at(poolDatum.principalLTV, chosenCollateralIndex)
+  expect Some(ltv) =
+    list.at(poolDatum.commonLoanData.principalLTV, chosenCollateralIndex)
   expect Some(principalLTVDivider) =
-    list.at(poolDatum.principalLTVDivider, chosenCollateralIndex)
+    list.at(poolDatum.commonLoanData.principalLTVDivider, chosenCollateralIndex)
   expect Some(ltvAsRational) = rational.new(ltv, principalLTVDivider)
   expect Some(minNeededCollateralInPrincipalCurrency) =
     rational.div(rational.from_int(wantedPrincipal), ltvAsRational)
@@ -339,19 +344,14 @@ fn validate_output_to_active_with_oracle(
     }
 
   expect InlineDatum(outputDatum) = output.datum
-  expect parsedDatum: ActiveDatum = outputDatum
+  expect parsedDatum: ActiveLoanDatum = outputDatum
   let newDatum =
-    ActiveDatum {
-      borrowerNFT: inputUtxoId,
-      loan: poolDatum.poolAsset,
-      loanAmnt: wantedPrincipal,
-      interest: poolDatum.poolAsset,
-      interestAmnt: wantedPrincipal * poolDatum.interestRate / 1000,
-      collateral: value_to_pairs(without_lovelace(output.value)),
-      loanDuration: poolDatum.loanDuration,
-      lenderNFT: inputUtxoId,
+    ActiveLoanDatum {
+      commonLoanData: poolDatum.commonLoanData,
+      borrowerAssetName: inputUtxoId,
+      lenderAssetName: inputUtxoId,
+      collateral: chosenCollateral,
       lendDate: end,
-      totalInstallments: poolDatum.totalInstallments,
       installmentsRepaid: 0,
     }
 
@@ -383,8 +383,8 @@ fn validate_eventual_output_to_pool(
   let containsCorrectAmount =
     quantity_of(
       output.value,
-      datum.poolAsset.policyId,
-      datum.poolAsset.assetName,
+      datum.commonLoanData.poolAsset.policyId,
+      datum.commonLoanData.poolAsset.assetName,
     ) == remainingAmount
 
   let isDatumCorrect = parsedDatum == datum

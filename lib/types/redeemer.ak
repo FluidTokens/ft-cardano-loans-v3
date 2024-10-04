@@ -1,8 +1,8 @@
 use cardano/address.{Address}
-use types/general.{Asset}
+use types/general.{Asset, Authorization}
 
 pub type OracleLTVPoolSpendRedeemer {
-  Cancel
+  Cancel { auth: Authorization }
   Borrow { withdrawIndex: Int }
 }
 

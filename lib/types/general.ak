@@ -8,7 +8,17 @@ pub type Asset {
 pub type CollateralAsset {
   policyId: PolicyId,
   maybeAssetName: Option<AssetName>,
-  oracleTokenAsset: Option<Asset>,
+  maybeOracleTokenAsset: Option<Asset>,
 }
-//TODO chiede il formato di oracoli Butane
-//TODO aggiungi field di liquidazione nel datum pool
+
+pub type AuthorizationMethod {
+  CardanoSignature
+  CardanoSpendScript
+  CardanoWithdrawScript
+  CardanoMintScript
+}
+
+pub type Authorization {
+  method: AuthorizationMethod,
+  hash: ByteArray,
+}

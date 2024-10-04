@@ -1,16 +1,19 @@
 use aiken/builtin
-use aiken/collection/dict
+use aiken/collection/dict.{to_pairs}
 use aiken/collection/list.{length}
 use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
 use aiken/interval.{Finite}
 use aiken/math/rational.{Rational}
-use cardano/address.{Address, Script, VerificationKey}
+use cardano/address.{Address, Credential, Script, VerificationKey}
 use cardano/assets.{AssetName, PolicyId, Value, quantity_of, to_dict, tokens}
 use cardano/transaction.{
   Input, Output, OutputReference, Redeemer, ScriptPurpose, Transaction, Withdraw,
 }
-use types/general.{Asset, CollateralAsset}
+use types/general.{
+  Asset, Authorization, CardanoMintScript, CardanoSignature, CardanoSpendScript,
+  CardanoWithdrawScript, CollateralAsset,
+}
 use types/redeemer.{
   Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
 }
@@ -190,4 +193,46 @@ pub fn token_b_needed_to_purchase_token_a(
   let denominator = ( token_a_amount - buy_amount_int ) * 997
   let token_b_required = nominator / denominator
   token_b_required
+}
+
+pub fn authorize_action(
+  auth: Authorization,
+  transaction_inputs: List<Input>,
+  withdrawals: Pairs<Credential, Int>,
+  extra_signatories: List<VerificationKeyHash>,
+  transaction_mint: Value,
+) -> Bool {
+  when auth.method is {
+    // If the authorization method is PubKey, validate using the provided signature.
+    CardanoSignature -> list.has(extra_signatories, auth.hash)
+    // If the authorization method is SpendScript, ensure the Utxo is present in the transaction inputs.
+    CardanoSpendScript -> {
+      let auth_cred = Script(auth.hash)
+      list.any(
+        transaction_inputs,
+        fn(input) {
+          let Input { output, .. } = input
+          let Output { address: out_address, .. } = output
+          let Address { payment_credential: out_payment_credential, .. } =
+            out_address
+          out_payment_credential == auth_cred
+        },
+      )
+    }
+    // If the authorization method is WithdrawScript, validate the presence of a withdrawal in the transaction.
+    CardanoWithdrawScript -> {
+      let credential = Script(auth.hash)
+      pairs.has_key(withdrawals, credential)
+    }
+    // If the authorization method is MintScript, ensure the minted tokens meet the policy ID requirements and have a non-zero quantity.
+    CardanoMintScript -> {
+      let fst_token_quantity =
+        transaction_mint
+          |> tokens(auth.hash)
+          |> to_pairs
+          |> builtin.head_list
+          |> builtin.snd_pair
+      fst_token_quantity != 0
+    }
+  }
 }
