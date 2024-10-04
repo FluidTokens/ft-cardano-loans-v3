@@ -7,7 +7,7 @@ use cardano/address.{Address, Credential, Script}
 use cardano/assets.{Value, flatten, quantity_of}
 use cardano/script_context.{ScriptContext}
 use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
-use types/datum.{ActiveLoanDatum, OracleLTVPoolDatum}
+use types/datum.{ActiveDatum, PoolDatum}
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
   Aggregated, Borrow, Cancel, Dedicated, OracleLTVPoolAction,
@@ -28,7 +28,7 @@ validator pool(
   adminAddress: Address,
 ) {
   spend(
-    datumOpt: Option<OracleLTVPoolDatum>,
+    datumOpt: Option<PoolDatum>,
     redeemer: OracleLTVPoolSpendRedeemer,
     input: OutputReference,
     self: Transaction,
@@ -82,7 +82,7 @@ validator pool(
 
         let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
         expect InlineDatum(inputDatum) = input.output.datum
-        expect datum: OracleLTVPoolDatum = inputDatum
+        expect datum: PoolDatum = inputDatum
         let OracleLTVPoolAction {
           borrowerAddress,
           outputWithLenderTokenIndex,
@@ -110,8 +110,8 @@ validator pool(
         let remainingAmount =
           quantity_of(
             input.output.value,
-            datum.commonLoanData.poolAsset.policyId,
-            datum.commonLoanData.poolAsset.assetName,
+            datum.commonData.poolAsset.policyId,
+            datum.commonData.poolAsset.assetName,
           ) - wantedPrincipal
 
         let basicChecks = and {
@@ -126,20 +126,7 @@ validator pool(
               inputUtxoId,
               datum.lenderAddress,
             ),
-            //No oracle case
-            if chosenCollateral.maybeOracleTokenAsset == None {
-              validate_output_to_active_no_oracle(
-                activeOutput,
-                activeLoanScriptHash,
-                datum,
-                chosenCollateral,
-                chosenCollateralIndex,
-                wantedPrincipal,
-                inputUtxoId,
-                end,
-                borrowerAddress,
-              )
-            } else {
+            if datum.dynamicCollateralPrice {
               let oracleRefInput =
                 safe_list_at(
                   self.reference_inputs,
@@ -170,6 +157,18 @@ validator pool(
                   oraclePriceFeed,
                 ),
               }
+            } else {
+              validate_output_to_active_no_oracle(
+                activeOutput,
+                activeLoanScriptHash,
+                datum,
+                chosenCollateral,
+                chosenCollateralIndex,
+                wantedPrincipal,
+                inputUtxoId,
+                end,
+                borrowerAddress,
+              )
             },
           }
         and {
@@ -223,7 +222,7 @@ fn tokens_sent_to_both_parties(
 fn validate_output_to_active_no_oracle(
   output: Output,
   activeLoanScriptHash: ByteArray,
-  poolDatum: OracleLTVPoolDatum,
+  poolDatum: PoolDatum,
   chosenCollateral: CollateralAsset,
   chosenCollateralIndex: Int,
   wantedPrincipal: Int,
@@ -232,9 +231,9 @@ fn validate_output_to_active_no_oracle(
   borrowerAddress: Address,
 ) {
   expect Some(singleRequiredAmount) =
-    list.at(poolDatum.commonLoanData.principalLTV, chosenCollateralIndex)
+    list.at(poolDatum.commonData.principalLTV, chosenCollateralIndex)
   expect Some(principalDivider) =
-    list.at(poolDatum.commonLoanData.principalLTVDivider, chosenCollateralIndex)
+    list.at(poolDatum.commonData.principalLTVDivider, chosenCollateralIndex)
   expect Some(singleRequiredAmountAsRational) =
     rational.new(singleRequiredAmount, principalDivider)
   expect Some(minNeededCollateralAmountAsRational) =
@@ -261,7 +260,7 @@ fn validate_output_to_active_no_oracle(
   expect parsedDatum: ActiveLoanDatum = outputDatum
   let newDatum =
     ActiveLoanDatum {
-      commonLoanData: poolDatum.commonLoanData,
+      commonData: poolDatum.commonData,
       borrowerAssetName: inputUtxoId,
       lenderAssetName: inputUtxoId,
       collateral: chosenCollateral,
@@ -270,7 +269,7 @@ fn validate_output_to_active_no_oracle(
     }
 
   let isLiquidationCorrectlySet = or {
-      newDatum.commonLoanData.liquidationEnabled == False,
+      newDatum.commonData.liquidationEnabled == False,
       newDatum.collateral.maybeOracleTokenAsset != None,
     }
   let isDatumCorrect = parsedDatum == newDatum && isLiquidationCorrectlySet
@@ -290,7 +289,7 @@ fn validate_output_to_active_no_oracle(
 fn validate_output_to_active_with_oracle(
   output: Output,
   activeLoanScriptHash: ByteArray,
-  poolDatum: OracleLTVPoolDatum,
+  poolDatum: PoolDatum,
   chosenCollateral: CollateralAsset,
   chosenCollateralIndex: Int,
   wantedPrincipal: Int,
@@ -300,9 +299,9 @@ fn validate_output_to_active_with_oracle(
   oraclePriceFeed: OraclePriceFeed,
 ) {
   expect Some(ltv) =
-    list.at(poolDatum.commonLoanData.principalLTV, chosenCollateralIndex)
+    list.at(poolDatum.commonData.principalLTV, chosenCollateralIndex)
   expect Some(principalLTVDivider) =
-    list.at(poolDatum.commonLoanData.principalLTVDivider, chosenCollateralIndex)
+    list.at(poolDatum.commonData.principalLTVDivider, chosenCollateralIndex)
   expect Some(ltvAsRational) = rational.new(ltv, principalLTVDivider)
   expect Some(minNeededCollateralInPrincipalCurrency) =
     rational.div(rational.from_int(wantedPrincipal), ltvAsRational)
@@ -348,10 +347,10 @@ fn validate_output_to_active_with_oracle(
     }
 
   expect InlineDatum(outputDatum) = output.datum
-  expect parsedDatum: ActiveLoanDatum = outputDatum
+  expect parsedDatum: ActiveDatum = outputDatum
   let newDatum =
-    ActiveLoanDatum {
-      commonLoanData: poolDatum.commonLoanData,
+    ActiveDatum {
+      commonData: poolDatum.commonData,
       borrowerAssetName: inputUtxoId,
       lenderAssetName: inputUtxoId,
       collateral: chosenCollateral,
@@ -360,7 +359,7 @@ fn validate_output_to_active_with_oracle(
     }
 
   let isLiquidationCorrectlySet = or {
-      newDatum.commonLoanData.liquidationEnabled == False,
+      newDatum.commonData.liquidationEnabled == False,
       newDatum.collateral.maybeOracleTokenAsset != None,
     }
   let isDatumCorrect = parsedDatum == newDatum && isLiquidationCorrectlySet
@@ -381,7 +380,7 @@ fn validate_output_to_active_with_oracle(
 //Expects remainingAmount > 0
 fn validate_eventual_output_to_pool(
   output: Output,
-  datum: OracleLTVPoolDatum,
+  datum: PoolDatum,
   remainingAmount: Int,
   ownScriptHash: ByteArray,
 ) {
@@ -391,8 +390,8 @@ fn validate_eventual_output_to_pool(
   let containsCorrectAmount =
     quantity_of(
       output.value,
-      datum.commonLoanData.poolAsset.policyId,
-      datum.commonLoanData.poolAsset.assetName,
+      datum.commonData.poolAsset.policyId,
+      datum.commonData.poolAsset.assetName,
     ) == remainingAmount
 
   let isDatumCorrect = parsedDatum == datum
