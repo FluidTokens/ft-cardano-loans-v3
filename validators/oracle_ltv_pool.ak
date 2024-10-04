@@ -269,7 +269,11 @@ fn validate_output_to_active_no_oracle(
       installmentsRepaid: 0,
     }
 
-  let isDatumCorrect = parsedDatum == newDatum
+  let isLiquidationCorrectlySet = or {
+      newDatum.commonLoanData.liquidationEnabled == False,
+      newDatum.collateral.maybeOracleTokenAsset != None,
+    }
+  let isDatumCorrect = parsedDatum == newDatum && isLiquidationCorrectlySet
 
   let toCorrectStaking =
     output.address.stake_credential == borrowerAddress.stake_credential
@@ -355,7 +359,11 @@ fn validate_output_to_active_with_oracle(
       installmentsRepaid: 0,
     }
 
-  let isDatumCorrect = parsedDatum == newDatum
+  let isLiquidationCorrectlySet = or {
+      newDatum.commonLoanData.liquidationEnabled == False,
+      newDatum.collateral.maybeOracleTokenAsset != None,
+    }
+  let isDatumCorrect = parsedDatum == newDatum && isLiquidationCorrectlySet
 
   let toCorrectStaking =
     output.address.stake_credential == borrowerAddress.stake_credential

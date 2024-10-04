@@ -12,8 +12,13 @@ pub type CommonLoanData {
   loanDuration: Int,
   totalInstallments: Int,
   liquidationEnabled: Bool,
-  //Time between last installment paid and liquidation
+  //Time between last installment paid and liquidation.
+  //Used only when liquidation is enabled
   deltaTimeForLiquidation: Int,
+  //This has (either pubKeyHash or scriptHash) is authorized to liquidate when possible.
+  //If it's "" then anyone can liquidate.
+  //Used only when liquidation is enabled
+  liquidatorAuthHash: ByteArray,
 }
 
 pub type OracleLTVPoolDatum {
