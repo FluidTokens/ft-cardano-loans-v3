@@ -1,12 +1,12 @@
 use cardano/address.{Address}
 use types/general.{Asset, Authorization}
 
-pub type OracleLTVPoolSpendRedeemer {
+pub type PoolSpendRedeemer {
   Cancel { auth: Authorization }
   Borrow { withdrawIndex: Int }
 }
 
-pub type OracleLTVPoolAction {
+pub type PoolAction {
   borrowerAddress: Address,
   outputWithLenderTokenIndex: Int,
   //Asset that the borrower is providing, must be accepted by the pool
@@ -16,8 +16,8 @@ pub type OracleLTVPoolAction {
   wantedPrincipal: Int,
 }
 
-pub type OracleLTVPoolWithdrawRedeemer {
-  actionForEachInput: List<OracleLTVPoolAction>,
+pub type PoolWithdrawRedeemer {
+  actionForEachInput: List<PoolAction>,
 }
 
 //Tokens that have a lot of liquidity is in CEX. The price is in lovelace
@@ -59,4 +59,24 @@ pub type Signature {
 pub type OracleRedeemer {
   data: OraclePriceFeed,
   signatures: List<Signature>,
+}
+
+pub type ActiveAction {
+  //Lender action (or anyone who has the permission to do so)
+  Liquidate {
+    //This is the absolute input index that contains the lender bond
+    bondInputIndex: Int,
+  }
+  //Borrower action
+  Repay {
+    //This is the absolute input index that contains the borrower bond
+    bondInputIndex: Int,
+  }
+  AddCollateral { bondInputIndex: Int, addedCollateralAmount: Int }
+  //Borrower action
+  Recast { bondInputIndex: Int, principalPaid: Int }
+}
+
+pub type ActiveWithdrawRedeemer {
+  actionForEachInput: List<ActiveAction>,
 }

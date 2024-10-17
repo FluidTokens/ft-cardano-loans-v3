@@ -210,7 +210,7 @@ fn validate_output_to_active_loan(
           lenderNFT: assetName,
           lendDate: end,
           totalInstallments: datum.totalInstallments,
-          installmentsRepaid: 0,
+          repaidInstallments: 0,
         }
 
       let isDatumCorrect = parsedDatum == newDatum

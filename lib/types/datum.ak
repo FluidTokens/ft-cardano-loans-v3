@@ -2,42 +2,45 @@ use cardano/address.{Address}
 use cardano/assets.{AssetName}
 use types/general.{Asset, CollateralAsset}
 
-//TODO Deferment
-//TODO LOAN REFINANCING IS MISSING
-//TODO Penalty for late payments, to eventual external address
-//Forgiveness in case of default is accomplished by sending the collateral back to the borrower
+//TODO KYC/KYB with Sundae
+//TODO Deferment (with and without interest accruement)
+//TODO Loan refinancing
+//TODO CIP-113 support
+//TODO Variable interest rate with oracle, eventual with min and max caps, eventual with first N installments at a fixed rate
+//Forgiveness in case of default is accomplished by sending the collateral back to the borrower in case of Full Collateral Claim
 pub type RepaymentMode {
   //Express number of possible recasts. 0 means no recasting, negative means unlimited
   InterestOnRemainingPrincipal { max_possible_recasts: Int }
+  //Installment amount = Principal+Interest/Installments
   PrincipalAndInterestOnInstallments
 }
 
 pub type LiquidationMode {
-  NoLiquidationClaimFullCollateral
+  NoLiquidationFullCollateralClaim
   NoLiquidationDutchAuctionClaim
   Liquidation {
-    //Time between last installment paid and liquidation.
-    //Used only when liquidation is enabled
-    deltaTimeForLiquidation: Int,
+    lTV: Int,
+    lTVDivider: Int,
     //This has (either pubKeyHash or scriptHash) is authorized to liquidate when possible.
     //If it's "" then anyone can liquidate.
-    //Used only when liquidation is enabled
-    liquidatorAuthHash: ByteArray,
+    authHash: ByteArray,
   }
 }
 
 pub type CommonData {
-  poolAsset: Asset,
-  //LTV for each collateral option (borrower can ask more using a multiple). No oracle then this is the principal amount
-  principalLTV: List<Int>,
-  principalLTVDivider: List<Int>,
+  principalAsset: Asset,
   //Per mille of the loan to repay to lender
   interestRate: Int,
   duration: Int,
-  //period after starting the loan and before starting repaying
+  //Period after starting the loan and before starting repaying (borrower can't be liquidated in this period)
   initialGracePeriod: Int,
   totalInstallments: Int,
   liquidationMode: LiquidationMode,
+  repaymentMode: RepaymentMode,
+  //fee borrower pays when he could be liquidated but he repays, <= 0 means no penalty
+  penaltyFeeForLateRepayment: Int,
+  //If "" then must be the lender current hash
+  penaltyFeeForLateRepaymentDestinationHash: ByteArray,
 }
 
 pub type RequestDatum {
@@ -47,6 +50,9 @@ pub type RequestDatum {
   //This pool can cover multiple collections/token, but only one of them can be chosen for each loan (ie. no mixed bundle loans).
   //Important requirement: if liquidation is enabled, ALL the collateralOptions must have an oracle NFT
   collateralOptions: List<CollateralAsset>,
+  //LTV for each collateral option (borrower can ask more using a multiple). If no oracle then this is the principal amount
+  principalLTV: List<Int>,
+  principalLTVDivider: List<Int>,
   //True if borrowable amount of the collateralOptions must be updated through oracles
   dynamicCollateralPrice: Bool,
 }
@@ -58,6 +64,9 @@ pub type PoolDatum {
   //This pool can cover multiple collections/token, but only one of them can be chosen for each loan (ie. no mixed bundle loans).
   //Important requirement: if liquidation is enabled, ALL the collateralOptions must have an oracle NFT
   collateralOptions: List<CollateralAsset>,
+  //LTV for each collateral option (borrower can ask more using a multiple). If no oracle then this is the principal amount
+  principalLTV: List<Int>,
+  principalLTVDivider: List<Int>,
   //True if borrowable amount of the collateralOptions must be updated through oracles
   dynamicCollateralPrice: Bool,
 }
@@ -67,10 +76,33 @@ pub type ActiveDatum {
   borrowerAssetName: AssetName,
   lenderAssetName: AssetName,
   collateral: CollateralAsset,
+  principalAmount: Int,
+  principalDivider: Int,
   lendDate: Int,
-  installmentsRepaid: Int,
+  repaidInstallments: Int,
+  doneRecasts: Int,
+}
+
+pub type RepaymentDatum {
+  lenderNFT: AssetName,
+  installmentsContained: Int,
+  installmentsPaidSoFar: Int,
+  isFinalRepayment: Bool,
 }
 
 pub type DutchAuctionDatum {
-  DutchAuctionDatum
+  ownerAuthHash: ByteArray,
+  ownerAddress: Address,
+  currency: Asset,
+  startingPrice: Int,
+  loweringAmount: Int,
+  loweringFrequency: Int,
+  minPriceToWithdraw: Int,
+  startDate: Int,
+  //If present it means it's a ducth auction from a liquidated asset:
+  //The lender must get max principal+interest
+  //The borrower gets the difference if the earning from the auction are > what lender should get
+  liquidatedBorrowerAddress: Option<Address>,
+  //Used only if liquidatedBorrowerAddress is not None, it's how much the lender should get
+  debtAmount: Int,
 }

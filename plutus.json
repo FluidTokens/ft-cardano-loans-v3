@@ -133,7 +133,7 @@
       "redeemer": {
         "title": "redeemer",
         "schema": {
-          "$ref": "#/definitions/types~1redeemer~1OracleLTVPoolSpendRedeemer"
+          "$ref": "#/definitions/types~1redeemer~1PoolSpendRedeemer"
         }
       },
       "parameters": [
@@ -170,7 +170,7 @@
       "redeemer": {
         "title": "redeemer",
         "schema": {
-          "$ref": "#/definitions/types~1redeemer~1OracleLTVPoolWithdrawRedeemer"
+          "$ref": "#/definitions/types~1redeemer~1PoolWithdrawRedeemer"
         }
       },
       "parameters": [
@@ -267,10 +267,10 @@
         "$ref": "#/definitions/types~1general~1CollateralAsset"
       }
     },
-    "List$types/redeemer/OracleLTVPoolAction": {
+    "List$types/redeemer/PoolAction": {
       "dataType": "list",
       "items": {
-        "$ref": "#/definitions/types~1redeemer~1OracleLTVPoolAction"
+        "$ref": "#/definitions/types~1redeemer~1PoolAction"
       }
     },
     "List$types/redeemer/Signature": {
@@ -481,7 +481,7 @@
               "$ref": "#/definitions/cardano~1address~1Address"
             },
             {
-              "title": "poolAsset",
+              "title": "principalAsset",
               "$ref": "#/definitions/types~1general~1Asset"
             },
             {
@@ -616,11 +616,11 @@
         }
       ]
     },
-    "types/redeemer/OracleLTVPoolAction": {
-      "title": "OracleLTVPoolAction",
+    "types/redeemer/PoolAction": {
+      "title": "PoolAction",
       "anyOf": [
         {
-          "title": "OracleLTVPoolAction",
+          "title": "PoolAction",
           "dataType": "constructor",
           "index": 0,
           "fields": [
@@ -648,8 +648,8 @@
         }
       ]
     },
-    "types/redeemer/OracleLTVPoolSpendRedeemer": {
-      "title": "OracleLTVPoolSpendRedeemer",
+    "types/redeemer/PoolSpendRedeemer": {
+      "title": "PoolSpendRedeemer",
       "anyOf": [
         {
           "title": "Cancel",
@@ -670,17 +670,17 @@
         }
       ]
     },
-    "types/redeemer/OracleLTVPoolWithdrawRedeemer": {
-      "title": "OracleLTVPoolWithdrawRedeemer",
+    "types/redeemer/PoolWithdrawRedeemer": {
+      "title": "PoolWithdrawRedeemer",
       "anyOf": [
         {
-          "title": "OracleLTVPoolWithdrawRedeemer",
+          "title": "PoolWithdrawRedeemer",
           "dataType": "constructor",
           "index": 0,
           "fields": [
             {
               "title": "actionForEachInput",
-              "$ref": "#/definitions/List$types~1redeemer~1OracleLTVPoolAction"
+              "$ref": "#/definitions/List$types~1redeemer~1PoolAction"
             }
           ]
         }
