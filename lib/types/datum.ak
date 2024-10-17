@@ -25,6 +25,9 @@ pub type LiquidationMode {
     //This has (either pubKeyHash or scriptHash) is authorized to liquidate when possible.
     //If it's "" then anyone can liquidate.
     authHash: ByteArray,
+    //If true, when claiming the collateral the lender must pay to the borrower the difference
+    //If false, borrower loses all the collateral when liquidation happens
+    partialLiquidation: Bool,
   }
 }
 

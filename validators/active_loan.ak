@@ -1,8 +1,6 @@
 use aiken/collection/list.{length}
 use aiken/crypto.{sha2_256}
 use aiken/interval.{Finite, Interval}
-use aiken/math/rational
-use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
 use cardano/assets.{AssetName, Value, flatten, quantity_of}
 use cardano/script_context.{ScriptContext}
@@ -119,34 +117,49 @@ validator activeLoan(
                     ),
                   }
                 }
-                Liquidation(lTV, lTVDivider, authHash) -> {
+                Liquidation(lTV, lTVDivider, authHash, partialLiquidation) -> {
                   //TODO IS THIS CORRECT?
                   expect Some(borrowerOutput) = list.at(self.outputs, index)
 
                   and {
-                    can_liquidate(
-                      validFrom,
-                      datum.lendDate,
-                      datum.commonData.initialGracePeriod,
-                      datum.repaidInstallments,
-                      datum.commonData.totalInstallments,
-                      datum.commonData.duration,
-                    ),
-                    difference_sent_to_borrower(
-                      //TODO
-                      0,
-                      get_remaining_debt(
-                        datum.commonData.repaymentMode,
-                        datum.collateral,
-                        datum.principalAmount,
-                        datum.principalDivider,
-                        datum.commonData.interestRate,
-                        datum.commonData.totalInstallments,
+                    is_allowed_user(authHash),
+                    or {
+                      is_it_after_deadline(
+                        validFrom,
+                        datum.lendDate,
+                        datum.commonData.initialGracePeriod,
                         datum.repaidInstallments,
+                        datum.commonData.totalInstallments,
+                        datum.commonData.duration,
                       ),
-                      actualBondInput,
-                      borrowerOutput,
-                    ),
+                      can_liquidate(
+                        validFrom,
+                        datum.lendDate,
+                        datum.commonData.initialGracePeriod,
+                        datum.repaidInstallments,
+                        datum.commonData.totalInstallments,
+                        datum.commonData.duration,
+                      ),
+                    },
+                    if partialLiquidation {
+                      difference_sent_to_borrower(
+                        //TODO
+                        0,
+                        get_remaining_debt(
+                          datum.commonData.repaymentMode,
+                          datum.collateral,
+                          datum.principalAmount,
+                          datum.principalDivider,
+                          datum.commonData.interestRate,
+                          datum.commonData.totalInstallments,
+                          datum.repaidInstallments,
+                        ),
+                        actualBondInput,
+                        borrowerOutput,
+                      )
+                    } else {
+                      True
+                    },
                   }
                 }
               },
