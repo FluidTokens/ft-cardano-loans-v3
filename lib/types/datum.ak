@@ -7,6 +7,7 @@ use types/general.{Asset, CollateralAsset}
 //TODO Loan refinancing
 //TODO CIP-113 support
 //TODO Variable interest rate with oracle, eventual with min and max caps, eventual with first N installments at a fixed rate
+//Margin calls are done off-chain as soon as the oracle signals a too-low LTV
 //Forgiveness in case of default is accomplished by sending the collateral back to the borrower in case of Full Collateral Claim
 pub type RepaymentMode {
   //Express number of possible recasts. 0 means no recasting, negative means unlimited
