@@ -8,9 +8,9 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use types/datum.{
-  ActiveDatum, DutchAuctionDatum, InterestOnRemainingPrincipal, Liquidation,
-  NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim, PoolDatum,
-  PrincipalAndInterestOnInstallments, RepaymentDatum, RepaymentMode,
+  ActiveDatum, DepositDatum, DutchAuctionDatum, InterestOnRemainingPrincipal,
+  Liquidation, NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
+  PoolDatum, PrincipalAndInterestOnInstallments, RepaymentDatum, RepaymentMode,
 }
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
@@ -117,12 +117,7 @@ validator activeLoan(
                     ),
                   }
                 }
-                Liquidation(lTV, lTVDivider, authHash, partialLiquidation) -> {
-                  //TODO IS THIS CORRECT?
-                  expect Some(borrowerOutput) = list.at(self.outputs, index)
-
-                  and {
-                    is_allowed_user(authHash),
+                Liquidation(lTV, lTVDivider, partialLiquidation) -> and {
                     or {
                       is_it_after_deadline(
                         validFrom,
@@ -139,9 +134,11 @@ validator activeLoan(
                         datum.repaidInstallments,
                         datum.commonData.totalInstallments,
                         datum.commonData.duration,
+                        datum.commonData.repaymentTimeWindow,
                       ),
                     },
-                    if partialLiquidation {
+                    or {
+                      partialLiquidation == False,
                       difference_sent_to_borrower(
                         //TODO
                         0,
@@ -154,17 +151,19 @@ validator activeLoan(
                           datum.commonData.totalInstallments,
                           datum.repaidInstallments,
                         ),
-                        actualBondInput,
-                        borrowerOutput,
-                      )
-                    } else {
-                      True
+                        borrowerTokenPolicyId: borrowerTokenPolicyId,
+                        borrowerAssetName: datum.borrowerAssetName,
+                        principalAssetPolicyId: datum.commonData.principalAsset.policyId,
+                        principalAssetName: datum.commonData.principalAsset.assetName,
+                        differenceOutput: Output,
+                        repaymentScriptHash: repaymentScriptHash,
+                      ),
                     },
                   }
-                }
               },
             }
           }
+
           Repay(bondInputIndex) -> {
             expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
             expect Some(repaymentOutput) =
@@ -327,6 +326,7 @@ fn can_liquidate(
   repaidInstallments: Int,
   totalInstallments: Int,
   loanDuration: Int,
+  repaymentTimeWindow: Int,
 ) {
   todo
 }
@@ -334,16 +334,39 @@ fn can_liquidate(
 fn difference_sent_to_borrower(
   collateralAdaValue: Int,
   totalDebtInAda: Int,
-  borrower_bond_input: Input,
-  borrowerOutput: Output,
+  borrowerTokenPolicyId: ByteArray,
+  borrowerAssetName: AssetName,
+  principalAssetPolicyId: ByteArray,
+  principalAssetName: AssetName,
+  differenceOutput: Output,
+  repaymentScriptHash: ByteArray,
 ) {
-  let borrowerAddress = borrower_bond_input.output.address
+  expect Script(scriptHash) = differenceOutput.address.payment_credential
+  expect InlineDatum(outputDatum) = differenceOutput.datum
+  expect parsedDatum: DepositDatum = outputDatum
+
+  let borrowerAsset =
+    Asset { policyId: borrowerTokenPolicyId, assetName: borrowerAssetName }
+  let newDatum =
+    DepositDatum { action: "partial_liquidation", ownerAsset: borrowerAsset }
+  //TODO Add liquidation fee?
+  let remainingAmount = collateralAdaValue - totalDebtInAda
+
+  let containsCorrectAmount =
+    quantity_of(
+      differenceOutput.value,
+      principalAssetPolicyId,
+      principalAssetName,
+    ) == remainingAmount
+
+  let isDatumCorrect = parsedDatum == newDatum
   or {
-    collateralAdaValue - totalDebtInAda < 0,
+    remainingAmount < 0,
     and {
-      quantity_of(borrowerOutput.value, "", "") >= collateralAdaValue - totalDebtInAda,
-      borrowerOutput.address == borrowerAddress,
-      length(flatten(borrowerOutput.value)) <= 21,
+      containsCorrectAmount,
+      scriptHash == repaymentScriptHash,
+      isDatumCorrect,
+      length(flatten(differenceOutput.value)) <= 21,
     },
   }
 }

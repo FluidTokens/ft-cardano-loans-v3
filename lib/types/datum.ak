@@ -22,9 +22,6 @@ pub type LiquidationMode {
   Liquidation {
     lTV: Int,
     lTVDivider: Int,
-    //This has (either pubKeyHash or scriptHash) is authorized to liquidate when possible.
-    //If it's "" then anyone can liquidate.
-    authHash: ByteArray,
     //If true, when claiming the collateral the lender must pay to the borrower the difference
     //If false, borrower loses all the collateral when liquidation happens
     partialLiquidation: Bool,
@@ -41,6 +38,9 @@ pub type CommonData {
   totalInstallments: Int,
   liquidationMode: LiquidationMode,
   repaymentMode: RepaymentMode,
+  //Period to repay without being considered late
+  //After this period, borrower can be liquidated if he hasn't paid the installment
+  repaymentTimeWindow: Int,
   //fee borrower pays when he could be liquidated but he repays, <= 0 means no penalty
   penaltyFeeForLateRepayment: Int,
   //If "" then must be the lender current hash
@@ -85,6 +85,11 @@ pub type ActiveDatum {
   lendDate: Int,
   repaidInstallments: Int,
   doneRecasts: Int,
+}
+
+pub type DepositDatum {
+  action: ByteArray,
+  ownerAsset: Asset,
 }
 
 pub type RepaymentDatum {
