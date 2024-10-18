@@ -91,6 +91,7 @@ validator activeLoan(
                     datum.repaidInstallments,
                     datum.commonData.totalInstallments,
                     datum.commonData.duration,
+                    datum.commonData.repaymentTimeWindow,
                   )
                 NoLiquidationDutchAuctionClaim -> {
                   expect Finite(validTo) =
@@ -108,6 +109,7 @@ validator activeLoan(
                       datum.repaidInstallments,
                       datum.commonData.totalInstallments,
                       datum.commonData.duration,
+                      datum.commonData.repaymentTimeWindow,
                     ),
                     correct_output_to_dutch_auction(
                       input,
@@ -126,6 +128,7 @@ validator activeLoan(
                         datum.repaidInstallments,
                         datum.commonData.totalInstallments,
                         datum.commonData.duration,
+                        datum.commonData.repaymentTimeWindow,
                       ),
                       can_liquidate(
                         validFrom,
@@ -134,7 +137,6 @@ validator activeLoan(
                         datum.repaidInstallments,
                         datum.commonData.totalInstallments,
                         datum.commonData.duration,
-                        datum.commonData.repaymentTimeWindow,
                       ),
                     },
                     or {
@@ -281,6 +283,7 @@ fn is_it_after_deadline(
   repaidInstallments: Int,
   totalInstallments: Int,
   loanDuration: Int,
+  repaymentTimeWindow: Int,
 ) {
   let relativeMaxTimeForNextInstallment =
     ( repaidInstallments + 1 ) * loanDuration / totalInstallments
@@ -326,7 +329,6 @@ fn can_liquidate(
   repaidInstallments: Int,
   totalInstallments: Int,
   loanDuration: Int,
-  repaymentTimeWindow: Int,
 ) {
   todo
 }
