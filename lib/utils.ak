@@ -236,3 +236,11 @@ pub fn authorize_action(
     }
   }
 }
+
+pub fn validate_oracle_ref_input(
+  oracleInputValue: Value,
+  chosenCollateral: CollateralAsset,
+) {
+  expect Some(oracleToken) = chosenCollateral.maybeOracleTokenAsset
+  quantity_of(oracleInputValue, oracleToken.policyId, oracleToken.assetName) > 0
+}

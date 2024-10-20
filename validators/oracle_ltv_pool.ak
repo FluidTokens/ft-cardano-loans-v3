@@ -16,7 +16,7 @@ use types/redeemer.{
 use utils.{
   address_in_signatures, authorize_action, get_inputs_from_sc, get_outputs_to_sc,
   get_own_hash, is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data,
-  safe_list_at, token_b_needed_to_purchase_token_a,
+  safe_list_at, token_b_needed_to_purchase_token_a, validate_oracle_ref_input,
   validity_range_within_an_hour,
 }
 
@@ -193,14 +193,6 @@ validator pool(
   else(ctx: ScriptContext) {
     address_in_signatures(ctx.transaction.extra_signatories, adminAddress)
   }
-}
-
-fn validate_oracle_ref_input(
-  oracleInputValue: Value,
-  chosenCollateral: CollateralAsset,
-) {
-  expect Some(oracleToken) = chosenCollateral.maybeOracleTokenAsset
-  quantity_of(oracleInputValue, oracleToken.policyId, oracleToken.assetName) > 0
 }
 
 fn tokens_sent_to_both_parties(

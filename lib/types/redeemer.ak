@@ -62,16 +62,19 @@ pub type OracleRedeemer {
 }
 
 pub type ActiveAction {
-  //Lender action (or anyone who has the permission to do so)
-  Liquidate {
+  //Lender action (or anyone who has the permission to spend the lender's bond)
+  Claim {
     //This is the absolute input index that contains the lender bond
     bondInputIndex: Int,
+    //If loan doesn't use oracle, this is not used
+    collateralOracleInputIndex: Int,
   }
   //Borrower action
   Repay {
     //This is the absolute input index that contains the borrower bond
     bondInputIndex: Int,
   }
+  //Borrower action
   AddCollateral { bondInputIndex: Int, addedCollateralAmount: Int }
   //Borrower action
   Recast { bondInputIndex: Int, principalPaid: Int }

@@ -32,10 +32,11 @@ pub type CommonData {
   principalAsset: Asset,
   //Per mille of the loan to repay to lender
   interestRate: Int,
-  duration: Int,
+  //How much time between 2 consecutive installments
+  installmentPeriod: Int,
+  totalInstallments: Int,
   //Period after starting the loan and before starting repaying (borrower can't be liquidated in this period)
   initialGracePeriod: Int,
-  totalInstallments: Int,
   liquidationMode: LiquidationMode,
   repaymentMode: RepaymentMode,
   //Period to repay without being considered late

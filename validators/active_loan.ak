@@ -14,14 +14,14 @@ use types/datum.{
 }
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
-  ActiveWithdrawRedeemer, AddCollateral, Aggregated, Dedicated, Liquidate,
+  ActiveWithdrawRedeemer, AddCollateral, Aggregated, Claim, Dedicated,
   OraclePriceFeed, PoolAction, PoolSpendRedeemer, Pooled, Recast, Repay,
 }
 use utils.{
   address_in_signatures, authorize_action, get_inputs_from_sc, get_outputs_to_sc,
   get_own_hash, is_nft_spent, is_output_to_sc, quantity_of_policy_id,
   retrieve_oracle_data, safe_list_at, token_b_needed_to_purchase_token_a,
-  validity_range_within_an_hour,
+  validate_oracle_ref_input, validity_range_within_an_hour,
 }
 
 validator activeLoan(
@@ -72,9 +72,10 @@ validator activeLoan(
         expect datum: ActiveDatum = inputDatum
         let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
         expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
+        expect Finite(validTo) = self.validity_range.upper_bound.bound_type
 
         when redeemerAction is {
-          Liquidate(bondInputIndex) -> {
+          Claim(bondInputIndex, collateralOracleInputIndex) -> {
             expect Some(actualBondInput) = list.at(self.inputs, bondInputIndex)
             and {
               is_nft_spent(
@@ -84,13 +85,12 @@ validator activeLoan(
               ),
               when datum.commonData.liquidationMode is {
                 NoLiquidationFullCollateralClaim ->
-                  is_it_after_deadline(
+                  is_repayment_late(
                     validFrom,
                     datum.lendDate,
                     datum.commonData.initialGracePeriod,
                     datum.repaidInstallments,
-                    datum.commonData.totalInstallments,
-                    datum.commonData.duration,
+                    datum.commonData.installmentPeriod,
                     datum.commonData.repaymentTimeWindow,
                   )
                 NoLiquidationDutchAuctionClaim -> {
@@ -102,13 +102,12 @@ validator activeLoan(
                       index,
                     )
                   and {
-                    is_it_after_deadline(
+                    is_repayment_late(
                       validFrom,
                       datum.lendDate,
                       datum.commonData.initialGracePeriod,
                       datum.repaidInstallments,
-                      datum.commonData.totalInstallments,
-                      datum.commonData.duration,
+                      datum.commonData.installmentPeriod,
                       datum.commonData.repaymentTimeWindow,
                     ),
                     correct_output_to_dutch_auction(
@@ -119,34 +118,49 @@ validator activeLoan(
                     ),
                   }
                 }
-                Liquidation(lTV, lTVDivider, partialLiquidation) -> and {
+                Liquidation(lTV, lTVDivider, partialLiquidation) -> {
+                  let oracleRefInput =
+                    safe_list_at(
+                      self.reference_inputs,
+                      collateralOracleInputIndex,
+                    )
+                  expect Some(oraclePriceFeed) =
+                    retrieve_oracle_data(
+                      oracleRefInput,
+                      self.redeemers,
+                      validTo,
+                      datum.collateral,
+                    )
+                  let collateralAdaValue =
+                    get_collateral_ada_value(oraclePriceFeed)
+                  and {
+                    validate_oracle_ref_input(
+                      oracleRefInput.output.value,
+                      datum.collateral,
+                    ),
                     or {
-                      is_it_after_deadline(
+                      is_repayment_late(
                         validFrom,
                         datum.lendDate,
                         datum.commonData.initialGracePeriod,
                         datum.repaidInstallments,
-                        datum.commonData.totalInstallments,
-                        datum.commonData.duration,
+                        datum.commonData.installmentPeriod,
                         datum.commonData.repaymentTimeWindow,
                       ),
                       can_liquidate(
-                        validFrom,
-                        datum.lendDate,
-                        datum.commonData.initialGracePeriod,
-                        datum.repaidInstallments,
-                        datum.commonData.totalInstallments,
-                        datum.commonData.duration,
+                        collateralAdaValue,
+                        datum.principalAmount,
+                        datum.principalDivider,
+                        lTV,
+                        lTVDivider,
                       ),
                     },
                     or {
                       partialLiquidation == False,
                       difference_sent_to_borrower(
-                        //TODO
-                        0,
-                        get_remaining_debt(
+                        collateralAdaValue: collateralAdaValue,
+                        totalDebtInAda: get_remaining_debt(
                           datum.commonData.repaymentMode,
-                          datum.collateral,
                           datum.principalAmount,
                           datum.principalDivider,
                           datum.commonData.interestRate,
@@ -157,11 +171,12 @@ validator activeLoan(
                         borrowerAssetName: datum.borrowerAssetName,
                         principalAssetPolicyId: datum.commonData.principalAsset.policyId,
                         principalAssetName: datum.commonData.principalAsset.assetName,
-                        differenceOutput: Output,
+                        differenceOutput: safe_list_at(self.outputs, index),
                         repaymentScriptHash: repaymentScriptHash,
                       ),
                     },
                   }
+                }
               },
             }
           }
@@ -173,6 +188,7 @@ validator activeLoan(
                 get_outputs_to_sc(self.outputs, repaymentScriptHash),
                 index,
               )
+            //TODO Add repayment penalty
             let nextRepaymentAmount =
               get_repayment_amount(
                 datum.commonData.repaymentMode,
@@ -224,7 +240,6 @@ validator activeLoan(
             let debtAfterRecasting =
               get_remaining_debt(
                 datum.commonData.repaymentMode,
-                datum.collateral,
                 datum.principalAmount,
                 datum.principalDivider,
                 datum.commonData.interestRate,
@@ -276,18 +291,16 @@ validator activeLoan(
   }
 }
 
-fn is_it_after_deadline(
+fn is_repayment_late(
   validFrom: Int,
   lendDate: Int,
   initialGracePeriod: Int,
   repaidInstallments: Int,
-  totalInstallments: Int,
-  loanDuration: Int,
+  installmentPeriod: Int,
   repaymentTimeWindow: Int,
 ) {
-  let relativeMaxTimeForNextInstallment =
-    ( repaidInstallments + 1 ) * loanDuration / totalInstallments
-  validFrom > lendDate + initialGracePeriod + relativeMaxTimeForNextInstallment
+  let periodToLatestPaidInstallment = repaidInstallments * installmentPeriod
+  validFrom > lendDate + initialGracePeriod + periodToLatestPaidInstallment + repaymentTimeWindow
 }
 
 fn correct_output_to_dutch_auction(
@@ -323,13 +336,19 @@ fn correct_output_to_dutch_auction(
 }
 
 fn can_liquidate(
-  validFrom: Int,
-  lendDate: Int,
-  initialGracePeriod: Int,
-  repaidInstallments: Int,
-  totalInstallments: Int,
-  loanDuration: Int,
+  collateralAdaValue: Int,
+  principalAmount: Int,
+  principalDivider: Int,
+  ltv: Int,
+  lTVDivider: Int,
 ) {
+  //TODO use dividers
+  //TODO funziona per principal non ada?
+  //TODO Use rational library?
+  collateralAdaValue / principalAmount < ltv
+}
+
+fn get_collateral_ada_value(oraclePriceFeed: OraclePriceFeed) {
   todo
 }
 
@@ -433,10 +452,10 @@ fn validate_output_to_active_loan_for_recasting() {
   todo
 }
 
+//TODO Use dividers
 //TODO Use rational library?
 fn get_remaining_debt(
   repaymentMode: RepaymentMode,
-  collateral: CollateralAsset,
   principal: Int,
   principalDivider: Int,
   interestRate: Int,
@@ -445,14 +464,11 @@ fn get_remaining_debt(
 ) {
   when repaymentMode is {
     InterestOnRemainingPrincipal(..) -> todo
-    PrincipalAndInterestOnInstallments ->
-      if collateral.maybeOracleTokenAsset == None {
-        let totalInterest = principal * interestRate / 1000
-        let singleInstallmentAmount =
-          ( principal + totalInterest ) / totalInstallments
-        principal + totalInterest - repaidInstallments * singleInstallmentAmount
-      } else {
-        todo
-      }
+    PrincipalAndInterestOnInstallments -> {
+      let totalInterest = principal * interestRate / 1000
+      let singleInstallmentAmount =
+        ( principal + totalInterest ) / totalInstallments
+      ( totalInstallments - repaidInstallments ) * singleInstallmentAmount
+    }
   }
 }
