@@ -2,7 +2,7 @@ use aiken/collection/list.{length}
 use aiken/crypto.{sha2_256}
 use aiken/interval.{Finite, Interval}
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{AssetName, Value, flatten, quantity_of}
+use cardano/assets.{AssetName, Value, add, flatten, quantity_of}
 use cardano/script_context.{ScriptContext}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
@@ -188,6 +188,15 @@ validator activeLoan(
                 get_outputs_to_sc(self.outputs, repaymentScriptHash),
                 index,
               )
+            let isLate =
+              is_repayment_late(
+                validFrom,
+                datum.lendDate,
+                datum.commonData.initialGracePeriod,
+                datum.repaidInstallments,
+                datum.commonData.installmentPeriod,
+                datum.commonData.repaymentTimeWindow,
+              )
             //TODO Add repayment penalty
             let nextRepaymentAmount =
               get_repayment_amount(
@@ -197,6 +206,8 @@ validator activeLoan(
                 datum.commonData.interestRate,
                 datum.commonData.totalInstallments,
                 datum.repaidInstallments,
+                isLate,
+                datum.commonData.penaltyFeeForLateRepayment,
               )
             and {
               is_nft_spent(
@@ -214,12 +225,23 @@ validator activeLoan(
               ),
               or {
                 datum.repaidInstallments == datum.commonData.totalInstallments - 1,
-                validate_output_to_active_loan_for_repayment(),
+                validate_output_to_active_loan_for_repayment(
+                  safe_list_at(
+                    get_outputs_to_sc(self.outputs, ownScriptHash),
+                    index,
+                  ),
+                  datum,
+                  datum.repaidInstallments + 1,
+                  input.output.value,
+                  ownScriptHash,
+                ),
               },
             }
           }
           AddCollateral(bondInputIndex, addedCollateralAmount) -> {
             expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
+            expect Some(activeLoanOutput) =
+              list.at(get_outputs_to_sc(self.outputs, ownScriptHash), index)
             and {
               addedCollateralAmount > 0,
               is_nft_spent(
@@ -227,7 +249,13 @@ validator activeLoan(
                 datum.borrowerAssetName,
                 bondInput,
               ),
-              validate_output_to_active_loan_for_adding_collateral(),
+              validate_output_to_active_loan_for_adding_collateral(
+                activeLoanOutput,
+                datum,
+                addedCollateralAmount,
+                input.output.value,
+                ownScriptHash,
+              ),
             }
           }
           Recast(bondInputIndex, principalPaid) -> {
@@ -303,38 +331,6 @@ fn is_repayment_late(
   validFrom > lendDate + initialGracePeriod + periodToLatestPaidInstallment + repaymentTimeWindow
 }
 
-fn correct_output_to_dutch_auction(
-  activeLoanInput: Input,
-  borrower_bond_input: Input,
-  dutchAuctionOutput: Output,
-  validTo: Int,
-) {
-  expect InlineDatum(outputDatum) = dutchAuctionOutput.datum
-  expect parsedDatum: DutchAuctionDatum = outputDatum
-  let borrowerAddress = borrower_bond_input.output.address
-
-  //   let newDatum =
-  //     DutchAuctionDatum {
-  //       ownerAuthHash: lenderAuthHash,
-  //       ownerAddress: lenderAuthHash,
-  //       currency: datum.commonData.principalAsset,
-  //       startingPrice: get_remaining_debt() * dutchAuctionStartingIncreasePerMille / 1000,
-  //       loweringAmount: dutchAuctionLoweringAmount,
-  //       loweringFrequency: dutchAuctionLoweringFrequency,
-  //       minPriceToWithdraw: dutchAuctionMinPriceToWithdraw,
-  //       startDate: validTo,
-  //       liquidatedBorrowerAddress: borrowerAddress,
-  //       debtAmount: get_remaining_debt(),
-  //     }
-  let isDatumCorrect = True
-  //parsedDatum == newDatum
-  and {
-    is_output_to_sc(dutchAuctionOutput, dutchAuctionScriptHash),
-    activeLoanInput.output.value == dutchAuctionOutput.value,
-    isDatumCorrect,
-  }
-}
-
 fn can_liquidate(
   collateralAdaValue: Int,
   principalAmount: Int,
@@ -392,17 +388,6 @@ fn difference_sent_to_borrower(
   }
 }
 
-fn get_repayment_amount(
-  repaymentMode: RepaymentMode,
-  principal: Int,
-  principalDivider: Int,
-  interestRate: Int,
-  totalInstallments: Int,
-  repaidInstallments: Int,
-) {
-  todo
-}
-
 fn validate_output_to_repayment(
   repaymentOutput: Output,
   loanAsset: Asset,
@@ -432,8 +417,68 @@ fn validate_output_to_repayment(
   }
 }
 
-fn validate_output_to_active_loan_for_repayment() {
-  todo
+fn validate_output_to_active_loan_for_repayment(
+  activeLoanOutput: Output,
+  datum: ActiveDatum,
+  newRepaidInstallments: Int,
+  loanValue: Value,
+  ownScriptHash: ByteArray,
+) {
+  expect InlineDatum(outputDatum) = activeLoanOutput.datum
+  expect parsedDatum: ActiveDatum = outputDatum
+
+  let newDatum =
+    ActiveDatum {
+      commonData: datum.commonData,
+      borrowerAssetName: datum.borrowerAssetName,
+      lenderAssetName: datum.lenderAssetName,
+      collateral: datum.collateral,
+      principalAmount: datum.principalAmount,
+      principalDivider: datum.principalDivider,
+      lendDate: datum.lendDate,
+      repaidInstallments: newRepaidInstallments,
+      doneRecasts: datum.doneRecasts,
+    }
+  let isDatumCorrect = parsedDatum == newDatum
+  and {
+    is_output_to_sc(activeLoanOutput, ownScriptHash),
+    activeLoanOutput.value == loanValue,
+    isDatumCorrect,
+  }
+}
+
+fn validate_output_to_active_loan_for_adding_collateral(
+  activeLoanOutput: Output,
+  datum: ActiveDatum,
+  additionalCollateralAmount: Int,
+  loanValue: Value,
+  ownScriptHash: ByteArray,
+) {
+  expect InlineDatum(outputDatum) = activeLoanOutput.datum
+  expect parsedDatum: ActiveDatum = outputDatum
+
+  let correctValue =
+    if datum.collateral.maybeAssetName == None {
+      //TODO the Value must be the same as before except for the quantity of tokens with same policyId
+      //TODO the max value must be 21 tokens
+      todo
+    } else {
+      expect Some(assetName) = datum.collateral.maybeAssetName
+      let expectedValue =
+        add(
+          loanValue,
+          datum.collateral.policyId,
+          assetName,
+          additionalCollateralAmount,
+        )
+      activeLoanOutput.value == expectedValue
+    }
+
+  and {
+    is_output_to_sc(activeLoanOutput, ownScriptHash),
+    parsedDatum == datum,
+    correctValue,
+  }
 }
 
 fn is_recasting_permitted(repaymentMode: RepaymentMode, doneRecasts: Int) {
@@ -444,12 +489,35 @@ fn is_recasting_permitted(repaymentMode: RepaymentMode, doneRecasts: Int) {
   }
 }
 
-fn validate_output_to_active_loan_for_adding_collateral() {
+fn validate_output_to_active_loan_for_recasting() {
   todo
 }
 
-fn validate_output_to_active_loan_for_recasting() {
-  todo
+//TODO Use dividers
+//TODO Use rational library?
+fn get_repayment_amount(
+  repaymentMode: RepaymentMode,
+  principal: Int,
+  principalDivider: Int,
+  interestRate: Int,
+  totalInstallments: Int,
+  repaidInstallments: Int,
+  isLate: Bool,
+  penaltyFeeForLateRepayment: Int,
+) {
+  when repaymentMode is {
+    InterestOnRemainingPrincipal(..) -> todo
+    PrincipalAndInterestOnInstallments -> {
+      let totalInterest = principal * interestRate / 1000
+      let singleInstallmentAmount =
+        ( principal + totalInterest ) / totalInstallments
+      if isLate {
+        singleInstallmentAmount + penaltyFeeForLateRepayment
+      } else {
+        singleInstallmentAmount
+      }
+    }
+  }
 }
 
 //TODO Use dividers
@@ -470,5 +538,37 @@ fn get_remaining_debt(
         ( principal + totalInterest ) / totalInstallments
       ( totalInstallments - repaidInstallments ) * singleInstallmentAmount
     }
+  }
+}
+
+fn correct_output_to_dutch_auction(
+  activeLoanInput: Input,
+  borrower_bond_input: Input,
+  dutchAuctionOutput: Output,
+  validTo: Int,
+) {
+  expect InlineDatum(outputDatum) = dutchAuctionOutput.datum
+  expect parsedDatum: DutchAuctionDatum = outputDatum
+  let borrowerAddress = borrower_bond_input.output.address
+
+  //   let newDatum =
+  //     DutchAuctionDatum {
+  //       ownerAuthHash: lenderAuthHash,
+  //       ownerAddress: lenderAuthHash,
+  //       currency: datum.commonData.principalAsset,
+  //       startingPrice: get_remaining_debt() * dutchAuctionStartingIncreasePerMille / 1000,
+  //       loweringAmount: dutchAuctionLoweringAmount,
+  //       loweringFrequency: dutchAuctionLoweringFrequency,
+  //       minPriceToWithdraw: dutchAuctionMinPriceToWithdraw,
+  //       startDate: validTo,
+  //       liquidatedBorrowerAddress: borrowerAddress,
+  //       debtAmount: get_remaining_debt(),
+  //     }
+  let isDatumCorrect = True
+  //parsedDatum == newDatum
+  and {
+    is_output_to_sc(dutchAuctionOutput, dutchAuctionScriptHash),
+    activeLoanInput.output.value == dutchAuctionOutput.value,
+    isDatumCorrect,
   }
 }

@@ -9,6 +9,7 @@ use types/general.{Asset, CollateralAsset}
 //TODO Variable interest rate with oracle, eventual with min and max caps, eventual with first N installments at a fixed rate
 //Margin calls are done off-chain as soon as the oracle signals a too-low LTV
 //Forgiveness in case of default is accomplished by sending the collateral back to the borrower in case of Full Collateral Claim
+//If the penalty fee should be sent to an address different from the lender, then the lender nft must be locked in a dedicated contract that says so.
 pub type RepaymentMode {
   //Express number of possible recasts. 0 means no recasting, negative means unlimited
   InterestOnRemainingPrincipal { max_possible_recasts: Int }
@@ -44,8 +45,6 @@ pub type CommonData {
   repaymentTimeWindow: Int,
   //fee borrower pays when he could be liquidated but he repays, <= 0 means no penalty
   penaltyFeeForLateRepayment: Int,
-  //If "" then must be the lender current hash
-  penaltyFeeForLateRepaymentDestinationHash: ByteArray,
 }
 
 pub type RequestDatum {
