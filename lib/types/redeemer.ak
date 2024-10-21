@@ -28,7 +28,7 @@ pub type AggregatedFeed {
   valid_to: Int,
 }
 
-//Tokens that have lower liquidity and AMM pool data is used to calculate the price
+//Tokens that have lower liquidity, AMM pool data is used to calculate the price
 pub type PooledFeed {
   token: Asset,
   token_a_amount: Int,
