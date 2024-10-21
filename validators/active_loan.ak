@@ -13,7 +13,7 @@ use finance.{
 use types/datum.{
   ActiveDatum, DepositDatum, DutchAuctionDatum, InterestOnRemainingPrincipal,
   Liquidation, NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
-  PoolDatum, PrincipalAndInterestOnInstallments, RepaymentDatum, RepaymentMode,
+  PoolDatum, PrincipalAndInterestOnInstallments, RepaymentMode,
 }
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{

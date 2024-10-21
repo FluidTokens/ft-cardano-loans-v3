@@ -92,13 +92,6 @@ pub type DepositDatum {
   ownerAsset: Asset,
 }
 
-pub type RepaymentDatum {
-  lenderNFT: AssetName,
-  installmentsContained: Int,
-  installmentsPaidSoFar: Int,
-  isFinalRepayment: Bool,
-}
-
 pub type DutchAuctionDatum {
   ownerAuthHash: ByteArray,
   ownerAddress: Address,
