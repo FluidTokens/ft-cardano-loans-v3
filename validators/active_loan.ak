@@ -7,8 +7,8 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use finance.{
-  can_liquidate, get_collateral_ada_value, get_remaining_debt,
-  get_repayment_amount, is_repayment_late,
+  can_liquidate, get_collateral_value_in_principal_currency, get_remaining_debt,
+  get_repayment_amount, is_recasting_permitted, is_repayment_late,
 }
 use types/datum.{
   ActiveDatum, DepositDatum, DutchAuctionDatum, InterestOnRemainingPrincipal,
@@ -102,8 +102,12 @@ validator activeLoan(
                       validTo,
                       datum.collateral,
                     )
-                  let collateralAdaValue =
-                    get_collateral_ada_value(oraclePriceFeed)
+                  let collateralValueInPrincipalCurrency =
+                    get_collateral_value_in_principal_currency(
+                      oraclePriceFeed,
+                      datum.collateral,
+                      input.output.value,
+                    )
                   and {
                     validate_oracle_ref_input(
                       oracleRefInput.output.value,
@@ -119,7 +123,7 @@ validator activeLoan(
                         datum.commonData.repaymentTimeWindow,
                       ),
                       can_liquidate(
-                        collateralAdaValue,
+                        collateralValueInPrincipalCurrency,
                         datum.principalAmount,
                         datum.principalDivider,
                         lTV,
@@ -129,8 +133,8 @@ validator activeLoan(
                     or {
                       partialLiquidation == False,
                       difference_sent_to_borrower(
-                        collateralAdaValue: collateralAdaValue,
-                        totalDebtInAda: get_remaining_debt(
+                        collateralValueInPrincipalCurrency: collateralValueInPrincipalCurrency,
+                        totalDebtInPrincipalCurrency: get_remaining_debt(
                           datum.commonData.repaymentMode,
                           datum.principalAmount,
                           datum.principalDivider,
@@ -235,8 +239,8 @@ validator activeLoan(
 }
 
 fn difference_sent_to_borrower(
-  collateralAdaValue: Int,
-  totalDebtInAda: Int,
+  collateralValueInPrincipalCurrency: Int,
+  totalDebtInPrincipalCurrency: Int,
   borrowerTokenPolicyId: ByteArray,
   borrowerAssetName: AssetName,
   principalAssetPolicyId: ByteArray,
@@ -253,7 +257,8 @@ fn difference_sent_to_borrower(
   let newDatum =
     DepositDatum { action: "partial_liquidation", ownerAsset: borrowerAsset }
   //TODO Add liquidation fee?
-  let remainingAmount = collateralAdaValue - totalDebtInAda
+  let remainingAmount =
+    collateralValueInPrincipalCurrency - totalDebtInPrincipalCurrency
 
   let containsCorrectAmount =
     quantity_of(
@@ -359,10 +364,6 @@ fn validate_output_to_active_loan_for_adding_collateral(
     parsedDatum == datum,
     correctValue,
   }
-}
-
-fn is_recasting_permitted(repaymentMode: RepaymentMode, doneRecasts: Int) {
-  todo
 }
 
 fn validate_output_to_active_loan_for_recasting() {

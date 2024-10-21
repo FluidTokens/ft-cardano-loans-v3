@@ -20,7 +20,7 @@ pub type PoolWithdrawRedeemer {
   actionForEachInput: List<PoolAction>,
 }
 
-//Tokens that have a lot of liquidity is in CEX. The price is in lovelace
+//Tokens that have a lot of liquidity are in CEX. The price is in lovelace
 pub type AggregatedFeed {
   token: Asset,
   token_price_in_lovelaces: Int,
