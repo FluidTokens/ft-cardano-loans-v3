@@ -62,6 +62,8 @@ validator activeLoan(
     let scInputs = get_inputs_from_sc(self.inputs, ownScriptHash)
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
     expect length(scInputs) == length(redeemer.actionForEachInput)
+    expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
+    expect Finite(validTo) = self.validity_range.upper_bound.bound_type
 
     list.indexed_foldr(
       scInputs,
@@ -74,8 +76,6 @@ validator activeLoan(
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: ActiveDatum = inputDatum
         let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
-        expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
-        expect Finite(validTo) = self.validity_range.upper_bound.bound_type
 
         when redeemerAction is {
           Claim(bondInputIndex, collateralOracleInputIndex) -> {
