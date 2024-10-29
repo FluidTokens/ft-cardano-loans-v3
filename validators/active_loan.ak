@@ -175,7 +175,6 @@ validator activeLoan(
                 datum.principalDivider,
                 datum.commonData.interestRate,
                 datum.commonData.totalInstallments,
-                datum.repaidInstallments,
                 isLate,
                 datum.commonData.penaltyFeeForLateRepayment,
               )

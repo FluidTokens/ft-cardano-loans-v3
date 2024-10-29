@@ -1,20 +1,13 @@
 use aiken/math/rational
-use cardano/assets.{AssetName, Value, add, flatten, quantity_of}
+use cardano/assets.{Value, quantity_of}
 use types/datum.{
   InterestOnRemainingPrincipal, PrincipalAndInterestOnInstallments,
   RepaymentMode,
 }
-use types/general.{Asset, CollateralAsset}
+use types/general.{CollateralAsset}
 use types/redeemer.{Aggregated, Dedicated, OraclePriceFeed, Pooled}
-use utils.{
-  address_in_signatures, authorize_action, get_inputs_from_sc, get_outputs_to_sc,
-  get_own_hash, is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data,
-  safe_list_at, token_b_needed_to_purchase_token_a, validate_oracle_ref_input,
-  validity_range_within_an_hour,
-}
+use utils.{quantity_of_policy_id, token_b_needed_to_purchase_token_a}
 
-//TODO Use dividers
-//TODO Use rational library?
 pub fn get_remaining_debt(
   repaymentMode: RepaymentMode,
   principal: Int,
@@ -30,7 +23,7 @@ pub fn get_remaining_debt(
     InterestOnRemainingPrincipal(..) -> todo
     PrincipalAndInterestOnInstallments -> {
       let totalInterest = rational.mul(principalAsRational, interestAsRational)
-      let singleInstallmentAmountAsRational =
+      expect Some(singleInstallmentAmountAsRational) =
         rational.div(
           rational.add(principalAsRational, totalInterest),
           rational.from_int(totalInstallments),
@@ -43,27 +36,37 @@ pub fn get_remaining_debt(
 }
 
 pub fn get_repayment_amount(
-  //TODO Use dividers
-  //TODO Use rational library?
   repaymentMode: RepaymentMode,
   principal: Int,
   principalDivider: Int,
   interestRate: Int,
   totalInstallments: Int,
-  repaidInstallments: Int,
   isLate: Bool,
   penaltyFeeForLateRepayment: Int,
 ) {
+  expect Some(principalAsRational) = rational.new(principal, principalDivider)
+  expect Some(interestAsRational) =
+    rational.div(rational.from_int(interestRate), rational.from_int(1000))
   when repaymentMode is {
     InterestOnRemainingPrincipal(..) -> todo
     PrincipalAndInterestOnInstallments -> {
-      let totalInterest = principal * interestRate / 1000
-      let singleInstallmentAmount =
-        ( principal + totalInterest ) / totalInstallments
+      let totalInterest = rational.mul(principalAsRational, interestAsRational)
+      expect Some(singleInstallmentAmountAsRational) =
+        rational.div(
+          rational.add(principalAsRational, totalInterest),
+          rational.from_int(totalInstallments),
+        )
       if isLate {
-        singleInstallmentAmount + penaltyFeeForLateRepayment
+        expect Some(penaltyFeeForLateRepaymentAsRational) =
+          rational.new(penaltyFeeForLateRepayment, principalDivider)
+        rational.ceil(
+          rational.add(
+            singleInstallmentAmountAsRational,
+            penaltyFeeForLateRepaymentAsRational,
+          ),
+        )
       } else {
-        singleInstallmentAmount
+        rational.ceil(singleInstallmentAmountAsRational)
       }
     }
   }
@@ -76,9 +79,18 @@ pub fn can_liquidate(
   ltv: Int,
   lTVDivider: Int,
 ) {
-  //TODO use dividers
-  //TODO Use rational library?
-  collateralValueInPrincipalCurrency / principalAmount < ltv
+  expect Some(principalAsRational) =
+    rational.new(principalAmount, principalDivider)
+  expect Some(collateralValueInPrincipalCurrencyAsRational) =
+    rational.new(collateralValueInPrincipalCurrency, principalDivider)
+  expect Some(ratioAsRational) =
+    rational.div(
+      collateralValueInPrincipalCurrencyAsRational,
+      principalAsRational,
+    )
+
+  expect Some(ltvAsRational) = rational.new(ltv, lTVDivider)
+  rational.compare(ltvAsRational, ratioAsRational) == Greater
 }
 
 pub fn get_collateral_value_in_principal_currency(
@@ -132,5 +144,6 @@ pub fn is_repayment_late(
 }
 
 pub fn is_recasting_permitted(repaymentMode: RepaymentMode, doneRecasts: Int) {
-  todo
+  expect InterestOnRemainingPrincipal(max_possible_recasts) = repaymentMode
+  doneRecasts < max_possible_recasts
 }
