@@ -23,12 +23,20 @@ pub fn get_remaining_debt(
   totalInstallments: Int,
   repaidInstallments: Int,
 ) {
+  expect Some(principalAsRational) = rational.new(principal, principalDivider)
+  expect Some(interestAsRational) =
+    rational.div(rational.from_int(interestRate), rational.from_int(1000))
   when repaymentMode is {
     InterestOnRemainingPrincipal(..) -> todo
     PrincipalAndInterestOnInstallments -> {
-      let totalInterest = principal * interestRate / 1000
+      let totalInterest = rational.mul(principalAsRational, interestAsRational)
+      let singleInstallmentAmountAsRational =
+        rational.div(
+          rational.add(principalAsRational, totalInterest),
+          rational.from_int(totalInstallments),
+        )
       let singleInstallmentAmount =
-        ( principal + totalInterest ) / totalInstallments
+        rational.ceil(singleInstallmentAmountAsRational)
       ( totalInstallments - repaidInstallments ) * singleInstallmentAmount
     }
   }

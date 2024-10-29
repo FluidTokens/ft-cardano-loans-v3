@@ -304,9 +304,9 @@ fn validate_output_to_active_with_oracle(
   oraclePriceFeed: OraclePriceFeed,
 ) {
   expect Some(ltv) = list.at(poolDatum.principalLTV, chosenCollateralIndex)
-  expect Some(lTVDivider) =
+  expect Some(ltvDivider) =
     list.at(poolDatum.principalLTVDivider, chosenCollateralIndex)
-  expect Some(ltvAsRational) = rational.new(ltv, lTVDivider)
+  expect Some(ltvAsRational) = rational.new(ltv, ltvDivider)
   expect Some(minNeededCollateralInPrincipalCurrency) =
     rational.div(rational.from_int(wantedPrincipal), ltvAsRational)
 
@@ -359,7 +359,7 @@ fn validate_output_to_active_with_oracle(
       lenderAssetName: inputUtxoId,
       collateral: chosenCollateral,
       principalAmount: wantedPrincipal,
-      principalDivider: principalLTVDivider,
+      principalDivider: ltvDivider,
       lendDate: end,
       repaidInstallments: 0,
       doneRecasts: 0,
