@@ -73,6 +73,12 @@ pub type PoolDatum {
   principalLTVDivider: List<Int>,
   //True if borrowable amount of the collateralOptions must be updated through oracles
   dynamicCollateralPrice: Bool,
+  //If true, it places a fixed datum in the Lender bond output when lending
+  isLenderAPlutusPreV3Script: Bool,
+}
+
+pub type DummyLenderBondDatum {
+  preV3: Bool,
 }
 
 pub type ActiveDatum {

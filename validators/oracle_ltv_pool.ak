@@ -7,7 +7,7 @@ use cardano/address.{Address, Credential, Script}
 use cardano/assets.{Value, flatten, quantity_of}
 use cardano/script_context.{ScriptContext}
 use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
-use types/datum.{ActiveDatum, Liquidation, PoolDatum}
+use types/datum.{ActiveDatum, DummyLenderBondDatum, Liquidation, PoolDatum}
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
   Aggregated, Borrow, Cancel, Dedicated, OraclePriceFeed, PoolAction,
@@ -20,7 +20,6 @@ use utils.{
   validity_range_within_an_hour,
 }
 
-//TODO In case of V2 Script as lender, there must be a dummy datum. In pool's datum there must be a Bool indicating if this is necessary
 validator pool(
   borrowerTokenPolicyId: ByteArray,
   lenderTokenPolicyId: ByteArray,
@@ -125,6 +124,7 @@ validator pool(
               lenderTokenPolicyId,
               inputUtxoId,
               datum.lenderAddress,
+              datum.isLenderAPlutusPreV3Script,
             ),
             if datum.dynamicCollateralPrice {
               let oracleRefInput =
@@ -202,11 +202,20 @@ fn tokens_sent_to_both_parties(
   lenderTokenPolicyId: ByteArray,
   inputUtxoId: ByteArray,
   lenderAddress: Address,
+  isLenderAPlutusPreV3Script: Bool,
 ) {
   and {
     quantity_of(mintedValue, borrowerTokenPolicyId, inputUtxoId) == 1,
     outputWithLenderToken.address == lenderAddress,
     quantity_of(outputWithLenderToken.value, lenderTokenPolicyId, inputUtxoId) == 1,
+    or {
+      isLenderAPlutusPreV3Script == False,
+      {
+        expect InlineDatum(outputDatum) = outputWithLenderToken.datum
+        expect parsedDatum: DummyLenderBondDatum = outputDatum
+        parsedDatum.preV3 == True
+      },
+    },
     length(flatten(outputWithLenderToken.value)) <= 5,
   }
 }
@@ -295,9 +304,9 @@ fn validate_output_to_active_with_oracle(
   oraclePriceFeed: OraclePriceFeed,
 ) {
   expect Some(ltv) = list.at(poolDatum.principalLTV, chosenCollateralIndex)
-  expect Some(principalLTVDivider) =
+  expect Some(lTVDivider) =
     list.at(poolDatum.principalLTVDivider, chosenCollateralIndex)
-  expect Some(ltvAsRational) = rational.new(ltv, principalLTVDivider)
+  expect Some(ltvAsRational) = rational.new(ltv, lTVDivider)
   expect Some(minNeededCollateralInPrincipalCurrency) =
     rational.div(rational.from_int(wantedPrincipal), ltvAsRational)
 

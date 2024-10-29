@@ -17,14 +17,13 @@ use types/datum.{
 }
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
-  ActiveWithdrawRedeemer, AddCollateral, Aggregated, Claim, Dedicated,
-  OraclePriceFeed, PoolAction, PoolSpendRedeemer, Pooled, Recast, Repay,
+  ActiveWithdrawRedeemer, AddCollateral, Claim, PoolSpendRedeemer, Recast, Repay,
 }
 use utils.{
-  address_in_signatures, authorize_action, get_inputs_from_sc, get_outputs_to_sc,
-  get_own_hash, is_nft_spent, is_output_to_sc, quantity_of_policy_id,
-  retrieve_oracle_data, safe_list_at, token_b_needed_to_purchase_token_a,
-  validate_oracle_ref_input, validity_range_within_an_hour,
+  address_in_signatures, get_inputs_from_sc, get_outputs_to_sc, get_own_hash,
+  is_nft_spent, is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data,
+  safe_list_at, token_b_needed_to_purchase_token_a, validate_oracle_ref_input,
+  validity_range_within_an_hour,
 }
 
 validator activeLoan(
@@ -344,9 +343,18 @@ fn validate_output_to_active_loan_for_adding_collateral(
 
   let correctValue =
     if datum.collateral.maybeAssetName == None {
+      let oldCollateralTokens =
+        quantity_of_policy_id(loanValue, datum.collateral.policyId)
+      let newCollateralTokens =
+        quantity_of_policy_id(activeLoanOutput.value, datum.collateral.policyId)
       //TODO the Value must be the same as before except for the quantity of tokens with same collateral's policyId
-      //TODO the max value must be 21 tokens for DoS purposes
-      todo
+      let sameValueWithoutCollateralTokens = False
+      let dosProtection = length(flatten(activeLoanOutput.value)) <= 21
+      and {
+        sameValueWithoutCollateralTokens,
+        newCollateralTokens > oldCollateralTokens,
+        dosProtection,
+      }
     } else {
       expect Some(assetName) = datum.collateral.maybeAssetName
       let expectedValue =
