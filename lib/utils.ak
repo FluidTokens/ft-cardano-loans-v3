@@ -6,7 +6,9 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/interval.{Finite}
 use aiken/math/rational.{Rational}
 use cardano/address.{Address, Credential, Script, VerificationKey}
-use cardano/assets.{AssetName, PolicyId, Value, quantity_of, to_dict, tokens}
+use cardano/assets.{
+  AssetName, PolicyId, Value, quantity_of, reduce, to_dict, tokens,
+}
 use cardano/transaction.{
   Input, Output, OutputReference, Redeemer, ScriptPurpose, Transaction, Withdraw,
 }
@@ -18,9 +20,18 @@ use types/redeemer.{
   Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
 }
 
-pub fn value_remove_policy_id(value: Value, policyId: PolicyId) -> Value {
-  dict.delete(value.inner, ada_policy_id)
-    |> Value
+pub fn value_without_policy_id_as_list(value: Value, policyIdToRemove: PolicyId) {
+  reduce(
+    value,
+    [],
+    fn(policyId, assetName, quantity, acc) {
+      if policyId != policyIdToRemove {
+        list.push(acc, (policyId, assetName, quantity))
+      } else {
+        acc
+      }
+    },
+  )
 }
 
 pub fn is_nft_burnt(policyId: PolicyId, assetName: AssetName, mints: Value) {
