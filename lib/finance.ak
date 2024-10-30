@@ -8,6 +8,14 @@ use types/general.{CollateralAsset}
 use types/redeemer.{Aggregated, Dedicated, OraclePriceFeed, Pooled}
 use utils.{quantity_of_policy_id, token_b_needed_to_purchase_token_a}
 
+fn rational_pow(r: rational.Rational, exponent: Int) {
+  if exponent == 1 {
+    r
+  } else {
+    rational.mul(r, rational_pow(r, exponent - 1))
+  }
+}
+
 pub fn get_remaining_debt(
   repaymentMode: RepaymentMode,
   principal: Int,
@@ -16,23 +24,15 @@ pub fn get_remaining_debt(
   totalInstallments: Int,
   repaidInstallments: Int,
 ) {
-  expect Some(principalAsRational) = rational.new(principal, principalDivider)
-  expect Some(interestAsRational) =
-    rational.div(rational.from_int(interestRate), rational.from_int(1000))
-  when repaymentMode is {
-    InterestOnRemainingPrincipal(..) -> todo
-    PrincipalAndInterestOnInstallments -> {
-      let totalInterest = rational.mul(principalAsRational, interestAsRational)
-      expect Some(singleInstallmentAmountAsRational) =
-        rational.div(
-          rational.add(principalAsRational, totalInterest),
-          rational.from_int(totalInstallments),
-        )
-      let singleInstallmentAmount =
-        rational.ceil(singleInstallmentAmountAsRational)
-      ( totalInstallments - repaidInstallments ) * singleInstallmentAmount
-    }
-  }
+  ( totalInstallments - repaidInstallments ) * get_repayment_amount(
+    repaymentMode,
+    principal,
+    principalDivider,
+    interestRate,
+    totalInstallments,
+    False,
+    0,
+  )
 }
 
 pub fn get_repayment_amount(
@@ -47,8 +47,36 @@ pub fn get_repayment_amount(
   expect Some(principalAsRational) = rational.new(principal, principalDivider)
   expect Some(interestAsRational) =
     rational.div(rational.from_int(interestRate), rational.from_int(1000))
+  expect Some(penaltyFeeForLateRepaymentAsRational) =
+    rational.new(penaltyFeeForLateRepayment, principalDivider)
   when repaymentMode is {
-    InterestOnRemainingPrincipal(..) -> todo
+    InterestOnRemainingPrincipal(..) -> {
+      let oneAsRational = rational.from_int(1)
+      //Amortization formula
+      expect Some(interestPerInstallmentAsRational) =
+        rational.div(interestAsRational, rational.from_int(totalInstallments))
+      let numerator =
+        rational_pow(
+          rational.mul(
+            rational.mul(principalAsRational, interestPerInstallmentAsRational),
+            rational.add(oneAsRational, interestPerInstallmentAsRational),
+          ),
+          totalInstallments,
+        )
+      let denominator =
+        rational_pow(
+          rational.add(oneAsRational, interestPerInstallmentAsRational),
+          totalInstallments - 1,
+        )
+      expect Some(result) = rational.div(numerator, denominator)
+      if isLate {
+        rational.ceil(
+          rational.add(result, penaltyFeeForLateRepaymentAsRational),
+        )
+      } else {
+        rational.ceil(result)
+      }
+    }
     PrincipalAndInterestOnInstallments -> {
       let totalInterest = rational.mul(principalAsRational, interestAsRational)
       expect Some(singleInstallmentAmountAsRational) =
@@ -57,8 +85,6 @@ pub fn get_repayment_amount(
           rational.from_int(totalInstallments),
         )
       if isLate {
-        expect Some(penaltyFeeForLateRepaymentAsRational) =
-          rational.new(penaltyFeeForLateRepayment, principalDivider)
         rational.ceil(
           rational.add(
             singleInstallmentAmountAsRational,

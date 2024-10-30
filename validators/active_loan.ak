@@ -1,4 +1,3 @@
-use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use cardano/address.{Address, Credential, Script}
@@ -12,9 +11,8 @@ use finance.{
   get_repayment_amount, is_recasting_permitted, is_repayment_late,
 }
 use types/datum.{
-  ActiveDatum, DepositDatum, DutchAuctionDatum, InterestOnRemainingPrincipal,
-  Liquidation, NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
-  PoolDatum, PrincipalAndInterestOnInstallments, RepaymentMode,
+  ActiveDatum, DepositDatum, DutchAuctionDatum, Liquidation,
+  NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim, PoolDatum,
 }
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
@@ -87,8 +85,40 @@ validator activeLoan(
                 actualBondInput,
               ),
               when datum.commonData.liquidationMode is {
-                NoLiquidationFullCollateralClaim -> todo
-                NoLiquidationDutchAuctionClaim -> todo
+                NoLiquidationFullCollateralClaim ->
+                  is_repayment_late(
+                    validFrom,
+                    datum.lendDate,
+                    datum.commonData.initialGracePeriod,
+                    datum.repaidInstallments,
+                    datum.commonData.installmentPeriod,
+                    datum.commonData.repaymentTimeWindow,
+                  )
+                NoLiquidationDutchAuctionClaim -> {
+                  expect Finite(validTo) =
+                    self.validity_range.upper_bound.bound_type
+                  expect Some(dutchAuctionOutput) =
+                    list.at(
+                      get_outputs_to_sc(self.outputs, dutchAuctionScriptHash),
+                      index,
+                    )
+                  and {
+                    is_repayment_late(
+                      validFrom,
+                      datum.lendDate,
+                      datum.commonData.initialGracePeriod,
+                      datum.repaidInstallments,
+                      datum.commonData.installmentPeriod,
+                      datum.commonData.repaymentTimeWindow,
+                    ),
+                    correct_output_to_dutch_auction(
+                      input,
+                      actualBondInput,
+                      dutchAuctionOutput,
+                      validTo,
+                    ),
+                  }
+                }
                 Liquidation(lTV, lTVDivider, partialLiquidation) -> {
                   let oracleRefInput =
                     safe_list_at(
@@ -226,7 +256,52 @@ validator activeLoan(
               ),
             }
           }
-          Recast(bondInputIndex, principalPaid) -> todo
+          Recast(bondInputIndex, principalPaid) -> {
+            expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
+            expect Some(repaymentOutput) =
+              list.at(get_outputs_to_sc(self.outputs, depositScriptHash), index)
+            let debtAfterRecasting =
+              get_remaining_debt(
+                datum.commonData.repaymentMode,
+                datum.principalAmount,
+                datum.principalDivider,
+                datum.commonData.interestRate,
+                datum.commonData.totalInstallments,
+                datum.repaidInstallments,
+              ) - principalPaid
+            and {
+              principalPaid > 0,
+              is_nft_spent(
+                borrowerTokenPolicyId,
+                datum.borrowerAssetName,
+                bondInput,
+              ),
+              is_recasting_permitted(
+                datum.commonData.repaymentMode,
+                datum.doneRecasts,
+              ),
+              or {
+                and {
+                  debtAfterRecasting > 0,
+                  validate_output_to_deposit_for_repayment(
+                    repaymentOutput,
+                    datum.commonData.principalAsset,
+                    //TODO
+                    0,
+                    datum.lenderAssetName,
+                  ),
+                  validate_output_to_active_loan_for_recasting(),
+                },
+                validate_output_to_deposit_for_repayment(
+                  repaymentOutput,
+                  datum.commonData.principalAsset,
+                  //TODO
+                  0,
+                  datum.lenderAssetName,
+                ),
+              },
+            }
+          }
         }
       },
     )
