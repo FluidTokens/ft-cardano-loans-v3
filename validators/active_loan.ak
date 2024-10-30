@@ -1,3 +1,4 @@
+use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use cardano/address.{Address, Credential, Script}
@@ -23,7 +24,7 @@ use utils.{
   address_in_signatures, get_inputs_from_sc, get_outputs_to_sc, get_own_hash,
   is_nft_spent, is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data,
   safe_list_at, token_b_needed_to_purchase_token_a, validate_oracle_ref_input,
-  validity_range_within_an_hour,
+  validity_range_within_an_hour, value_remove_policy_id,
 }
 
 validator activeLoan(
@@ -254,7 +255,6 @@ fn difference_sent_to_borrower(
     Asset { policyId: borrowerTokenPolicyId, assetName: borrowerAssetName }
   let newDatum =
     DepositDatum { action: "partial_liquidation", ownerAsset: borrowerAsset }
-  //TODO Add liquidation fee?
   let remainingAmount =
     collateralValueInPrincipalCurrency - totalDebtInPrincipalCurrency
 
@@ -346,8 +346,12 @@ fn validate_output_to_active_loan_for_adding_collateral(
         quantity_of_policy_id(loanValue, datum.collateral.policyId)
       let newCollateralTokens =
         quantity_of_policy_id(activeLoanOutput.value, datum.collateral.policyId)
-      //TODO the Value must be the same as before except for the quantity of tokens with same collateral's policyId
-      let sameValueWithoutCollateralTokens = False
+      //The Value must be the same as before except for the quantity of tokens with same collateral's policyId
+      let sameValueWithoutCollateralTokens =
+        value_remove_policy_id(loanValue, datum.collateral.policyId) == value_remove_policy_id(
+          activeLoanOutput.value,
+          datum.collateral.policyId,
+        )
       let dosProtection = length(flatten(activeLoanOutput.value)) <= 21
       and {
         sameValueWithoutCollateralTokens,

@@ -18,6 +18,11 @@ use types/redeemer.{
   Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
 }
 
+pub fn value_remove_policy_id(value: Value, policyId: PolicyId) -> Value {
+  dict.delete(value.inner, ada_policy_id)
+    |> Value
+}
+
 pub fn is_nft_burnt(policyId: PolicyId, assetName: AssetName, mints: Value) {
   quantity_of(mints, policyId, assetName) == -1
 }
