@@ -3,13 +3,13 @@ use cardano/assets.{AssetName}
 use types/general.{Asset, CollateralAsset}
 
 //TODO KYC/KYB with Sundae
-//TODO Deferment (with and without interest accruement)
-//TODO Loan refinancing
 //TODO CIP-113 support
+//TODO Deferment (with and without interest accruement)
 //TODO Variable interest rate with oracle, eventual with min and max caps, eventual with first N installments at a fixed rate
-//Margin calls are done off-chain as soon as the oracle signals a too-low LTV
-//Forgiveness in case of default is accomplished by sending the collateral back to the borrower in case of Full Collateral Claim
+//Margin calls are done off-chain as soon as the oracle signals a too-low LTV.
+//Forgiveness in case of default is accomplished by sending the collateral back to the borrower in case of Full Collateral Claim.
 //If the penalty fee should be sent to an address different from the lender, then the lender nft must be locked in a dedicated contract that says so.
+//Loan refinancing is done spending the new loan and the old loan in the same tx.
 pub type RepaymentMode {
   //Express number of possible recasts. 0 means no recasting, negative means unlimited
   InterestOnRemainingPrincipal { max_possible_recasts: Int }
@@ -43,7 +43,7 @@ pub type CommonData {
   //Period to repay without being considered late
   //After this period, borrower can be liquidated if he hasn't paid the installment
   repaymentTimeWindow: Int,
-  //fee borrower pays when he could be liquidated but he repays, <= 0 means no penalty
+  //Fee borrower pays when he could be liquidated but he repays, <= 0 means no penalty
   penaltyFeeForLateRepayment: Int,
 }
 
