@@ -1,25 +1,6 @@
 use cardano/address.{Address}
 use types/general.{Asset, Authorization}
 
-pub type PoolSpendRedeemer {
-  Cancel { auth: Authorization }
-  Borrow { withdrawIndex: Int }
-}
-
-pub type PoolAction {
-  borrowerAddress: Address,
-  outputWithLenderTokenIndex: Int,
-  //Asset that the borrower is providing, must be accepted by the pool
-  chosenCollateralIndex: Int,
-  //If collateral doesn't use oracle, this must be -1
-  chosenCollateralOracleInputIndex: Int,
-  wantedPrincipal: Int,
-}
-
-pub type PoolWithdrawRedeemer {
-  actionForEachInput: List<PoolAction>,
-}
-
 //Tokens that have a lot of liquidity are in CEX. The price is in lovelace
 pub type AggregatedFeed {
   token: Asset,
@@ -59,6 +40,23 @@ pub type Signature {
 pub type OracleRedeemer {
   data: OraclePriceFeed,
   signatures: List<Signature>,
+}
+
+pub type PoolAction {
+  Cancel { auth: Authorization }
+  Borrow {
+    borrowerAddress: Address,
+    outputWithLenderTokenIndex: Int,
+    //Asset that the borrower is providing, must be accepted by the pool
+    chosenCollateralIndex: Int,
+    //If collateral doesn't use oracle, this must be -1
+    chosenCollateralOracleInputIndex: Int,
+    wantedPrincipal: Int,
+  }
+}
+
+pub type PoolWithdrawRedeemer {
+  actionForEachInput: List<PoolAction>,
 }
 
 pub type ActiveAction {

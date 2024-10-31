@@ -5,19 +5,19 @@ use aiken/math/rational
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
 use cardano/assets.{Value, flatten, quantity_of}
-use cardano/script_context.{ScriptContext}
 use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
 use types/datum.{ActiveDatum, DummyLenderBondDatum, Liquidation, PoolDatum}
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
-  Aggregated, Borrow, Cancel, Dedicated, OraclePriceFeed, PoolAction,
-  PoolSpendRedeemer, PoolWithdrawRedeemer, Pooled,
+  Aggregated, Borrow, Cancel, Dedicated, OraclePriceFeed, PoolWithdrawRedeemer,
+  Pooled,
 }
 use utils.{
-  address_in_signatures, authorize_action, get_config, get_inputs_from_sc,
-  get_outputs_to_sc, get_own_hash, is_output_to_sc, quantity_of_policy_id,
-  retrieve_oracle_data, safe_list_at, token_b_needed_to_purchase_token_a,
-  validate_oracle_ref_input, validity_range_within_an_hour,
+  address_in_signatures, authorize_action, get_config,
+  get_inputs_from_sc_or_delegated_to_sc, get_outputs_to_sc_or_delegated_to_sc,
+  get_own_hash, is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data,
+  safe_list_at, token_b_needed_to_purchase_token_a, validate_oracle_ref_input,
+  validity_range_within_an_hour,
 }
 
 validator pool(
@@ -28,8 +28,8 @@ validator pool(
   configNFTAssetName: ByteArray,
 ) {
   spend(
-    datumOpt: Option<PoolDatum>,
-    redeemer: PoolSpendRedeemer,
+    datumOpt: Option<Data>,
+    _redeemer: Data,
     input: OutputReference,
     self: Transaction,
   ) {
@@ -43,29 +43,16 @@ validator pool(
         ).adminAddress,
       )
     } else {
-      when redeemer is {
-        Cancel(auth) -> {
-          expect Some(datum) = datumOpt
-          and {
-            datum.lenderAuthHash == auth.hash,
-            authorize_action(
-              auth,
-              self.inputs,
-              self.withdrawals,
-              self.extra_signatories,
-              self.mint,
-            ),
-          }
-        }
-        Borrow(withdrawIndex) -> {
-          let ownScriptHash = get_own_hash(input, self.inputs)
-          expect Some(withdrawScript) = list.at(self.withdrawals, withdrawIndex)
-          when withdrawScript is {
+      let ownScriptHash = get_own_hash(input, self.inputs)
+      list.any(
+        self.withdrawals,
+        fn(withdrawal) {
+          when withdrawal is {
             Pair(Script(scriptHash), _amnt) -> scriptHash == ownScriptHash
             _ -> False
           }
-        }
-      }
+        },
+      )
     }
   }
 
@@ -75,124 +62,148 @@ validator pool(
     self: Transaction,
   ) {
     expect Script(ownScriptHash) = credential
-    let scInputs = get_inputs_from_sc(self.inputs, ownScriptHash)
+    let scInputs =
+      get_inputs_from_sc_or_delegated_to_sc(self.inputs, ownScriptHash)
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
     expect length(scInputs) == length(redeemer.actionForEachInput)
 
     list.indexed_foldr(
       scInputs,
       True,
-      fn(index, input, result) {
+      fn(index, inputAndCIP113Control, result) {
         //As all inputs must return True, if any of previous input returned False, then fail
         //The last input is not checked but will return its value at the end, so if False withdraw will fail
         expect result
 
-        let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
+        let input = inputAndCIP113Control.1st
+        let isCIP113 = inputAndCIP113Control.2nd
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: PoolDatum = inputDatum
-        let PoolAction {
-          borrowerAddress,
-          outputWithLenderTokenIndex,
-          chosenCollateralIndex,
-          chosenCollateralOracleInputIndex,
-          wantedPrincipal,
-        } = redeemerAction
-        expect Finite(end) = self.validity_range.upper_bound.bound_type
-        let inputUtxoId =
-          sha2_256(
-            bytearray.push(
-              input.output_reference.transaction_id,
-              input.output_reference.output_index,
-            ),
-          )
-        let activeOutput =
-          safe_list_at(
-            get_outputs_to_sc(self.outputs, activeLoanScriptHash),
-            index,
-          )
-        let outputWithLenderToken =
-          safe_list_at(self.outputs, outputWithLenderTokenIndex)
-        let chosenCollateral =
-          safe_list_at(datum.collateralOptions, chosenCollateralIndex)
-        let remainingAmount =
-          quantity_of(
-            input.output.value,
-            datum.commonData.principalAsset.policyId,
-            datum.commonData.principalAsset.assetName,
-          ) - wantedPrincipal
+        let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
 
-        let basicChecks = and {
-            wantedPrincipal > 0,
-            remainingAmount >= 0,
-            validity_range_within_an_hour(self),
-            tokens_sent_to_both_parties(
-              self.mint,
-              outputWithLenderToken,
-              borrowerTokenPolicyId,
-              lenderTokenPolicyId,
-              inputUtxoId,
-              datum.lenderAddress,
-              datum.isLenderAPlutusPreV3Script,
-            ),
-            if datum.dynamicCollateralPrice {
-              let oracleRefInput =
-                safe_list_at(
-                  self.reference_inputs,
-                  chosenCollateralOracleInputIndex,
-                )
-              expect Some(oraclePriceFeed) =
-                retrieve_oracle_data(
-                  oracleRefInput,
-                  self.redeemers,
-                  end,
-                  chosenCollateral,
-                )
-              and {
-                validate_oracle_ref_input(
-                  oracleRefInput.output.value,
-                  chosenCollateral,
-                ),
-                validate_output_to_active_with_oracle(
-                  activeOutput,
-                  activeLoanScriptHash,
-                  datum,
-                  chosenCollateral,
-                  chosenCollateralIndex,
-                  wantedPrincipal,
-                  inputUtxoId,
-                  end,
-                  borrowerAddress,
-                  oraclePriceFeed,
-                ),
-              }
-            } else {
-              validate_output_to_active_no_oracle(
-                activeOutput,
-                activeLoanScriptHash,
-                datum,
-                chosenCollateral,
-                chosenCollateralIndex,
-                wantedPrincipal,
-                inputUtxoId,
-                end,
-                borrowerAddress,
-              )
-            },
-          }
-        and {
-          basicChecks,
-          or {
-            remainingAmount == 0,
-            and {
-              remainingAmount > 0,
-              validate_eventual_output_to_pool(
-                safe_list_at(self.outputs, index),
-                datum,
-                remainingAmount,
-                ownScriptHash,
+        when redeemerAction is {
+          Cancel(auth) -> and {
+              datum.lenderAuthHash == auth.hash,
+              authorize_action(
+                auth,
+                self.inputs,
+                self.withdrawals,
+                self.extra_signatories,
+                self.mint,
               ),
-            },
-          },
+            }
+          Borrow(
+            borrowerAddress,
+            outputWithLenderTokenIndex,
+            chosenCollateralIndex,
+            chosenCollateralOracleInputIndex,
+            wantedPrincipal,
+          ) -> {
+            expect Finite(end) = self.validity_range.upper_bound.bound_type
+            let inputUtxoId =
+              sha2_256(
+                bytearray.push(
+                  input.output_reference.transaction_id,
+                  input.output_reference.output_index,
+                ),
+              )
+            let activeOutput =
+              safe_list_at(
+                get_outputs_to_sc_or_delegated_to_sc(
+                  self.outputs,
+                  activeLoanScriptHash,
+                  isCIP113,
+                ),
+                index,
+              )
+            let outputWithLenderToken =
+              safe_list_at(self.outputs, outputWithLenderTokenIndex)
+            let chosenCollateral =
+              safe_list_at(datum.collateralOptions, chosenCollateralIndex)
+            let remainingAmount =
+              quantity_of(
+                input.output.value,
+                datum.commonData.principalAsset.policyId,
+                datum.commonData.principalAsset.assetName,
+              ) - wantedPrincipal
+
+            let basicChecks = and {
+                wantedPrincipal > 0,
+                remainingAmount >= 0,
+                validity_range_within_an_hour(self),
+                tokens_sent_to_both_parties(
+                  self.mint,
+                  outputWithLenderToken,
+                  borrowerTokenPolicyId,
+                  lenderTokenPolicyId,
+                  inputUtxoId,
+                  datum.lenderAddress,
+                  datum.isLenderAPlutusPreV3Script,
+                ),
+                if datum.dynamicCollateralPrice {
+                  let oracleRefInput =
+                    safe_list_at(
+                      self.reference_inputs,
+                      chosenCollateralOracleInputIndex,
+                    )
+                  expect Some(oraclePriceFeed) =
+                    retrieve_oracle_data(
+                      oracleRefInput,
+                      self.redeemers,
+                      end,
+                      chosenCollateral,
+                    )
+                  and {
+                    validate_oracle_ref_input(
+                      oracleRefInput.output.value,
+                      chosenCollateral,
+                    ),
+                    validate_output_to_active_with_oracle(
+                      activeOutput,
+                      activeLoanScriptHash,
+                      datum,
+                      chosenCollateral,
+                      chosenCollateralIndex,
+                      wantedPrincipal,
+                      inputUtxoId,
+                      end,
+                      borrowerAddress,
+                      oraclePriceFeed,
+                      isCIP113,
+                    ),
+                  }
+                } else {
+                  validate_output_to_active_no_oracle(
+                    activeOutput,
+                    activeLoanScriptHash,
+                    datum,
+                    chosenCollateral,
+                    chosenCollateralIndex,
+                    wantedPrincipal,
+                    inputUtxoId,
+                    end,
+                    borrowerAddress,
+                    isCIP113,
+                  )
+                },
+              }
+            and {
+              basicChecks,
+              or {
+                remainingAmount == 0,
+                and {
+                  remainingAmount > 0,
+                  validate_eventual_output_to_pool(
+                    safe_list_at(self.outputs, index),
+                    datum,
+                    remainingAmount,
+                    ownScriptHash,
+                    isCIP113,
+                  ),
+                },
+              },
+            }
+          }
         }
       },
     )
@@ -238,6 +249,7 @@ fn validate_output_to_active_no_oracle(
   inputUtxoId: ByteArray,
   end: Int,
   borrowerAddress: Address,
+  isCIP113: Bool,
 ) {
   expect Some(singleRequiredAmount) =
     list.at(poolDatum.principalLTV, chosenCollateralIndex)
@@ -310,6 +322,7 @@ fn validate_output_to_active_with_oracle(
   end: Int,
   borrowerAddress: Address,
   oraclePriceFeed: OraclePriceFeed,
+  isCIP113: Bool,
 ) {
   expect Some(ltv) = list.at(poolDatum.principalLTV, chosenCollateralIndex)
   expect Some(ltvDivider) =
@@ -400,6 +413,7 @@ fn validate_eventual_output_to_pool(
   datum: PoolDatum,
   remainingAmount: Int,
   ownScriptHash: ByteArray,
+  isCIP113: Bool,
 ) {
   expect InlineDatum(outputDatum) = output.datum
   expect parsedDatum: PoolDatum = outputDatum

@@ -5,7 +5,7 @@ use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
 use aiken/interval.{Finite}
 use aiken/math/rational.{Rational}
-use cardano/address.{Address, Credential, Script, VerificationKey}
+use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
 use cardano/assets.{
   AssetName, PolicyId, Value, quantity_of, reduce, to_dict, tokens,
 }
@@ -88,6 +88,77 @@ pub fn get_outputs_to_sc(
 
 pub fn get_inputs_from_sc(inputs: List<Input>, scHash: ByteArray) -> List<Input> {
   list.filter(inputs, fn(input) { is_output_to_sc(input.output, scHash) })
+}
+
+pub fn is_output_to_sc_or_cip_113(output: Output, scHash: ByteArray) {
+  let is_output_to_sc = is_output_to_sc(output, scHash)
+  let is_stake =
+    when output.address.stake_credential is {
+      Some(stake_cred) -> {
+        expect Inline(a) = stake_cred
+        when a is {
+          VerificationKey(hash) -> hash == scHash
+          Script(hash) -> hash == scHash
+        }
+      }
+      None -> False
+    }
+
+  or {
+    is_output_to_sc,
+    is_stake,
+  }
+}
+
+pub fn is_output_delegated_to_sc(output: Output, scHash: ByteArray) {
+  when output.address.stake_credential is {
+    Some(stake_cred) -> {
+      expect Inline(a) = stake_cred
+      when a is {
+        VerificationKey(hash) -> hash == scHash
+        Script(hash) -> hash == scHash
+      }
+    }
+    None -> False
+  }
+}
+
+//Returns a list of couples (INPUT, IS_CIP_113), removing all the other inputs
+pub fn get_inputs_from_sc_or_delegated_to_sc(
+  inputs: List<Input>,
+  scHash: ByteArray,
+) -> List<(Input, Bool)> {
+  list.foldr(
+    inputs,
+    [],
+    fn(input, result) {
+      let output = input.output
+      if is_output_to_sc(output, scHash) {
+        list.push(result, (input, False))
+      } else {
+        if is_output_delegated_to_sc(output, scHash) {
+          list.push(result, (input, True))
+        } else {
+          result
+        }
+      }
+    },
+  )
+}
+
+pub fn get_outputs_to_sc_or_delegated_to_sc(
+  outputs: List<Output>,
+  scHash: ByteArray,
+  isCIP113: Bool,
+) {
+  if isCIP113 {
+    list.filter(outputs, fn(output) { is_output_to_sc(output, scHash) })
+  } else {
+    list.filter(
+      outputs,
+      fn(output) { is_output_delegated_to_sc(output, scHash) },
+    )
+  }
 }
 
 pub fn is_script_output(output: Output) -> Bool {
