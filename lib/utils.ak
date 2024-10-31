@@ -10,14 +10,32 @@ use cardano/assets.{
   AssetName, PolicyId, Value, quantity_of, reduce, to_dict, tokens,
 }
 use cardano/transaction.{
-  Input, Output, OutputReference, Redeemer, ScriptPurpose, Transaction, Withdraw,
+  InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose,
+  Transaction, Withdraw,
 }
+use types/datum.{ConfigDatum}
 use types/general.{
   Asset, Authorization, CardanoMintScript, CardanoSignature, CardanoSpendScript,
   CardanoWithdrawScript, CollateralAsset,
 }
 use types/redeemer.{
   Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
+}
+
+pub fn get_config(
+  configRefInput: Input,
+  configNFTPolicyId: ByteArray,
+  configNFTAssetName: ByteArray,
+) {
+  expect
+    quantity_of(
+      configRefInput.output.value,
+      configNFTPolicyId,
+      configNFTAssetName,
+    ) > 0
+  expect InlineDatum(outputDatum) = configRefInput.output.datum
+  expect parsedDatum: ConfigDatum = outputDatum
+  parsedDatum
 }
 
 pub fn value_without_policy_id_as_list(value: Value, policyIdToRemove: PolicyId) {

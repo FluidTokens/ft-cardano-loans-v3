@@ -19,10 +19,10 @@ use types/redeemer.{
   ActiveWithdrawRedeemer, AddCollateral, Claim, PoolSpendRedeemer, Recast, Repay,
 }
 use utils.{
-  address_in_signatures, get_inputs_from_sc, get_outputs_to_sc, get_own_hash,
-  is_nft_spent, is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data,
-  safe_list_at, token_b_needed_to_purchase_token_a, validate_oracle_ref_input,
-  validity_range_within_an_hour, value_without_policy_id_as_list,
+  address_in_signatures, get_config, get_inputs_from_sc, get_outputs_to_sc,
+  get_own_hash, is_nft_spent, is_output_to_sc, quantity_of_policy_id,
+  retrieve_oracle_data, safe_list_at, validate_oracle_ref_input,
+  value_without_policy_id_as_list,
 }
 
 validator activeLoan(
@@ -30,8 +30,8 @@ validator activeLoan(
   lenderTokenPolicyId: ByteArray,
   depositScriptHash: ByteArray,
   dutchAuctionScriptHash: ByteArray,
-  dutchAuctionStartingIncreasePerMille: Int,
-  adminAddress: Address,
+  configNFTPolicyId: ByteArray,
+  configNFTAssetName: ByteArray,
 ) {
   spend(
     _datumOpt: Option<PoolDatum>,
@@ -111,7 +111,7 @@ validator activeLoan(
                       datum.commonData.installmentPeriod,
                       datum.commonData.repaymentTimeWindow,
                     ),
-                    correct_output_to_dutch_auction(
+                    validate_output_to_dutch_auction(
                       input,
                       actualBondInput,
                       dutchAuctionOutput,
@@ -220,6 +220,7 @@ validator activeLoan(
                 datum.commonData.principalAsset,
                 nextRepaymentAmount,
                 datum.lenderAssetName,
+                "installment_repayment",
               ),
               or {
                 datum.repaidInstallments == datum.commonData.totalInstallments - 1,
@@ -280,25 +281,32 @@ validator activeLoan(
                 datum.commonData.repaymentMode,
                 datum.doneRecasts,
               ),
+              validate_output_to_deposit_for_repayment(
+                repaymentOutput,
+                datum.commonData.principalAsset,
+                principalPaid,
+                datum.lenderAssetName,
+                "recast",
+              ),
               or {
+                debtAfterRecasting == 0,
                 and {
                   debtAfterRecasting > 0,
-                  validate_output_to_deposit_for_repayment(
-                    repaymentOutput,
-                    datum.commonData.principalAsset,
-                    //TODO
-                    0,
-                    datum.lenderAssetName,
-                  ),
-                  validate_output_to_active_loan_for_recasting(),
+                  {
+                    expect Some(activeLoanOutput) =
+                      list.at(
+                        get_outputs_to_sc(self.outputs, ownScriptHash),
+                        index,
+                      )
+                    validate_output_to_active_loan_for_recasting(
+                      activeLoanOutput,
+                      datum,
+                      principalPaid,
+                      input.output.value,
+                      ownScriptHash,
+                    )
+                  },
                 },
-                validate_output_to_deposit_for_repayment(
-                  repaymentOutput,
-                  datum.commonData.principalAsset,
-                  //TODO
-                  0,
-                  datum.lenderAssetName,
-                ),
               },
             }
           }
@@ -307,8 +315,8 @@ validator activeLoan(
     )
   }
 
-  else(ctx: ScriptContext) {
-    address_in_signatures(ctx.transaction.extra_signatories, adminAddress)
+  else(_) {
+    fail
   }
 }
 
@@ -357,14 +365,14 @@ fn validate_output_to_deposit_for_repayment(
   loanAsset: Asset,
   repaymentAmount: Int,
   lenderAssetName: AssetName,
+  action: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = repaymentOutput.datum
   expect parsedDatum: DepositDatum = outputDatum
 
   let lenderAsset =
     Asset { policyId: lenderTokenPolicyId, assetName: lenderAssetName }
-  let newDatum =
-    DepositDatum { action: "installment_repayment", ownerAsset: lenderAsset }
+  let newDatum = DepositDatum { action, ownerAsset: lenderAsset }
   let isDatumCorrect = parsedDatum == newDatum
   let dosProtection = length(flatten(repaymentOutput.value)) <= 3
   and {
@@ -452,11 +460,37 @@ fn validate_output_to_active_loan_for_adding_collateral(
   }
 }
 
-fn validate_output_to_active_loan_for_recasting() {
-  todo
+fn validate_output_to_active_loan_for_recasting(
+  activeLoanOutput: Output,
+  datum: ActiveDatum,
+  principalPaid: Int,
+  loanValue: Value,
+  ownScriptHash: ByteArray,
+) {
+  expect InlineDatum(outputDatum) = activeLoanOutput.datum
+  expect parsedDatum: ActiveDatum = outputDatum
+
+  let newDatum =
+    ActiveDatum {
+      commonData: datum.commonData,
+      borrowerAssetName: datum.borrowerAssetName,
+      lenderAssetName: datum.lenderAssetName,
+      collateral: datum.collateral,
+      principalAmount: datum.principalAmount - principalPaid,
+      principalDivider: datum.principalDivider,
+      lendDate: datum.lendDate,
+      repaidInstallments: datum.repaidInstallments,
+      doneRecasts: datum.doneRecasts + 1,
+    }
+
+  and {
+    is_output_to_sc(activeLoanOutput, ownScriptHash),
+    parsedDatum == newDatum,
+    activeLoanOutput.value == loanValue,
+  }
 }
 
-fn correct_output_to_dutch_auction(
+fn validate_output_to_dutch_auction(
   activeLoanInput: Input,
   borrower_bond_input: Input,
   dutchAuctionOutput: Output,

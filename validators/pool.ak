@@ -14,17 +14,18 @@ use types/redeemer.{
   PoolSpendRedeemer, PoolWithdrawRedeemer, Pooled,
 }
 use utils.{
-  address_in_signatures, authorize_action, get_inputs_from_sc, get_outputs_to_sc,
-  get_own_hash, is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data,
-  safe_list_at, token_b_needed_to_purchase_token_a, validate_oracle_ref_input,
-  validity_range_within_an_hour,
+  address_in_signatures, authorize_action, get_config, get_inputs_from_sc,
+  get_outputs_to_sc, get_own_hash, is_output_to_sc, quantity_of_policy_id,
+  retrieve_oracle_data, safe_list_at, token_b_needed_to_purchase_token_a,
+  validate_oracle_ref_input, validity_range_within_an_hour,
 }
 
 validator pool(
   borrowerTokenPolicyId: ByteArray,
   lenderTokenPolicyId: ByteArray,
   activeLoanScriptHash: ByteArray,
-  adminAddress: Address,
+  configNFTPolicyId: ByteArray,
+  configNFTAssetName: ByteArray,
 ) {
   spend(
     datumOpt: Option<PoolDatum>,
@@ -33,7 +34,14 @@ validator pool(
     self: Transaction,
   ) {
     if datumOpt == None {
-      address_in_signatures(self.extra_signatories, adminAddress)
+      address_in_signatures(
+        self.extra_signatories,
+        get_config(
+          safe_list_at(self.reference_inputs, 0),
+          configNFTPolicyId,
+          configNFTAssetName,
+        ).adminAddress,
+      )
     } else {
       when redeemer is {
         Cancel(auth) -> {
@@ -190,8 +198,8 @@ validator pool(
     )
   }
 
-  else(ctx: ScriptContext) {
-    address_in_signatures(ctx.transaction.extra_signatories, adminAddress)
+  else(_) {
+    fail
   }
 }
 

@@ -2,6 +2,11 @@ use cardano/address.{Address}
 use cardano/assets.{AssetName}
 use types/general.{Asset, CollateralAsset}
 
+pub type ConfigDatum {
+  adminAddress: Address,
+  dutchAuctionStartingIncreasePerMille: Int,
+}
+
 //TODO KYC/KYB with Sundae
 //TODO CIP-113 support
 //TODO Deferment (with and without interest accruement)
