@@ -299,8 +299,10 @@ fn validate_output_to_active_no_oracle(
     }
   let isDatumCorrect = parsedDatum == newDatum && isLiquidationCorrectlySet
 
-  let toCorrectStaking =
-    output.address.stake_credential == borrowerAddress.stake_credential
+  let toCorrectStaking = or {
+      isCIP113 == True,
+      output.address.stake_credential == borrowerAddress.stake_credential,
+    }
   let dosProtection = length(flatten(output.value)) <= 21
   and {
     toCorrectStaking,
@@ -394,8 +396,10 @@ fn validate_output_to_active_with_oracle(
 
   let isDatumCorrect = parsedDatum == newDatum && isLiquidationCorrectlySet
 
-  let toCorrectStaking =
-    output.address.stake_credential == borrowerAddress.stake_credential
+  let toCorrectStaking = or {
+      isCIP113 == True,
+      output.address.stake_credential == borrowerAddress.stake_credential,
+    }
 
   let dosProtection = length(flatten(output.value)) <= 21
   and {
@@ -429,8 +433,10 @@ fn validate_eventual_output_to_pool(
 
   let dosProtection = length(flatten(output.value)) <= 3
 
-  let toCorrectStaking =
-    output.address.stake_credential == datum.lenderAddress.stake_credential
+  let toCorrectStaking = or {
+      isCIP113 == True,
+      output.address.stake_credential == datum.lenderAddress.stake_credential,
+    }
 
   and {
     is_output_to_sc(output, ownScriptHash),

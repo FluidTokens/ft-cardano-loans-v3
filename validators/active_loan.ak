@@ -1,6 +1,6 @@
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
-use cardano/address.{Address, Credential, Script}
+use cardano/address.{Address, Credential, Script, StakeCredential}
 use cardano/assets.{AssetName, Value, add, flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
@@ -17,8 +17,8 @@ use types/general.{Asset, CollateralAsset}
 use types/redeemer.{ActiveWithdrawRedeemer, AddCollateral, Claim, Recast, Repay}
 use utils.{
   address_in_signatures, get_config, get_inputs_from_sc_or_delegated_to_sc,
-  get_outputs_to_sc, get_own_hash, is_nft_spent, is_output_to_sc,
-  quantity_of_policy_id, retrieve_oracle_data, safe_list_at,
+  get_outputs_to_sc_or_delegated_to_sc, get_own_hash, is_nft_spent,
+  is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data, safe_list_at,
   validate_oracle_ref_input, value_without_policy_id_as_list,
 }
 
@@ -110,7 +110,11 @@ validator activeLoan(
                     self.validity_range.upper_bound.bound_type
                   expect Some(dutchAuctionOutput) =
                     list.at(
-                      get_outputs_to_sc(self.outputs, dutchAuctionScriptHash),
+                      get_outputs_to_sc_or_delegated_to_sc(
+                        self.outputs,
+                        dutchAuctionScriptHash,
+                        isCIP113,
+                      ),
                       index,
                     )
                   and {
@@ -200,7 +204,14 @@ validator activeLoan(
           Repay(bondInputIndex) -> {
             expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
             expect Some(repaymentOutput) =
-              list.at(get_outputs_to_sc(self.outputs, depositScriptHash), index)
+              list.at(
+                get_outputs_to_sc_or_delegated_to_sc(
+                  self.outputs,
+                  depositScriptHash,
+                  isCIP113,
+                ),
+                index,
+              )
             let isLate =
               is_repayment_late(
                 validFrom,
@@ -237,13 +248,19 @@ validator activeLoan(
                 datum.repaidInstallments == datum.commonData.totalInstallments - 1,
                 validate_output_to_active_loan_for_repayment(
                   safe_list_at(
-                    get_outputs_to_sc(self.outputs, ownScriptHash),
+                    get_outputs_to_sc_or_delegated_to_sc(
+                      self.outputs,
+                      ownScriptHash,
+                      isCIP113,
+                    ),
                     index,
                   ),
                   datum,
                   datum.repaidInstallments + 1,
                   input.output.value,
                   ownScriptHash,
+                  input.output.address.stake_credential,
+                  isCIP113,
                 ),
               },
             }
@@ -251,7 +268,14 @@ validator activeLoan(
           AddCollateral(bondInputIndex, addedCollateralAmount) -> {
             expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
             expect Some(activeLoanOutput) =
-              list.at(get_outputs_to_sc(self.outputs, ownScriptHash), index)
+              list.at(
+                get_outputs_to_sc_or_delegated_to_sc(
+                  self.outputs,
+                  ownScriptHash,
+                  isCIP113,
+                ),
+                index,
+              )
             and {
               addedCollateralAmount > 0,
               is_nft_spent(
@@ -265,13 +289,22 @@ validator activeLoan(
                 addedCollateralAmount,
                 input.output.value,
                 ownScriptHash,
+                input.output.address.stake_credential,
+                isCIP113,
               ),
             }
           }
           Recast(bondInputIndex, principalPaid) -> {
             expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
             expect Some(repaymentOutput) =
-              list.at(get_outputs_to_sc(self.outputs, depositScriptHash), index)
+              list.at(
+                get_outputs_to_sc_or_delegated_to_sc(
+                  self.outputs,
+                  depositScriptHash,
+                  isCIP113,
+                ),
+                index,
+              )
             let debtAfterRecasting =
               get_remaining_debt(
                 datum.commonData.repaymentMode,
@@ -306,7 +339,11 @@ validator activeLoan(
                   {
                     expect Some(activeLoanOutput) =
                       list.at(
-                        get_outputs_to_sc(self.outputs, ownScriptHash),
+                        get_outputs_to_sc_or_delegated_to_sc(
+                          self.outputs,
+                          ownScriptHash,
+                          isCIP113,
+                        ),
                         index,
                       )
                     validate_output_to_active_loan_for_recasting(
@@ -315,6 +352,8 @@ validator activeLoan(
                       principalPaid,
                       input.output.value,
                       ownScriptHash,
+                      input.output.address.stake_credential,
+                      isCIP113,
                     )
                   },
                 },
@@ -400,6 +439,8 @@ fn validate_output_to_active_loan_for_repayment(
   newRepaidInstallments: Int,
   loanValue: Value,
   ownScriptHash: ByteArray,
+  prevStakeCredential: Option<StakeCredential>,
+  isCIP113: Bool,
 ) {
   expect InlineDatum(outputDatum) = activeLoanOutput.datum
   expect parsedDatum: ActiveDatum = outputDatum
@@ -417,10 +458,16 @@ fn validate_output_to_active_loan_for_repayment(
       doneRecasts: datum.doneRecasts,
     }
   let isDatumCorrect = parsedDatum == newDatum
+
+  let toCorrectStaking = or {
+      isCIP113 == True,
+      activeLoanOutput.address.stake_credential == prevStakeCredential,
+    }
   and {
     is_output_to_sc(activeLoanOutput, ownScriptHash),
     activeLoanOutput.value == loanValue,
     isDatumCorrect,
+    toCorrectStaking,
   }
 }
 
@@ -430,6 +477,8 @@ fn validate_output_to_active_loan_for_adding_collateral(
   additionalCollateralAmount: Int,
   loanValue: Value,
   ownScriptHash: ByteArray,
+  prevStakeCredential: Option<StakeCredential>,
+  isCIP113: Bool,
 ) {
   expect InlineDatum(outputDatum) = activeLoanOutput.datum
   expect parsedDatum: ActiveDatum = outputDatum
@@ -464,10 +513,16 @@ fn validate_output_to_active_loan_for_adding_collateral(
       activeLoanOutput.value == expectedValue
     }
 
+  let toCorrectStaking = or {
+      isCIP113 == True,
+      activeLoanOutput.address.stake_credential == prevStakeCredential,
+    }
+
   and {
     is_output_to_sc(activeLoanOutput, ownScriptHash),
     parsedDatum == datum,
     correctValue,
+    toCorrectStaking,
   }
 }
 
@@ -477,6 +532,8 @@ fn validate_output_to_active_loan_for_recasting(
   principalPaid: Int,
   loanValue: Value,
   ownScriptHash: ByteArray,
+  prevStakeCredential: Option<StakeCredential>,
+  isCIP113: Bool,
 ) {
   expect InlineDatum(outputDatum) = activeLoanOutput.datum
   expect parsedDatum: ActiveDatum = outputDatum
@@ -494,10 +551,15 @@ fn validate_output_to_active_loan_for_recasting(
       doneRecasts: datum.doneRecasts + 1,
     }
 
+  let toCorrectStaking = or {
+      isCIP113 == True,
+      activeLoanOutput.address.stake_credential == prevStakeCredential,
+    }
   and {
     is_output_to_sc(activeLoanOutput, ownScriptHash),
     parsedDatum == newDatum,
     activeLoanOutput.value == loanValue,
+    toCorrectStaking,
   }
 }
 
