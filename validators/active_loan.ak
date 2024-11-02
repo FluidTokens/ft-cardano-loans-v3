@@ -10,8 +10,8 @@ use finance.{
   get_repayment_amount, is_recasting_permitted, is_repayment_late,
 }
 use types/datum.{
-  ActiveDatum, DepositDatum, DutchAuctionDatum, Liquidation,
-  NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim, PoolDatum,
+  ActiveDatum, DutchAuctionDatum, Liquidation, NoLiquidationDutchAuctionClaim,
+  NoLiquidationFullCollateralClaim, PoolDatum, RepaymentDatum,
 }
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{ActiveWithdrawRedeemer, AddCollateral, Claim, Recast, Repay}
@@ -25,7 +25,7 @@ use utils.{
 validator activeLoan(
   borrowerTokenPolicyId: ByteArray,
   lenderTokenPolicyId: ByteArray,
-  depositScriptHash: ByteArray,
+  repaymentScriptHash: ByteArray,
   dutchAuctionScriptHash: ByteArray,
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
@@ -192,7 +192,7 @@ validator activeLoan(
                         principalAssetPolicyId: datum.commonData.principalAsset.policyId,
                         principalAssetName: datum.commonData.principalAsset.assetName,
                         differenceOutput: safe_list_at(self.outputs, index),
-                        depositScriptHash: depositScriptHash,
+                        repaymentScriptHash: repaymentScriptHash,
                       ),
                     },
                   }
@@ -207,7 +207,7 @@ validator activeLoan(
               list.at(
                 get_outputs_to_sc_or_delegated_to_sc(
                   self.outputs,
-                  depositScriptHash,
+                  repaymentScriptHash,
                   isCIP113,
                 ),
                 index,
@@ -237,7 +237,7 @@ validator activeLoan(
                 datum.borrowerAssetName,
                 bondInput,
               ),
-              validate_output_to_deposit_for_repayment(
+              validate_output_to_repayment(
                 repaymentOutput,
                 datum.commonData.principalAsset,
                 nextRepaymentAmount,
@@ -300,7 +300,7 @@ validator activeLoan(
               list.at(
                 get_outputs_to_sc_or_delegated_to_sc(
                   self.outputs,
-                  depositScriptHash,
+                  repaymentScriptHash,
                   isCIP113,
                 ),
                 index,
@@ -325,7 +325,7 @@ validator activeLoan(
                 datum.commonData.repaymentMode,
                 datum.doneRecasts,
               ),
-              validate_output_to_deposit_for_repayment(
+              validate_output_to_repayment(
                 repaymentOutput,
                 datum.commonData.principalAsset,
                 principalPaid,
@@ -378,16 +378,16 @@ fn difference_sent_to_borrower(
   principalAssetPolicyId: ByteArray,
   principalAssetName: AssetName,
   differenceOutput: Output,
-  depositScriptHash: ByteArray,
+  repaymentScriptHash: ByteArray,
 ) {
   expect Script(scriptHash) = differenceOutput.address.payment_credential
   expect InlineDatum(outputDatum) = differenceOutput.datum
-  expect parsedDatum: DepositDatum = outputDatum
+  expect parsedDatum: RepaymentDatum = outputDatum
 
   let borrowerAsset =
     Asset { policyId: borrowerTokenPolicyId, assetName: borrowerAssetName }
   let newDatum =
-    DepositDatum { action: "partial_liquidation", ownerAsset: borrowerAsset }
+    RepaymentDatum { action: "partial_liquidation", ownerAsset: borrowerAsset }
   let remainingAmount =
     collateralValueInPrincipalCurrency - totalDebtInPrincipalCurrency
 
@@ -403,14 +403,14 @@ fn difference_sent_to_borrower(
     remainingAmount < 0,
     and {
       containsCorrectAmount,
-      scriptHash == depositScriptHash,
+      scriptHash == repaymentScriptHash,
       isDatumCorrect,
       length(flatten(differenceOutput.value)) <= 21,
     },
   }
 }
 
-fn validate_output_to_deposit_for_repayment(
+fn validate_output_to_repayment(
   repaymentOutput: Output,
   loanAsset: Asset,
   repaymentAmount: Int,
@@ -418,15 +418,15 @@ fn validate_output_to_deposit_for_repayment(
   action: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = repaymentOutput.datum
-  expect parsedDatum: DepositDatum = outputDatum
+  expect parsedDatum: RepaymentDatum = outputDatum
 
   let lenderAsset =
     Asset { policyId: lenderTokenPolicyId, assetName: lenderAssetName }
-  let newDatum = DepositDatum { action, ownerAsset: lenderAsset }
+  let newDatum = RepaymentDatum { action, ownerAsset: lenderAsset }
   let isDatumCorrect = parsedDatum == newDatum
   let dosProtection = length(flatten(repaymentOutput.value)) <= 3
   and {
-    is_output_to_sc(repaymentOutput, depositScriptHash),
+    is_output_to_sc(repaymentOutput, repaymentScriptHash),
     quantity_of(repaymentOutput.value, loanAsset.policyId, loanAsset.assetName) >= repaymentAmount,
     isDatumCorrect,
     dosProtection,

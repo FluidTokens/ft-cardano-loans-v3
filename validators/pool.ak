@@ -5,8 +5,10 @@ use aiken/math/rational
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
 use cardano/assets.{Value, flatten, quantity_of}
-use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
-use types/datum.{ActiveDatum, DummyLenderBondDatum, Liquidation, PoolDatum}
+use cardano/transaction.{
+  Datum, InlineDatum, Output, OutputReference, Transaction,
+}
+use types/datum.{ActiveDatum, Liquidation, PoolDatum}
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
   Aggregated, Borrow, Cancel, Dedicated, OraclePriceFeed, PoolWithdrawRedeemer,
@@ -138,7 +140,7 @@ validator pool(
                   lenderTokenPolicyId,
                   inputUtxoId,
                   datum.lenderAddress,
-                  datum.isLenderAPlutusPreV3Script,
+                  datum.lenderTokenOutputOptionalDatum,
                 ),
                 if datum.dynamicCollateralPrice {
                   let oracleRefInput =
@@ -221,20 +223,13 @@ fn tokens_sent_to_both_parties(
   lenderTokenPolicyId: ByteArray,
   inputUtxoId: ByteArray,
   lenderAddress: Address,
-  isLenderAPlutusPreV3Script: Bool,
+  lenderTokenOutputOptionalDatum: Datum,
 ) {
   and {
     quantity_of(mintedValue, borrowerTokenPolicyId, inputUtxoId) == 1,
     outputWithLenderToken.address == lenderAddress,
     quantity_of(outputWithLenderToken.value, lenderTokenPolicyId, inputUtxoId) == 1,
-    or {
-      isLenderAPlutusPreV3Script == False,
-      {
-        expect InlineDatum(outputDatum) = outputWithLenderToken.datum
-        expect parsedDatum: DummyLenderBondDatum = outputDatum
-        parsedDatum.preV3 == True
-      },
-    },
+    outputWithLenderToken.datum == lenderTokenOutputOptionalDatum,
     length(flatten(outputWithLenderToken.value)) <= 5,
   }
 }

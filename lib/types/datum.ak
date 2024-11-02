@@ -1,5 +1,13 @@
+//TODO KYC/KYB with Sundae
+//NOT DONE: Deferment (with and without interest accruement)
+//NOT DONE: Variable interest rate with oracle, eventual with min and max caps, eventual with first N installments at a fixed rate
+//Margin calls are done off-chain as soon as the oracle signals a too-low LTV.
+//Forgiveness in case of default is accomplished by sending the collateral back to the borrower in case of Full Collateral Claim.
+//If the penalty fee should be sent to an address different from the lender, then the lender nft must be locked in a dedicated contract that says so.
+//Loan refinancing is done spending the new loan and the old loan in the same tx.
 use cardano/address.{Address}
 use cardano/assets.{AssetName}
+use cardano/transaction.{Datum}
 use types/general.{Asset, CollateralAsset}
 
 pub type ConfigDatum {
@@ -7,16 +15,8 @@ pub type ConfigDatum {
   dutchAuctionStartingIncreasePerMille: Int,
 }
 
-//TODO KYC/KYB with Sundae
-//TODO CIP-113 support
-//TODO Deferment (with and without interest accruement)
-//TODO Variable interest rate with oracle, eventual with min and max caps, eventual with first N installments at a fixed rate
-//Margin calls are done off-chain as soon as the oracle signals a too-low LTV.
-//Forgiveness in case of default is accomplished by sending the collateral back to the borrower in case of Full Collateral Claim.
-//If the penalty fee should be sent to an address different from the lender, then the lender nft must be locked in a dedicated contract that says so.
-//Loan refinancing is done spending the new loan and the old loan in the same tx.
 pub type RepaymentMode {
-  //Express number of possible recasts. 0 means no recasting, negative means unlimited
+  //Amortization. Express number of possible recasts: 0 means no recasting, negative means unlimited
   InterestOnRemainingPrincipal { max_possible_recasts: Int }
   //Installment amount = Principal+Interest/Installments
   PrincipalAndInterestOnInstallments
@@ -56,7 +56,7 @@ pub type RequestDatum {
   commonData: CommonData,
   borrowerAuthHash: ByteArray,
   borrowerAddress: Address,
-  //This pool can cover multiple collections/token, but only one of them can be chosen for each loan (ie. no mixed bundle loans).
+  //This pool can cover multiple collections/tokens, but only one of them can be chosen for each loan (ie. no mixed bundle loans).
   //Important requirement: if liquidation is enabled, ALL the collateralOptions must have an oracle NFT
   collateralOptions: List<CollateralAsset>,
   //LTV for each collateral option (borrower can ask more using a multiple). If no oracle then this is the principal amount
@@ -71,19 +71,15 @@ pub type PoolDatum {
   lenderAuthHash: ByteArray,
   lenderAddress: Address,
   //This pool can cover multiple collections/token, but only one of them can be chosen for each loan (ie. no mixed bundle loans).
-  //Important requirement: if liquidation is enabled, ALL the collateralOptions must have an oracle NFT
+  //Important requirement: if Liquidation is enabled, ALL the collateralOptions must have an oracle NFT
   collateralOptions: List<CollateralAsset>,
   //LTV for each collateral option (borrower can ask more using a multiple). If no oracle then this is the principal amount
   principalLTV: List<Int>,
   principalLTVDivider: List<Int>,
   //True if borrowable amount of the collateralOptions must be updated through oracles
   dynamicCollateralPrice: Bool,
-  //If true, it places a fixed datum in the Lender bond output when lending
-  isLenderAPlutusPreV3Script: Bool,
-}
-
-pub type DummyLenderBondDatum {
-  preV3: Bool,
+  //Place this output in the output of the lender token, useful if the lender is a SC.
+  lenderTokenOutputOptionalDatum: Datum,
 }
 
 pub type ActiveDatum {
@@ -98,7 +94,7 @@ pub type ActiveDatum {
   doneRecasts: Int,
 }
 
-pub type DepositDatum {
+pub type RepaymentDatum {
   action: ByteArray,
   ownerAsset: Asset,
 }
