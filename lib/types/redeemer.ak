@@ -81,3 +81,12 @@ pub type ActiveAction {
 pub type ActiveWithdrawRedeemer {
   actionForEachInput: List<ActiveAction>,
 }
+
+pub type RepaymentAction {
+  WithdrawWithBond { bondInputIndex: Int }
+  WithdrawWithHash { auth: Authorization }
+}
+
+pub type RepaymentWithdrawRedeemer {
+  actionForEachInput: List<RepaymentAction>,
+}

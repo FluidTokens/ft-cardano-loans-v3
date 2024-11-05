@@ -2,24 +2,21 @@ use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use cardano/address.{Address, Credential, Script, StakeCredential}
 use cardano/assets.{AssetName, Value, add, flatten, quantity_of}
-use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
-}
+use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use finance.{
   can_liquidate, get_collateral_value_in_principal_currency, get_remaining_debt,
   get_repayment_amount, is_recasting_permitted, is_repayment_late,
 }
 use types/datum.{
-  ActiveDatum, DutchAuctionDatum, Liquidation, NoLiquidationDutchAuctionClaim,
-  NoLiquidationFullCollateralClaim, PoolDatum, RepaymentDatum,
+  ActiveDatum, Liquidation, NoLiquidationDutchAuctionClaim,
+  NoLiquidationFullCollateralClaim, RepaymentDatum, RepaymentDatumWithBond,
 }
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{ActiveWithdrawRedeemer, AddCollateral, Claim, Recast, Repay}
 use utils.{
-  address_in_signatures, get_config, get_inputs_from_sc_or_delegated_to_sc,
-  get_outputs_to_sc_or_delegated_to_sc, get_own_hash, is_nft_spent,
-  is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data, safe_list_at,
-  validate_oracle_ref_input, value_without_policy_id_as_list,
+  get_inputs_from_sc_or_delegated_to_sc, get_outputs_to_sc_or_delegated_to_sc,
+  is_nft_spent, is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data,
+  safe_list_at, validate_oracle_ref_input, value_without_policy_id_as_list,
 }
 
 validator activeLoan(
@@ -27,38 +24,7 @@ validator activeLoan(
   lenderTokenPolicyId: ByteArray,
   repaymentScriptHash: ByteArray,
   dutchAuctionScriptHash: ByteArray,
-  configNFTPolicyId: ByteArray,
-  configNFTAssetName: ByteArray,
 ) {
-  spend(
-    datumOpt: Option<PoolDatum>,
-    _redeemer: Data,
-    input: OutputReference,
-    self: Transaction,
-  ) {
-    if datumOpt == None {
-      address_in_signatures(
-        self.extra_signatories,
-        get_config(
-          safe_list_at(self.reference_inputs, 0),
-          configNFTPolicyId,
-          configNFTAssetName,
-        ).adminAddress,
-      )
-    } else {
-      let ownScriptHash = get_own_hash(input, self.inputs)
-      list.any(
-        self.withdrawals,
-        fn(withdrawal) {
-          when withdrawal is {
-            Pair(Script(scriptHash), _amnt) -> scriptHash == ownScriptHash
-            _ -> False
-          }
-        },
-      )
-    }
-  }
-
   withdraw(
     redeemer: ActiveWithdrawRedeemer,
     credential: Credential,
@@ -387,7 +353,10 @@ fn difference_sent_to_borrower(
   let borrowerAsset =
     Asset { policyId: borrowerTokenPolicyId, assetName: borrowerAssetName }
   let newDatum =
-    RepaymentDatum { action: "partial_liquidation", ownerAsset: borrowerAsset }
+    RepaymentDatumWithBond {
+      action: "partial_liquidation",
+      ownerAsset: borrowerAsset,
+    }
   let remainingAmount =
     collateralValueInPrincipalCurrency - totalDebtInPrincipalCurrency
 
@@ -422,7 +391,7 @@ fn validate_output_to_repayment(
 
   let lenderAsset =
     Asset { policyId: lenderTokenPolicyId, assetName: lenderAssetName }
-  let newDatum = RepaymentDatum { action, ownerAsset: lenderAsset }
+  let newDatum = RepaymentDatumWithBond { action, ownerAsset: lenderAsset }
   let isDatumCorrect = parsedDatum == newDatum
   let dosProtection = length(flatten(repaymentOutput.value)) <= 3
   and {

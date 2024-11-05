@@ -15,49 +15,17 @@ use types/redeemer.{
   Pooled,
 }
 use utils.{
-  address_in_signatures, authorize_action, get_config,
-  get_inputs_from_sc_or_delegated_to_sc, get_outputs_to_sc_or_delegated_to_sc,
-  get_own_hash, is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data,
-  safe_list_at, token_b_needed_to_purchase_token_a, validate_oracle_ref_input,
-  validity_range_within_an_hour,
+  authorize_action, get_inputs_from_sc_or_delegated_to_sc,
+  get_outputs_to_sc_or_delegated_to_sc, is_output_to_sc, quantity_of_policy_id,
+  retrieve_oracle_data, safe_list_at, token_b_needed_to_purchase_token_a,
+  validate_oracle_ref_input, validity_range_within_an_hour,
 }
 
 validator pool(
   borrowerTokenPolicyId: ByteArray,
   lenderTokenPolicyId: ByteArray,
   activeLoanScriptHash: ByteArray,
-  configNFTPolicyId: ByteArray,
-  configNFTAssetName: ByteArray,
 ) {
-  spend(
-    datumOpt: Option<Data>,
-    _redeemer: Data,
-    input: OutputReference,
-    self: Transaction,
-  ) {
-    if datumOpt == None {
-      address_in_signatures(
-        self.extra_signatories,
-        get_config(
-          safe_list_at(self.reference_inputs, 0),
-          configNFTPolicyId,
-          configNFTAssetName,
-        ).adminAddress,
-      )
-    } else {
-      let ownScriptHash = get_own_hash(input, self.inputs)
-      list.any(
-        self.withdrawals,
-        fn(withdrawal) {
-          when withdrawal is {
-            Pair(Script(scriptHash), _amnt) -> scriptHash == ownScriptHash
-            _ -> False
-          }
-        },
-      )
-    }
-  }
-
   withdraw(
     redeemer: PoolWithdrawRedeemer,
     credential: Credential,

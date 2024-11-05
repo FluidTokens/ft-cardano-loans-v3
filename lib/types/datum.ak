@@ -95,8 +95,8 @@ pub type ActiveDatum {
 }
 
 pub type RepaymentDatum {
-  action: ByteArray,
-  ownerAsset: Asset,
+  RepaymentDatumWithBond { action: ByteArray, ownerAsset: Asset }
+  RepaymentDatumWithHash { ownerAuthHash: ByteArray }
 }
 
 pub type DutchAuctionDatum {
