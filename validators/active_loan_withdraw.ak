@@ -8,7 +8,7 @@ use finance.{
   get_repayment_amount, is_recasting_permitted, is_repayment_late,
 }
 use types/datum.{
-  ActiveDatum, Liquidation, NoLiquidationDutchAuctionClaim,
+  ActiveDatum, DutchAuctionDatum, Liquidation, NoLiquidationDutchAuctionClaim,
   NoLiquidationFullCollateralClaim, RepaymentDatum, RepaymentDatumWithBond,
 }
 use types/general.{Asset, CollateralAsset}
@@ -538,5 +538,28 @@ fn validate_output_to_dutch_auction(
   dutchAuctionOutput: Output,
   validTo: Int,
 ) {
-  todo
+  expect InlineDatum(outputDatum) = dutchAuctionOutput.datum
+  expect parsedDatum: DutchAuctionDatum = outputDatum
+  let borrowerAddress = borrower_bond_input.output.address
+
+  //   let newDatum =
+  //     DutchAuctionDatum {
+  //       ownerAuthHash: lenderAuthHash,
+  //       ownerAddress: lenderAuthHash,
+  //       currency: datum.commonData.principalAsset,
+  //       startingPrice: get_remaining_debt() * dutchAuctionStartingIncreasePerMille / 1000,
+  //       loweringAmount: dutchAuctionLoweringAmount,
+  //       loweringFrequency: dutchAuctionLoweringFrequency,
+  //       minPriceToWithdraw: dutchAuctionMinPriceToWithdraw,
+  //       startDate: validTo,
+  //       liquidatedBorrowerAddress: borrowerAddress,
+  //       debtAmount: get_remaining_debt(),
+  //     }
+  let isDatumCorrect = True
+  //parsedDatum == newDatum
+  and {
+    is_output_to_sc(dutchAuctionOutput, dutchAuctionScriptHash),
+    activeLoanInput.output.value == dutchAuctionOutput.value,
+    isDatumCorrect,
+  }
 }
