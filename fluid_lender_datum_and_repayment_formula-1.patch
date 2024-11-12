@@ -1,0 +1,105 @@
+diff --git a/lib/finance.ak b/lib/finance.ak
+index 1718635..431831c 100644
+--- a/lib/finance.ak
++++ b/lib/finance.ak
+@@ -64,9 +64,12 @@ pub fn get_repayment_amount(
+           totalInstallments,
+         )
+       let denominator =
+-        rational_pow(
+-          rational.add(oneAsRational, interestPerInstallmentAsRational),
+-          totalInstallments - 1,
++        rational.sub(
++          rational_pow(
++            rational.add(oneAsRational, interestPerInstallmentAsRational),
++            totalInstallments
++          ),
++          oneAsRational
+         )
+       expect Some(result) = rational.div(numerator, denominator)
+       if isLate {
+diff --git a/lib/types/datum.ak b/lib/types/datum.ak
+index a39f47e..739cb60 100644
+--- a/lib/types/datum.ak
++++ b/lib/types/datum.ak
+@@ -6,7 +6,7 @@
+ //If the penalty fee should be sent to an address different from the lender, then the lender nft must be locked in a dedicated contract that says so.
+ //Loan refinancing is done spending the new loan and the old loan in the same tx.
+ use cardano/address.{Address}
+-use cardano/assets.{AssetName}
++use cardano/assets.{AssetName, Value}
+ use cardano/transaction.{Datum}
+ use types/general.{Asset, CollateralAsset}
+ 
+@@ -82,6 +82,18 @@ pub type PoolDatum {
+   lenderTokenOutputOptionalDatum: Datum,
+ }
+ 
++// Overkill on including PoolDatum, ActiveDatum since they overlap. Can change
++// it to not overlap at the expense of a bigger change.
++// Need this to be able to know know which repayments are real or fake in order
++// to count profit accurately. It also helps to avoid "fake loans" although
++// there are better ways of avoiding fake loans attributed to lender than
++// checking that the pool/loan properties are sane and ignoring the insane ones
++pub type LenderTokenOutputDatum {
++  poolDatum: PoolDatum,
++  activeLoanValue: Value,
++  activeLoanDatum: ActiveDatum,
++}
++
+ pub type ActiveDatum {
+   commonData: CommonData,
+   borrowerAssetName: AssetName,
+diff --git a/validators/pool_withdraw.ak b/validators/pool_withdraw.ak
+index 7481f78..d3b00d8 100644
+--- a/validators/pool_withdraw.ak
++++ b/validators/pool_withdraw.ak
+@@ -8,7 +8,7 @@ use cardano/assets.{Value, flatten, quantity_of}
+ use cardano/transaction.{
+   Datum, InlineDatum, Output, OutputReference, Transaction,
+ }
+-use types/datum.{ActiveDatum, Liquidation, PoolDatum}
++use types/datum.{ActiveDatum, Liquidation, PoolDatum, LenderTokenOutputDatum}
+ use types/general.{Asset, CollateralAsset}
+ use types/redeemer.{
+   Aggregated, Borrow, Cancel, Dedicated, OraclePriceFeed, PoolWithdrawRedeemer,
+@@ -107,8 +107,9 @@ validator pool(
+                   borrowerTokenPolicyId,
+                   lenderTokenPolicyId,
+                   inputUtxoId,
+-                  datum.lenderAddress,
+-                  datum.lenderTokenOutputOptionalDatum,
++                  datum,
++                  activeOutput.value,
++                  activeOutput.datum
+                 ),
+                 if datum.dynamicCollateralPrice {
+                   let oracleRefInput =
+@@ -190,14 +191,24 @@ fn tokens_sent_to_both_parties(
+   borrowerTokenPolicyId: ByteArray,
+   lenderTokenPolicyId: ByteArray,
+   inputUtxoId: ByteArray,
+-  lenderAddress: Address,
+-  lenderTokenOutputOptionalDatum: Datum,
++  poolDatum: PoolDatum,
++  activeLoanValue: Value,
++  unparsedActiveLoanDatum: Datum,
+ ) {
++  let lenderAddress = poolDatum.lenderAddress
++
++  // This is done in validate_output_to_active_with_oracle and
++  // validate_output_to_active_with_oracle so maybe factor them out?
++  expect InlineDatum(datum) = unparsedActiveLoanDatum
++  expect activeLoanDatum: ActiveDatum = datum
++
++  let expectedLenderTokenOutputDatum = LenderTokenOutputDatum{poolDatum, activeLoanValue, activeLoanDatum}
++
+   and {
+     quantity_of(mintedValue, borrowerTokenPolicyId, inputUtxoId) == 1,
+     outputWithLenderToken.address == lenderAddress,
+     quantity_of(outputWithLenderToken.value, lenderTokenPolicyId, inputUtxoId) == 1,
+-    outputWithLenderToken.datum == lenderTokenOutputOptionalDatum,
++    outputWithLenderToken.datum == InlineDatum(expectedLenderTokenOutputDatum),
+     length(flatten(outputWithLenderToken.value)) <= 5,
+   }
+ }

@@ -64,9 +64,12 @@ pub fn get_repayment_amount(
           totalInstallments,
         )
       let denominator =
-        rational_pow(
-          rational.add(oneAsRational, interestPerInstallmentAsRational),
-          totalInstallments - 1,
+        rational.sub(
+          rational_pow(
+            rational.add(oneAsRational, interestPerInstallmentAsRational),
+            totalInstallments
+          ),
+          oneAsRational
         )
       expect Some(result) = rational.div(numerator, denominator)
       if isLate {

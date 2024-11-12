@@ -5,10 +5,8 @@ use aiken/math/rational
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
 use cardano/assets.{Value, flatten, quantity_of}
-use cardano/transaction.{
-  Datum, InlineDatum, Output, OutputReference, Transaction,
-}
-use types/datum.{ActiveDatum, Liquidation, PoolDatum}
+use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
+use types/datum.{ActiveDatum, Liquidation, LoanInfoDatum, PoolDatum}
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
   Aggregated, Borrow, Cancel, Dedicated, OraclePriceFeed, PoolWithdrawRedeemer,
@@ -97,10 +95,58 @@ validator pool(
                 datum.commonData.principalAsset.assetName,
               ) - wantedPrincipal
 
+            let outputToActiveValidationResults =
+              if datum.dynamicCollateralPrice {
+                let oracleRefInput =
+                  safe_list_at(
+                    self.reference_inputs,
+                    chosenCollateralOracleInputIndex,
+                  )
+                expect Some(oraclePriceFeed) =
+                  retrieve_oracle_data(
+                    oracleRefInput,
+                    self.redeemers,
+                    end,
+                    chosenCollateral,
+                  )
+                expect
+                  validate_oracle_ref_input(
+                    oracleRefInput.output.value,
+                    chosenCollateral,
+                  ) == True
+                validate_output_to_active_with_oracle(
+                  activeOutput,
+                  activeLoanScriptHash,
+                  datum,
+                  chosenCollateral,
+                  chosenCollateralIndex,
+                  wantedPrincipal,
+                  inputUtxoId,
+                  end,
+                  borrowerAddress,
+                  oraclePriceFeed,
+                  isCIP113,
+                )
+              } else {
+                validate_output_to_active_no_oracle(
+                  activeOutput,
+                  activeLoanScriptHash,
+                  datum,
+                  chosenCollateral,
+                  chosenCollateralIndex,
+                  wantedPrincipal,
+                  inputUtxoId,
+                  end,
+                  borrowerAddress,
+                  isCIP113,
+                )
+              }
+
             let basicChecks = and {
                 wantedPrincipal > 0,
                 remainingAmount >= 0,
                 validity_range_within_an_hour(self),
+                outputToActiveValidationResults.1st,
                 tokens_sent_to_both_parties(
                   self.mint,
                   outputWithLenderToken,
@@ -108,54 +154,9 @@ validator pool(
                   lenderTokenPolicyId,
                   inputUtxoId,
                   datum.lenderAddress,
-                  datum.lenderTokenOutputOptionalDatum,
+                  datum.lenderTokenOutputMustHaveLoanInfoDatum,
+                  outputToActiveValidationResults.2nd,
                 ),
-                if datum.dynamicCollateralPrice {
-                  let oracleRefInput =
-                    safe_list_at(
-                      self.reference_inputs,
-                      chosenCollateralOracleInputIndex,
-                    )
-                  expect Some(oraclePriceFeed) =
-                    retrieve_oracle_data(
-                      oracleRefInput,
-                      self.redeemers,
-                      end,
-                      chosenCollateral,
-                    )
-                  and {
-                    validate_oracle_ref_input(
-                      oracleRefInput.output.value,
-                      chosenCollateral,
-                    ),
-                    validate_output_to_active_with_oracle(
-                      activeOutput,
-                      activeLoanScriptHash,
-                      datum,
-                      chosenCollateral,
-                      chosenCollateralIndex,
-                      wantedPrincipal,
-                      inputUtxoId,
-                      end,
-                      borrowerAddress,
-                      oraclePriceFeed,
-                      isCIP113,
-                    ),
-                  }
-                } else {
-                  validate_output_to_active_no_oracle(
-                    activeOutput,
-                    activeLoanScriptHash,
-                    datum,
-                    chosenCollateral,
-                    chosenCollateralIndex,
-                    wantedPrincipal,
-                    inputUtxoId,
-                    end,
-                    borrowerAddress,
-                    isCIP113,
-                  )
-                },
               }
             and {
               basicChecks,
@@ -191,13 +192,17 @@ fn tokens_sent_to_both_parties(
   lenderTokenPolicyId: ByteArray,
   inputUtxoId: ByteArray,
   lenderAddress: Address,
-  lenderTokenOutputOptionalDatum: Datum,
+  lenderTokenOutputMustHaveLoanInfoDatum: Bool,
+  lenderBondOutputDatum: LoanInfoDatum,
 ) {
   and {
     quantity_of(mintedValue, borrowerTokenPolicyId, inputUtxoId) == 1,
     outputWithLenderToken.address == lenderAddress,
     quantity_of(outputWithLenderToken.value, lenderTokenPolicyId, inputUtxoId) == 1,
-    outputWithLenderToken.datum == lenderTokenOutputOptionalDatum,
+    or {
+      lenderTokenOutputMustHaveLoanInfoDatum == False,
+      outputWithLenderToken.datum == InlineDatum(lenderBondOutputDatum),
+    },
     length(flatten(outputWithLenderToken.value)) <= 5,
   }
 }
@@ -213,7 +218,7 @@ fn validate_output_to_active_no_oracle(
   end: Int,
   borrowerAddress: Address,
   isCIP113: Bool,
-) {
+) -> (Bool, LoanInfoDatum) {
   expect Some(singleRequiredAmount) =
     list.at(poolDatum.principalLTV, chosenCollateralIndex)
   expect Some(principalDivider) =
@@ -267,13 +272,13 @@ fn validate_output_to_active_no_oracle(
       output.address.stake_credential == borrowerAddress.stake_credential,
     }
   let dosProtection = length(flatten(output.value)) <= 21
-  and {
-    toCorrectStaking,
-    is_output_to_sc(output, activeLoanScriptHash),
-    containsCorrectCollateral,
-    isDatumCorrect,
-    dosProtection,
-  }
+  (and {
+      toCorrectStaking,
+      is_output_to_sc(output, activeLoanScriptHash),
+      containsCorrectCollateral,
+      isDatumCorrect,
+      dosProtection,
+    }, newDatum)
 }
 
 fn validate_output_to_active_with_oracle(
@@ -288,7 +293,7 @@ fn validate_output_to_active_with_oracle(
   borrowerAddress: Address,
   oraclePriceFeed: OraclePriceFeed,
   isCIP113: Bool,
-) {
+) -> (Bool, LoanInfoDatum) {
   expect Some(ltv) = list.at(poolDatum.principalLTV, chosenCollateralIndex)
   expect Some(ltvDivider) =
     list.at(poolDatum.principalLTVDivider, chosenCollateralIndex)
@@ -365,13 +370,13 @@ fn validate_output_to_active_with_oracle(
     }
 
   let dosProtection = length(flatten(output.value)) <= 21
-  and {
-    toCorrectStaking,
-    is_output_to_sc(output, activeLoanScriptHash),
-    containsCorrectCollateral,
-    isDatumCorrect,
-    dosProtection,
-  }
+  (and {
+      toCorrectStaking,
+      is_output_to_sc(output, activeLoanScriptHash),
+      containsCorrectCollateral,
+      isDatumCorrect,
+      dosProtection,
+    }, newDatum)
 }
 
 //Expects remainingAmount > 0

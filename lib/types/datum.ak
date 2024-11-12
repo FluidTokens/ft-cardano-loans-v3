@@ -7,7 +7,6 @@
 //Loan refinancing is done spending the new loan and the old loan in the same tx.
 use cardano/address.{Address}
 use cardano/assets.{AssetName}
-use cardano/transaction.{Datum}
 use types/general.{Asset, CollateralAsset}
 
 pub type ConfigDatum {
@@ -78,9 +77,13 @@ pub type PoolDatum {
   principalLTVDivider: List<Int>,
   //True if borrowable amount of the collateralOptions must be updated through oracles
   dynamicCollateralPrice: Bool,
-  //Place this output in the output of the lender token, useful if the lender is a SC.
-  lenderTokenOutputOptionalDatum: Datum,
+  //If true, the output of lender's bond contains LoanInfoDatum, useful if the lender is a SC to do onchain validation.
+  lenderTokenOutputMustHaveLoanInfoDatum: Bool,
 }
+
+//Optional datum of the lender's bond output 
+pub type LoanInfoDatum =
+  ActiveDatum
 
 pub type ActiveDatum {
   commonData: CommonData,
