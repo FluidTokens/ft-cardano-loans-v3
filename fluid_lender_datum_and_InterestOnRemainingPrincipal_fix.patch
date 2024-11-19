@@ -19,39 +19,49 @@ index 1718635..431831c 100644
        expect Some(result) = rational.div(numerator, denominator)
        if isLate {
 diff --git a/lib/types/datum.ak b/lib/types/datum.ak
-index a39f47e..739cb60 100644
+index a39f47e..ead6822 100644
 --- a/lib/types/datum.ak
 +++ b/lib/types/datum.ak
-@@ -6,7 +6,7 @@
+@@ -6,8 +6,7 @@
  //If the penalty fee should be sent to an address different from the lender, then the lender nft must be locked in a dedicated contract that says so.
  //Loan refinancing is done spending the new loan and the old loan in the same tx.
  use cardano/address.{Address}
 -use cardano/assets.{AssetName}
+-use cardano/transaction.{Datum}
 +use cardano/assets.{AssetName, Value}
- use cardano/transaction.{Datum}
  use types/general.{Asset, CollateralAsset}
  
-@@ -82,6 +82,18 @@ pub type PoolDatum {
-   lenderTokenOutputOptionalDatum: Datum,
- }
- 
-+// Overkill on including PoolDatum, ActiveDatum since they overlap. Can change
-+// it to not overlap at the expense of a bigger change.
-+// Need this to be able to know know which repayments are real or fake in order
-+// to count profit accurately. It also helps to avoid "fake loans" although
-+// there are better ways of avoiding fake loans attributed to lender than
-+// checking that the pool/loan properties are sane and ignoring the insane ones
-+pub type LenderTokenOutputDatum {
-+  poolDatum: PoolDatum,
-+  activeLoanValue: Value,
-+  activeLoanDatum: ActiveDatum,
+ pub type ConfigDatum {
+@@ -79,7 +78,26 @@ pub type PoolDatum {
+   //True if borrowable amount of the collateralOptions must be updated through oracles
+   dynamicCollateralPrice: Bool,
+   //Place this output in the output of the lender token, useful if the lender is a SC.
+-  lenderTokenOutputOptionalDatum: Datum,
++  lenderTokenOutputAdditionalData: Data,
 +}
 +
++// It would be nice to also include Pool information as well as collateral value
++// in principal units in the LenderTokenOutputDatum.
++//
++// However since faking loans attributed to a lender is current possible we only
++// care about having the loan information to verify profit/loss onchain in the
++// legitimate loan case. Fake repayments can also skew profit/loss onchain
++// verification, but that's less of an issue.
++//
++// Additionally, to verify profit/loss onchain for the lender for
++// totalInstallments > 1 with the `InterestOnRemainingPrincipal` mode the
++// repayments would also need to include their repayment count. We'd probably
++// need more information in the recasts case but I haven't actually looked into
++// what recasts are.
++pub type LenderTokenOutputDatum {
++  activeLoanValue: Value,
++  activeLoanDatum: ActiveDatum,
++  additionalData: Data
+ }
+ 
  pub type ActiveDatum {
-   commonData: CommonData,
-   borrowerAssetName: AssetName,
 diff --git a/validators/pool_withdraw.ak b/validators/pool_withdraw.ak
-index 7481f78..d3b00d8 100644
+index 7481f78..179657c 100644
 --- a/validators/pool_withdraw.ak
 +++ b/validators/pool_withdraw.ak
 @@ -8,7 +8,7 @@ use cardano/assets.{Value, flatten, quantity_of}
@@ -75,7 +85,7 @@ index 7481f78..d3b00d8 100644
                  ),
                  if datum.dynamicCollateralPrice {
                    let oracleRefInput =
-@@ -190,14 +191,24 @@ fn tokens_sent_to_both_parties(
+@@ -190,14 +191,26 @@ fn tokens_sent_to_both_parties(
    borrowerTokenPolicyId: ByteArray,
    lenderTokenPolicyId: ByteArray,
    inputUtxoId: ByteArray,
@@ -86,13 +96,15 @@ index 7481f78..d3b00d8 100644
 +  unparsedActiveLoanDatum: Datum,
  ) {
 +  let lenderAddress = poolDatum.lenderAddress
++  let additionalData = poolDatum.lenderTokenOutputAdditionalData
 +
 +  // This is done in validate_output_to_active_with_oracle and
 +  // validate_output_to_active_with_oracle so maybe factor them out?
 +  expect InlineDatum(datum) = unparsedActiveLoanDatum
 +  expect activeLoanDatum: ActiveDatum = datum
 +
-+  let expectedLenderTokenOutputDatum = LenderTokenOutputDatum{poolDatum, activeLoanValue, activeLoanDatum}
++  let expectedLenderTokenOutputDatum =
++    LenderTokenOutputDatum{activeLoanValue, activeLoanDatum, additionalData}
 +
    and {
      quantity_of(mintedValue, borrowerTokenPolicyId, inputUtxoId) == 1,
