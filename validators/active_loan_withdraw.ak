@@ -209,6 +209,7 @@ validator activeLoan(
                 nextRepaymentAmount,
                 datum.lenderAssetName,
                 "installment_repayment",
+                datum.repaidInstallments + 1,
               ),
               or {
                 datum.repaidInstallments == datum.commonData.totalInstallments - 1,
@@ -297,6 +298,7 @@ validator activeLoan(
                 principalPaid,
                 datum.lenderAssetName,
                 "recast",
+                None,
               ),
               or {
                 debtAfterRecasting == 0,
@@ -355,6 +357,7 @@ fn difference_sent_to_borrower(
   let newDatum =
     RepaymentDatumWithBond {
       action: "partial_liquidation",
+      data: None,
       ownerAsset: borrowerAsset,
     }
   let remainingAmount =
@@ -385,13 +388,15 @@ fn validate_output_to_repayment(
   repaymentAmount: Int,
   lenderAssetName: AssetName,
   action: ByteArray,
+  extra_data: Data,
 ) {
   expect InlineDatum(outputDatum) = repaymentOutput.datum
   expect parsedDatum: RepaymentDatum = outputDatum
 
   let lenderAsset =
     Asset { policyId: lenderTokenPolicyId, assetName: lenderAssetName }
-  let newDatum = RepaymentDatumWithBond { action, ownerAsset: lenderAsset }
+  let newDatum =
+    RepaymentDatumWithBond { action, data: extra_data, ownerAsset: lenderAsset }
   let isDatumCorrect = parsedDatum == newDatum
   let dosProtection = length(flatten(repaymentOutput.value)) <= 3
   and {

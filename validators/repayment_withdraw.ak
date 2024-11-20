@@ -39,12 +39,12 @@ validator repayment {
 
         when redeemerAction is {
           WithdrawWithBond(bondInputIndex) -> {
-            expect RepaymentDatumWithBond(_action, ownerAsset) = datum
+            expect RepaymentDatumWithBond(_action, _data, ownerAsset) = datum
             expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
             is_nft_spent(ownerAsset.policyId, ownerAsset.assetName, bondInput)
           }
           WithdrawWithHash(auth) -> {
-            expect RepaymentDatumWithHash(ownerAuthHash) = datum
+            expect RepaymentDatumWithHash(_action, _data, ownerAuthHash) = datum
             and {
               ownerAuthHash == auth.hash,
               authorize_action(
