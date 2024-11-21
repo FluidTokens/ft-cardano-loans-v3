@@ -90,3 +90,12 @@ pub type RepaymentAction {
 pub type RepaymentWithdrawRedeemer {
   actionForEachInput: List<RepaymentAction>,
 }
+
+pub type DutchAuctionAction {
+  DA_Cancel
+  DA_Buy
+}
+
+pub type DutchAuctionRedeemer {
+  actionForEachInput: List<DutchAuctionAction>,
+}
