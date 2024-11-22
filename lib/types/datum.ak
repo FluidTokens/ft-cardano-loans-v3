@@ -13,6 +13,9 @@ use types/general.{Asset, CollateralAsset}
 pub type ConfigDatum {
   adminAddress: Address,
   dutchAuctionStartingIncreasePerMille: Int,
+  dutchAuctionLoweringAmount: Int,
+  dutchAuctionLoweringFrequency: Int,
+  dutchAuctionMinPriceToCancel: Int,
 }
 
 pub type RepaymentMode {
@@ -106,12 +109,12 @@ pub type DutchAuctionDatum {
   startingPrice: Int,
   loweringAmount: Int,
   loweringFrequency: Int,
-  minPriceToWithdraw: Int,
+  minPriceToCancel: Int,
   startDate: Int,
   //If present it means it's a ducth auction from a liquidated asset:
   //The lender must get max principal+interest
   //The borrower gets the difference if the earning from the auction are > what lender should get
-  liquidatedBorrowerAddress: Option<Address>,
+  borrowerAddress: Option<Address>,
   //Used only if liquidatedBorrowerAddress is not None, it's how much the lender should get
   debtAmount: Int,
 }

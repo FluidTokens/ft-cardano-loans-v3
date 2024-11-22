@@ -66,6 +66,10 @@ pub type ActiveAction {
     bondInputIndex: Int,
     //If loan doesn't use oracle, this is not used
     collateralOracleInputIndex: Int,
+    //Used only when an auction must start as part of liquidation
+    lenderAuthHash: ByteArray,
+    //Used only when an auction must start as part of liquidation
+    lenderAddress: Address,
   }
   //Borrower action
   Repay {

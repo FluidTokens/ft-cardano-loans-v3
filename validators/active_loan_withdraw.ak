@@ -8,8 +8,9 @@ use finance.{
   get_repayment_amount, is_recasting_permitted, is_repayment_late,
 }
 use types/datum.{
-  ActiveDatum, DutchAuctionDatum, Liquidation, NoLiquidationDutchAuctionClaim,
-  NoLiquidationFullCollateralClaim, RepaymentDatum, RepaymentDatumWithBond,
+  ActiveDatum, ConfigDatum, DutchAuctionDatum, Liquidation,
+  NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
+  RepaymentDatum, RepaymentDatumWithBond,
 }
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{ActiveWithdrawRedeemer, AddCollateral, Claim, Recast, Repay}
@@ -53,7 +54,12 @@ validator activeLoan(
         let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
 
         when redeemerAction is {
-          Claim(bondInputIndex, collateralOracleInputIndex) -> {
+          Claim(
+            bondInputIndex,
+            collateralOracleInputIndex,
+            lenderAuthHash,
+            lenderAddress,
+          ) -> {
             expect Some(actualBondInput) = list.at(self.inputs, bondInputIndex)
             and {
               is_nft_spent(
@@ -97,6 +103,11 @@ validator activeLoan(
                       actualBondInput,
                       dutchAuctionOutput,
                       validTo,
+                      lenderAuthHash,
+                      lenderAddress,
+                      datum.commonData.principalAsset,
+                      remainingDebt,
+                      config,
                     ),
                   }
                 }
@@ -537,26 +548,30 @@ fn validate_output_to_dutch_auction(
   borrower_bond_input: Input,
   dutchAuctionOutput: Output,
   validTo: Int,
+  lenderAuthHash: ByteArray,
+  lenderAddress: Address,
+  principalAsset: Asset,
+  remainingDebt: Int,
+  config: ConfigDatum,
 ) {
   expect InlineDatum(outputDatum) = dutchAuctionOutput.datum
   expect parsedDatum: DutchAuctionDatum = outputDatum
   let borrowerAddress = borrower_bond_input.output.address
 
-  //   let newDatum =
-  //     DutchAuctionDatum {
-  //       ownerAuthHash: lenderAuthHash,
-  //       ownerAddress: lenderAuthHash,
-  //       currency: datum.commonData.principalAsset,
-  //       startingPrice: get_remaining_debt() * dutchAuctionStartingIncreasePerMille / 1000,
-  //       loweringAmount: dutchAuctionLoweringAmount,
-  //       loweringFrequency: dutchAuctionLoweringFrequency,
-  //       minPriceToWithdraw: dutchAuctionMinPriceToWithdraw,
-  //       startDate: validTo,
-  //       liquidatedBorrowerAddress: borrowerAddress,
-  //       debtAmount: get_remaining_debt(),
-  //     }
-  let isDatumCorrect = True
-  //parsedDatum == newDatum
+  let newDatum =
+    DutchAuctionDatum {
+      ownerAuthHash: lenderAuthHash,
+      ownerAddress: lenderAddress,
+      currency: principalAsset,
+      startingPrice: remainingDebt * config.dutchAuctionStartingIncreasePerMille / 1000,
+      loweringAmount: config.dutchAuctionLoweringAmount,
+      loweringFrequency: config.dutchAuctionLoweringFrequency,
+      minPriceToCancel: config.dutchAuctionMinPriceToCancel,
+      startDate: validTo,
+      borrowerAddress: Some(borrowerAddress),
+      debtAmount: remainingDebt,
+    }
+  let isDatumCorrect = parsedDatum == newDatum
   and {
     is_output_to_sc(dutchAuctionOutput, dutchAuctionScriptHash),
     activeLoanInput.output.value == dutchAuctionOutput.value,

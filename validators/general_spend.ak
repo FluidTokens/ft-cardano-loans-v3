@@ -1,16 +1,16 @@
-//All money to parties are sent here so they can withdraw them
 use aiken/collection/list
 use cardano/address.{Script}
 use cardano/transaction.{OutputReference, Transaction}
+use types/datum.{PoolDatum}
 use utils.{address_in_signatures, get_config, safe_list_at}
 
-validator repayment(
-  repaymentWithdrawScriptHash: ByteArray,
+validator general_spend(
+  withdrawScriptHash: ByteArray,
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
 ) {
   spend(
-    datumOpt: Option<Data>,
+    datumOpt: Option<PoolDatum>,
     _redeemer: Data,
     _input: OutputReference,
     self: Transaction,
@@ -29,8 +29,7 @@ validator repayment(
         self.withdrawals,
         fn(withdrawal) {
           when withdrawal is {
-            Pair(Script(scriptHash), _amnt) ->
-              scriptHash == repaymentWithdrawScriptHash
+            Pair(Script(scriptHash), _amnt) -> scriptHash == withdrawScriptHash
             _ -> False
           }
         },
