@@ -25,6 +25,8 @@ validator activeLoan(
   lenderTokenPolicyId: ByteArray,
   repaymentScriptHash: ByteArray,
   dutchAuctionScriptHash: ByteArray,
+  configNFTPolicyId: ByteArray,
+  configNFTAssetName: ByteArray,
 ) {
   withdraw(
     redeemer: ActiveWithdrawRedeemer,
@@ -56,7 +58,8 @@ validator activeLoan(
         when redeemerAction is {
           Claim(
             bondInputIndex,
-            collateralOracleInputIndex,
+            configRefInputIndex,
+            collateralOracleRefInputIndex,
             lenderAuthHash,
             lenderAddress,
           ) -> {
@@ -80,6 +83,8 @@ validator activeLoan(
                 NoLiquidationDutchAuctionClaim -> {
                   expect Finite(validTo) =
                     self.validity_range.upper_bound.bound_type
+                  let configRefInput =
+                    safe_list_at(self.reference_inputs, configRefInputIndex)
                   expect Some(dutchAuctionOutput) =
                     list.at(
                       get_outputs_to_sc_or_delegated_to_sc(
@@ -106,8 +111,19 @@ validator activeLoan(
                       lenderAuthHash,
                       lenderAddress,
                       datum.commonData.principalAsset,
-                      remainingDebt,
-                      config,
+                      get_remaining_debt(
+                        datum.commonData.repaymentMode,
+                        datum.principalAmount,
+                        datum.principalDivider,
+                        datum.commonData.interestRate,
+                        datum.commonData.totalInstallments,
+                        datum.repaidInstallments,
+                      ),
+                      utils.get_config(
+                        configRefInput,
+                        configNFTPolicyId,
+                        configNFTAssetName,
+                      ),
                     ),
                   }
                 }
@@ -115,7 +131,7 @@ validator activeLoan(
                   let oracleRefInput =
                     safe_list_at(
                       self.reference_inputs,
-                      collateralOracleInputIndex,
+                      collateralOracleRefInputIndex,
                     )
                   expect Some(oraclePriceFeed) =
                     retrieve_oracle_data(

@@ -64,6 +64,8 @@ pub type ActiveAction {
   Claim {
     //This is the absolute input index that contains the lender bond
     bondInputIndex: Int,
+    //Global config ref input
+    configRefInputIndex: Int,
     //If loan doesn't use oracle, this is not used
     collateralOracleInputIndex: Int,
     //Used only when an auction must start as part of liquidation
