@@ -37,6 +37,7 @@ pub type LiquidationMode {
 }
 
 pub type CommonData {
+  poolIdTokenName: AssetName,
   principalAsset: Asset,
   //Per mille of the loan to repay to lender
   interestRate: Int,
@@ -70,6 +71,7 @@ pub type RequestDatum {
 
 pub type PoolDatum {
   commonData: CommonData,
+  loanScriptHash: ByteArray,
   lenderAuthHash: ByteArray,
   lenderAddress: Address,
   //This pool can cover multiple collections/token, but only one of them can be chosen for each loan (ie. no mixed bundle loans).

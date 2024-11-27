@@ -1,4 +1,5 @@
 use cardano/address.{Address}
+use cardano/transaction.{OutputReference}
 use types/general.{Asset, Authorization}
 
 //Tokens that have a lot of liquidity are in CEX. The price is in lovelace
@@ -42,11 +43,17 @@ pub type OracleRedeemer {
   signatures: List<Signature>,
 }
 
+pub type PoolMintRedeemer {
+  PoolMintCreate {
+    inputRef: OutputReference,
+  }
+  PoolMintClose
+}
+
 pub type PoolAction {
-  Cancel { auth: Authorization }
+  Cancel{ auth: Authorization }
   Borrow {
     borrowerAddress: Address,
-    outputWithLenderTokenIndex: Int,
     //Asset that the borrower is providing, must be accepted by the pool
     chosenCollateralIndex: Int,
     //If collateral doesn't use oracle, this must be -1
