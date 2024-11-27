@@ -64,8 +64,14 @@ pub type ActiveAction {
   Claim {
     //This is the absolute input index that contains the lender bond
     bondInputIndex: Int,
+    //Global config ref input
+    configRefInputIndex: Int,
     //If loan doesn't use oracle, this is not used
     collateralOracleInputIndex: Int,
+    //Used only when an auction must start as part of liquidation
+    lenderAuthHash: ByteArray,
+    //Used only when an auction must start as part of liquidation
+    lenderAddress: Address,
   }
   //Borrower action
   Repay {
@@ -89,4 +95,13 @@ pub type RepaymentAction {
 
 pub type RepaymentWithdrawRedeemer {
   actionForEachInput: List<RepaymentAction>,
+}
+
+pub type DutchAuctionAction {
+  DA_Cancel
+  DA_Buy
+}
+
+pub type DutchAuctionRedeemer {
+  actionForEachInput: List<DutchAuctionAction>,
 }
