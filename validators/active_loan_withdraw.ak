@@ -13,22 +13,22 @@ use finance.{
   get_repayment_amount, is_recasting_permitted, is_repayment_late,
 }
 use types/datum.{
-  ActiveDatum, DutchAuctionDatum, Liquidation, NoLiquidationDutchAuctionClaim,
-  NoLiquidationFullCollateralClaim, PoolDatum, RepaymentDatum,
-  RepaymentDatumWithBond, ConfigDatum,
+  ActiveDatum, ConfigDatum, DutchAuctionDatum, Liquidation,
+  NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim, PoolDatum,
+  RepaymentDatum, RepaymentDatumWithBond,
 }
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
   ActiveAction, ActiveWithdrawRedeemer, AddCollateral, Claim, Recast, Repay,
 }
 use utils.{
-  has_exact_loan_id, has_exact_repayment_id, has_loan_id, has_pool_id,
-  hash_output_ref, hash_to_borrower_id_token_name, hash_to_lender_id_token_name,
-  hash_to_loan_id_token_name, hash_to_repayment_id_token_name, is_nft_spent,
-  is_output_to_sc, loan_id_header, output_to_policy_id_token_name_with_header,
-  quantity_of_policy_id, repayment_id_header, replace_first_byte,
-  retrieve_oracle_data, safe_list_at, token_name_has_header,
-  validate_oracle_ref_input, value_without_policy_id_as_list,
+  has_loan_id, has_pool_id, hash_output_ref, hash_to_borrower_id_token_name,
+  hash_to_lender_id_token_name, hash_to_loan_id_token_name,
+  hash_to_repayment_id_token_name, is_nft_spent, is_output_to_sc, loan_id_header,
+  output_to_policy_id_token_name_with_header, quantity_of_policy_id,
+  repayment_id_header, replace_first_byte, retrieve_oracle_data, safe_list_at,
+  token_name_has_header, validate_oracle_ref_input, value_has_exact_id_header,
+  value_without_policy_id_as_list,
 }
 
 pub type LoanMintRedeemer {
@@ -283,7 +283,12 @@ validator loan(
 // for each pair, drops outputs until it sees relevant outputs for the action.
 // It then validates the pool input action pair against the output group. Then
 // it repeats recursively until there are no more pool inputs or a result was
-// false.
+// false. This allows not linearly scanning because list[index] is O(n), but
+// maybe this isn't that much of a problem?
+//
+// NOTE: Instead of dropping outputs while looking for the relevant outupts for
+// an action, we can enforce no spaces between relevant inputs to be a bit more
+// efficient.
 pub fn validate_loan_actions(
   loanInputActionPairs: List<((AssetName, Input), ActiveAction)>,
   arePrevActionsValid: Bool,
@@ -340,9 +345,14 @@ pub fn validate_loan_actions(
                   loanInputDatum.commonData.repaymentTimeWindow,
                 )
 
-              let (isLiquidationValid, remainingOutputs) =
+              let (
+                isLiquidationValid,
+                remainingOutputs,
+                mintedLiquidationIdValue,
+              ) =
                 when loanInputDatum.commonData.liquidationMode is {
-                  NoLiquidationFullCollateralClaim -> (isRepaymentLate, outputs)
+                  NoLiquidationFullCollateralClaim ->
+                    (isRepaymentLate, outputs, assets.zero)
                   NoLiquidationDutchAuctionClaim -> {
                     expect Finite(validTo) =
                       tx.validity_range.upper_bound.bound_type
@@ -384,7 +394,7 @@ pub fn validate_loan_actions(
                         ),
                       }
 
-                    (isDutchAuctionClaimValid, remainingOutputs)
+                    (isDutchAuctionClaimValid, remainingOutputs, assets.zero)
                   }
                   Liquidation(ltv, ltvDivider, partialLiquidation) -> {
                     let oracleRefInput =
@@ -414,17 +424,22 @@ pub fn validate_loan_actions(
                         loanInputDatum.collateral,
                       )
 
-                    let (isPartialLiquidationValid, remainingOutputs) =
+                    let (
+                      isPartialLiquidationValid,
+                      remainingOutputs,
+                      mintedRepaymentIdValue,
+                    ) =
                       if !partialLiquidation {
-                        (True, outputs)
+                        (True, outputs, assets.zero)
                       } else {
                         validate_borrower_leftover_output(
                           outputs,
-                          loanInputDatum,
                           loanScriptHash,
+                          loanInput.output_reference,
+                          loanInputDatum,
                           borrowerIdTokenName,
-                          "partial_liquidation",
                           repaymentScriptHash,
+                          "partial_liquidation",
                           collateralValueInPrincipalCurrency,
                         )
                       }
@@ -446,7 +461,11 @@ pub fn validate_loan_actions(
                         isPartialLiquidationValid,
                       }
 
-                    (isLiquidationValid, remainingOutputs)
+                    (
+                      isLiquidationValid,
+                      remainingOutputs,
+                      mintedRepaymentIdValue,
+                    )
                   }
                 }
 
@@ -456,8 +475,11 @@ pub fn validate_loan_actions(
                 }
 
               // The loan is closed in every case so we must burn the loanId
-              let mintedValue =
+              let mintedLoanIdValue =
                 assets.from_asset(loanIdPolicyId, loanIdTokenName, -1)
+
+              let mintedValue =
+                assets.merge(mintedLoanIdValue, mintedLiquidationIdValue)
 
               (isClaimValid, remainingOutputs, mintedValue)
             }
@@ -619,13 +641,14 @@ pub fn validate_loan_actions(
 
 fn validate_borrower_leftover_output(
   outputs: List<Output>,
-  loanInputDatum: ActiveDatum,
   loanPolicyId: PolicyId,
+  loanInputRef: OutputReference,
+  loanInputDatum: ActiveDatum,
   borrowerIdTokenName: AssetName,
-  repaymentActionName: ByteArray,
   repaymentScriptHash: ScriptHash,
+  repaymentActionName: ByteArray,
   collateralValueAsPrincipal: Int,
-) -> (Bool, List<Output>) {
+) -> (Bool, List<Output>, Value) {
   let borrowerDebt =
     get_remaining_debt(
       loanInputDatum.commonData.repaymentMode,
@@ -639,7 +662,7 @@ fn validate_borrower_leftover_output(
   let leftoverAmount = collateralValueAsPrincipal - borrowerDebt
 
   if leftoverAmount <= 0 {
-    (True, outputs)
+    (True, outputs, assets.zero)
   } else {
     expect [repaymentOutput, ..remainingOutputs] =
       list.drop_while(
@@ -647,15 +670,25 @@ fn validate_borrower_leftover_output(
         fn(output) { !is_output_to_sc(output, repaymentScriptHash) },
       )
 
+    let loanInputRefHash = hash_output_ref(loanInputRef)
+    let repaymentIdTokenName = hash_to_repayment_id_token_name(loanInputRefHash)
+
     let isValueValid = {
       let principalPolicyId = loanInputDatum.commonData.principalAsset.policyId
       let principalAssetName =
         loanInputDatum.commonData.principalAsset.assetName
-      assets.quantity_of(
-        repaymentOutput.value,
-        principalPolicyId,
-        principalAssetName,
-      ) == leftoverAmount
+      and {
+        assets.quantity_of(
+          repaymentOutput.value,
+          loanPolicyId,
+          repaymentIdTokenName,
+        ) == 1,
+        assets.quantity_of(
+          repaymentOutput.value,
+          principalPolicyId,
+          principalAssetName,
+        ) == leftoverAmount,
+      }
     }
 
     let borrowerAsset =
@@ -668,8 +701,8 @@ fn validate_borrower_leftover_output(
       let expectedRepaymentOutputDatum =
         RepaymentDatumWithBond {
           action: repaymentActionName,
-          data: 0,
           // dummy value
+          data: 0,
           ownerAsset: borrowerAsset,
         }
       repaymentOutputDatum == expectedRepaymentOutputDatum
@@ -680,7 +713,9 @@ fn validate_borrower_leftover_output(
         isDatumValid,
       }
 
-    (isValid, remainingOutputs)
+    let mintedValue = assets.from_asset(loanPolicyId, repaymentIdTokenName, 1)
+
+    (isValid, remainingOutputs, mintedValue)
   }
 }
 
@@ -703,14 +738,7 @@ fn validate_repayment_output(
   expect [repaymentOutput, ..remainingOutputs] =
     list.drop_while(
       outputs,
-      fn(output) {
-        !has_exact_repayment_id(
-          output,
-          loanPolicyId,
-          loanInputRefHash,
-          repaymentScriptHash,
-        )
-      },
+      fn(output) { !is_output_to_sc(output, repaymentScriptHash) },
     )
 
   let isRepaymentLate =
@@ -740,9 +768,17 @@ fn validate_repayment_output(
   let repaymentIdTokenName =
     replace_first_byte(loanInputRefHash, repayment_id_header)
 
-  // repaymentId token is checked in `has_exact_repayment_id`
-  let isValueValid =
-    quantity_of(repaymentOutput.value, principalPolicyId, principalAssetName) >= repaymentAmount
+  let loanInputRefHash = hash_output_ref(loanInputRef)
+
+  let isValueValid = and {
+      value_has_exact_id_header(
+        repaymentOutput.value,
+        loanPolicyId,
+        loanInputRefHash,
+        repayment_id_header,
+      ),
+      quantity_of(repaymentOutput.value, principalPolicyId, principalAssetName) >= repaymentAmount,
+    }
 
   let isDatumValid = {
     expect InlineDatum(rawRepaymentOutputDatum) = repaymentOutput.datum
@@ -760,7 +796,8 @@ fn validate_repayment_output(
 
     repaymentOutputDatum == expectedRepaymentOutputDatum
   }
-  // payment credential is checked by `has_exact_repayment_id` but do we care
+
+  // payment credential is checked by `is_output_to_sc` but do we care
   // about the stake credential?
   let isRepaymentOutputValid = and {
       isValueValid,
@@ -789,10 +826,13 @@ fn validate_repay_loan_output(
     expect [loanOutput, ..remainingOutputs] =
       list.drop_while(
         outputs,
-        fn(output) { !has_exact_loan_id(output, loanPolicyId, loanIdTokenName) },
+        fn(output) { !is_output_to_sc(output, loanPolicyId) },
       )
 
-    let isValueValid = loanOutput.value == loanInputValue
+    let isValueValid = and {
+        assets.quantity_of(loanOutput.value, loanPolicyId, loanIdTokenName) == 1,
+        loanOutput.value == loanInputValue,
+      }
 
     let isDatumValid = {
       expect InlineDatum(outputDatum) = loanOutput.datum
@@ -807,7 +847,8 @@ fn validate_repay_loan_output(
       loanOutputDatum == expectedLoanOutputDatum
     }
 
-    // address is checked by `has_exact_loan_id`
+    // address is checked by `is_output_to_sc` but do we care about the stake
+    // credential?
     let isLoanOutputValid = and {
         isValueValid,
         isDatumValid,
@@ -837,7 +878,7 @@ fn validate_add_collateral_loan_output(
   expect [loanOutput, ..remainingOutputs] =
     list.drop_while(
       outputs,
-      fn(output) { !has_exact_loan_id(output, loanPolicyId, loanIdTokenName) },
+      fn(output) { !is_output_to_sc(output, loanPolicyId) },
     )
 
   let isAddressValid =
@@ -845,31 +886,38 @@ fn validate_add_collateral_loan_output(
 
   let isValueValid = {
     let collateralPolicyId = loanInputDatum.collateral.policyId
-    when loanInputDatum.collateral.maybeAssetName is {
-      None -> {
-        let loanInputCollateralAmount =
-          quantity_of_policy_id(loanInputValue, collateralPolicyId)
-        let loanOutputCollateralAmount =
-          quantity_of_policy_id(loanOutput.value, collateralPolicyId)
-        let loanInputValueWithoutCollateral =
-          value_without_policy_id_as_list(loanInputValue, collateralPolicyId)
-        let loanOutputValueWithoutCollateral =
-          value_without_policy_id_as_list(loanOutput.value, collateralPolicyId)
-        and {
-          loanOutputCollateralAmount == loanInputCollateralAmount + addedCollateralAmount,
-          loanOutputValueWithoutCollateral == loanInputValueWithoutCollateral,
+
+    and {
+      assets.quantity_of(loanOutput.value, loanPolicyId, loanIdTokenName) == 1,
+      when loanInputDatum.collateral.maybeAssetName is {
+        None -> {
+          let loanInputCollateralAmount =
+            quantity_of_policy_id(loanInputValue, collateralPolicyId)
+          let loanOutputCollateralAmount =
+            quantity_of_policy_id(loanOutput.value, collateralPolicyId)
+          let loanInputValueWithoutCollateral =
+            value_without_policy_id_as_list(loanInputValue, collateralPolicyId)
+          let loanOutputValueWithoutCollateral =
+            value_without_policy_id_as_list(
+              loanOutput.value,
+              collateralPolicyId,
+            )
+          and {
+            loanOutputCollateralAmount == loanInputCollateralAmount + addedCollateralAmount,
+            loanOutputValueWithoutCollateral == loanInputValueWithoutCollateral,
+          }
         }
-      }
-      Some(collateralAssetName) -> {
-        let expectedLoanOutputValue =
-          assets.add(
-            loanInputValue,
-            collateralPolicyId,
-            collateralAssetName,
-            addedCollateralAmount,
-          )
-        loanOutput.value == expectedLoanOutputValue
-      }
+        Some(collateralAssetName) -> {
+          let expectedLoanOutputValue =
+            assets.add(
+              loanInputValue,
+              collateralPolicyId,
+              collateralAssetName,
+              addedCollateralAmount,
+            )
+          loanOutput.value == expectedLoanOutputValue
+        }
+      },
     }
   }
 
@@ -934,7 +982,7 @@ fn validate_recast_loan_output(
     expect [loanOutput, ..remainingOutputs] =
       list.drop_while(
         outputs,
-        fn(output) { !has_exact_loan_id(output, loanPolicyId, loanIdTokenName) },
+        fn(output) { !is_output_to_sc(output, loanPolicyId) },
       )
 
     let isAddressValid =
@@ -944,7 +992,10 @@ fn validate_recast_loan_output(
         isCIP113,
       )
 
-    let isValueValid = loanOutput.value == loanInputValue
+    let isValueValid = and {
+        assets.quantity_of(loanOutput.value, loanPolicyId, loanIdTokenName) == 1,
+        loanOutput.value == loanInputValue,
+      }
 
     let isDatumValid = {
       expect InlineDatum(rawLoanOutputDatum) = loanOutput.datum

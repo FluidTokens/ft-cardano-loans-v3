@@ -231,7 +231,12 @@ validator pool {
 // for each pair, drops outputs until it sees a (loanOutput, lenderOutput,
 // mbPoolOutput) group. It then validates the pool input action pair against the
 // output group. Then it repeats recursively until there are no more pool inputs
-// or a result was false.
+// or a result was false. This allows not linearly scanning because list[index]
+// is O(n), but maybe this isn't that much of a problem?
+//
+// NOTE: Instead of dropping outputs while looking for the relevant outputs for
+// an action, we can enforce no spaces between relevant inputs to be a bit more
+// efficient.
 pub fn validate_pool_actions(
   poolInputActionPairs: List<(Input, PoolAction)>,
   arePrevPoolActionsValid: Bool,
