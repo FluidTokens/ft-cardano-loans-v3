@@ -22,9 +22,8 @@ use utils.{
   hash_to_borrower_id_token_name, hash_to_lender_id_token_name,
   hash_to_loan_id_token_name, is_output_to_sc, is_pool_id_token_name,
   pool_id_header, quantity_of_policy_id, retrieve_oracle_data, safe_list_at,
-  token_b_needed_to_purchase_token_a, token_name_has_header,
-  validate_oracle_ref_input, validity_range_within_an_hour,
-  value_to_policy_id_token_name_with_header,
+  token_b_needed_to_purchase_token_a, validate_oracle_ref_input,
+  validity_range_within_an_hour, value_to_policy_id_token_name_with_header,
 }
 
 validator pool {
@@ -113,37 +112,15 @@ validator pool {
           isEachMintedTokenAccountedFor,
         }
       }
-      // Ensure there is a pool input for each poolId we burn.
-      PoolMintClose -> {
-        let poolInputs =
-          list.filter(
-            self.inputs,
-            fn(input) { has_pool_id(input.output, poolPolicyId) },
-          )
-
-        let mintedPoolPolicyIdTokenNameQuantityPairs =
-          dict.to_pairs(assets.tokens(self.mint, poolPolicyId))
-
+      // If we are burning pool policy id tokens, then they must be poolIds. If
+      // they are poolIds, then they must be at the pool script address.
+      // However we must make sure that every such pool policy id token minted
+      // are burns.
+      PoolMintClose ->
         list.all(
-          mintedPoolPolicyIdTokenNameQuantityPairs,
-          fn(Pair(tokenName, quantity)) {
-            and {
-              quantity == -1,
-              token_name_has_header(tokenName, pool_id_header),
-              list.any(
-                poolInputs,
-                fn(poolInput) {
-                  assets.quantity_of(
-                    poolInput.output.value,
-                    poolPolicyId,
-                    tokenName,
-                  ) == 1
-                },
-              ),
-            }
-          },
+          dict.values(assets.tokens(self.mint, poolPolicyId)),
+          fn(quantity) { quantity == -1 },
         )
-      }
     }
   }
 
