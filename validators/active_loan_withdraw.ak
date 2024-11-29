@@ -23,12 +23,11 @@ use types/redeemer.{
 }
 use utils.{
   has_pool_id, hash_output_ref, hash_to_borrower_id_token_name,
-  hash_to_lender_id_token_name, hash_to_loan_id_token_name,
-  hash_to_repayment_id_token_name, is_nft_spent, is_output_to_sc, loan_id_header,
-  output_to_policy_id_token_name_with_header, quantity_of_policy_id,
-  repayment_id_header, replace_first_byte, retrieve_oracle_data, safe_list_at,
-  token_name_has_header, validate_oracle_ref_input, value_has_exact_id_header,
-  value_without_policy_id_as_list,
+  hash_to_lender_id_token_name, hash_to_loan_id_token_name, is_nft_spent,
+  is_output_to_sc, loan_id_header, output_to_policy_id_token_name_with_header,
+  quantity_of_policy_id, repayment_id_header, replace_first_byte,
+  retrieve_oracle_data, safe_list_at, token_name_has_header,
+  validate_oracle_ref_input, value_without_policy_id_as_list,
 }
 
 pub type LoanMintRedeemer {
@@ -449,7 +448,7 @@ pub fn validate_loan_actions(
                         validate_borrower_leftover_output(
                           outputs,
                           loanScriptHash,
-                          loanInput.output_reference,
+                          loanIdTokenName,
                           loanInputDatum,
                           borrowerIdTokenName,
                           repaymentScriptHash,
@@ -516,7 +515,7 @@ pub fn validate_loan_actions(
                 validate_repayment_output(
                   outputs,
                   loanScriptHash,
-                  loanInput.output_reference,
+                  loanIdTokenName,
                   loanInputDatum,
                   lenderIdTokenName,
                   repaymentScriptHash,
@@ -598,7 +597,7 @@ pub fn validate_loan_actions(
                 validate_repayment_output(
                   outputs,
                   loanScriptHash,
-                  loanInput.output_reference,
+                  loanIdTokenName,
                   loanInputDatum,
                   lenderIdTokenName,
                   repaymentScriptHash,
@@ -656,7 +655,7 @@ pub fn validate_loan_actions(
 fn validate_borrower_leftover_output(
   outputs: List<Output>,
   loanPolicyId: PolicyId,
-  loanInputRef: OutputReference,
+  loanIdTokenName: AssetName,
   loanInputDatum: ActiveDatum,
   borrowerIdTokenName: AssetName,
   repaymentScriptHash: ScriptHash,
@@ -684,8 +683,8 @@ fn validate_borrower_leftover_output(
         fn(output) { !is_output_to_sc(output, repaymentScriptHash) },
       )
 
-    let loanInputRefHash = hash_output_ref(loanInputRef)
-    let repaymentIdTokenName = hash_to_repayment_id_token_name(loanInputRefHash)
+    let repaymentIdTokenName =
+      replace_first_byte(loanIdTokenName, repayment_id_header)
 
     let isValueValid = {
       let principalPolicyId = loanInputDatum.commonData.principalAsset.policyId
@@ -740,15 +739,13 @@ fn validate_borrower_leftover_output(
 fn validate_repayment_output(
   outputs: List<Output>,
   loanPolicyId: PolicyId,
-  loanInputRef: OutputReference,
+  loanIdTokenName: AssetName,
   loanInputDatum: ActiveDatum,
   lenderIdTokenName: AssetName,
   repaymentScriptHash: ScriptHash,
   repaymentActionName: ByteArray,
   validFrom: Int,
 ) -> (Bool, List<Output>, Value) {
-  let loanInputRefHash = hash_output_ref(loanInputRef)
-
   expect [repaymentOutput, ..remainingOutputs] =
     list.drop_while(
       outputs,
@@ -780,17 +777,11 @@ fn validate_repayment_output(
   let principalAssetName = loanInputDatum.commonData.principalAsset.assetName
 
   let repaymentIdTokenName =
-    replace_first_byte(loanInputRefHash, repayment_id_header)
+    replace_first_byte(loanIdTokenName, repayment_id_header)
 
-  let loanInputRefHash = hash_output_ref(loanInputRef)
-
+  // do we care about DOS protection?
   let isValueValid = and {
-      value_has_exact_id_header(
-        repaymentOutput.value,
-        loanPolicyId,
-        loanInputRefHash,
-        repayment_id_header,
-      ),
+      quantity_of(repaymentOutput.value, loanPolicyId, repaymentIdTokenName) == 1,
       quantity_of(repaymentOutput.value, principalPolicyId, principalAssetName) >= repaymentAmount,
     }
 
