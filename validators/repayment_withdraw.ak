@@ -1,6 +1,7 @@
 //All money to parties are sent here so they can withdraw them
 use aiken/collection/list.{length}
 use cardano/address.{Credential, Script}
+use cardano/assets
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use types/datum.{RepaymentDatum, RepaymentDatumWithBond, RepaymentDatumWithHash}
 use types/general.{Asset}
@@ -9,7 +10,7 @@ use types/redeemer.{
 }
 use utils.{
   authorize_action, get_inputs_from_sc_or_delegated_to_sc, is_nft_spent,
-  safe_list_at,
+  repayment_id_header, replace_first_byte, safe_list_at,
 }
 
 validator repayment {
@@ -41,7 +42,22 @@ validator repayment {
           WithdrawWithBond(bondInputIndex) -> {
             expect RepaymentDatumWithBond(_action, _data, ownerAsset) = datum
             expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
-            is_nft_spent(ownerAsset.policyId, ownerAsset.assetName, bondInput)
+            let repaymentIdTokenName =
+              replace_first_byte(ownerAsset.assetName, repayment_id_header)
+            and {
+              is_nft_spent(ownerAsset.policyId, ownerAsset.assetName, bondInput),
+              // Repayment ids are (loanPolicyId, repayment_id_header<loanIdTail>)
+              // Owner assets so far are either:
+              // (loanPolicyId, borrower_id_header<loanIdTail>)
+              // (loanPolicyId, lender_id_header<loanIdTail>)
+              // We burn the repayment ids so they can't be repurposed to make
+              // fake repayments.
+              assets.quantity_of(
+                self.mint,
+                ownerAsset.policyId,
+                repaymentIdTokenName,
+              ) == -1,
+            }
           }
           WithdrawWithHash(auth) -> {
             expect RepaymentDatumWithHash(_action, _data, ownerAuthHash) = datum

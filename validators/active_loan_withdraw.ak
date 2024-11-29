@@ -714,8 +714,7 @@ fn validate_borrower_leftover_output(
       let expectedRepaymentOutputDatum =
         RepaymentDatumWithBond {
           action: repaymentActionName,
-          // dummy value
-          data: 0,
+          data: loanInputDatum,
           ownerAsset: borrowerAsset,
         }
       repaymentOutputDatum == expectedRepaymentOutputDatum
@@ -795,7 +794,8 @@ fn validate_repayment_output(
     let expectedRepaymentOutputDatum =
       RepaymentDatumWithBond {
         action: repaymentActionName,
-        data: loanInputDatum.repaidInstallments + 1,
+        // NOTE: repaid installments doesn't include this repayment
+        data: loanInputDatum,
         ownerAsset: lenderAsset,
       }
 

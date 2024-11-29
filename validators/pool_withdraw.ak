@@ -11,7 +11,7 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, find_input,
   find_script_outputs,
 }
-use types/datum.{ActiveDatum, Liquidation, LoanInfoDatum, PoolDatum}
+use types/datum.{ActiveDatum, Liquidation, PoolDatum}
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
   Aggregated, Borrow, Cancel, Dedicated, PoolAction, PoolMintClose,
@@ -340,7 +340,6 @@ pub fn validate_pool_actions(
                 validate_lender_output(
                   lenderOutput,
                   loanScriptHash,
-                  loanOutput,
                   poolInputRefHash,
                   poolInputDatum,
                 )
@@ -530,7 +529,6 @@ fn validate_loan_output(
 fn validate_lender_output(
   lenderOutput: Output,
   loanScriptHash: ScriptHash,
-  loanOutput: Output,
   poolInputRefHash: ByteArray,
   poolInputDatum: PoolDatum,
 ) -> Bool {
@@ -541,20 +539,7 @@ fn validate_lender_output(
   let isValueValid =
     quantity_of(lenderOutput.value, loanScriptHash, lenderIdTokenName) == 1
 
-  // when not `lenderTokenOutputMustHaveLoanInfoDatum` any datum is allowed but
-  // be careful not to use no datum if outputting to script hash
-  let isDatumValid = or {
-      poolInputDatum.lenderTokenOutputMustHaveLoanInfoDatum == False,
-      {
-        expect InlineDatum(rawLenderOutputDatum) = lenderOutput.datum
-        expect lenderOutputDatum: LoanInfoDatum = rawLenderOutputDatum
-
-        expect InlineDatum(rawLoanDatum) = loanOutput.datum
-        expect loanDatum: ActiveDatum = rawLoanDatum
-
-        lenderOutputDatum == loanDatum
-      },
-    }
+  let isDatumValid = True
 
   and {
     isAddressValid,
