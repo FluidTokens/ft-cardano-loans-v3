@@ -22,7 +22,7 @@ use types/redeemer.{
   ActiveAction, ActiveWithdrawRedeemer, AddCollateral, Claim, Recast, Repay,
 }
 use utils.{
-  has_loan_id, has_pool_id, hash_output_ref, hash_to_borrower_id_token_name,
+  has_pool_id, hash_output_ref, hash_to_borrower_id_token_name,
   hash_to_lender_id_token_name, hash_to_loan_id_token_name,
   hash_to_repayment_id_token_name, is_nft_spent, is_output_to_sc, loan_id_header,
   output_to_policy_id_token_name_with_header, quantity_of_policy_id,
@@ -129,10 +129,16 @@ validator loan(
       // validators. Each Loan action should determine the exact number of Loan
       // policy id tokens minted and where they go.
       LoanMint -> {
-        let loanInputs =
-          list.filter(
+        let loanInputIdTokenNames =
+          list.filter_map(
             tx.inputs,
-            fn(input) { has_loan_id(input.output, loanPolicyId) },
+            fn(input) {
+              output_to_policy_id_token_name_with_header(
+                input.output,
+                loanPolicyId,
+                loan_id_header,
+              )
+            },
           )
 
         let mintedLoanPolicyIdTokenNameQuantityPairs =
@@ -144,32 +150,40 @@ validator loan(
             or {
               and {
                 quantity == 1,
+                // When creating repayment ids we want them to have the same
+                // token name tail as the loan id. This way when collecting
+                // repayments we can know which repayments are ours onchain due
+                // to the fact that the lender id has the same token name tail
+                // (and policy id) as the repayment id allowing us to perfectly
+                // validate profit calculations.
                 token_name_has_header(tokenName, repayment_id_header),
                 list.any(
-                  loanInputs,
-                  fn(loanInput) {
-                    let loanInputRefHash =
-                      hash_output_ref(loanInput.output_reference)
+                  loanInputIdTokenNames,
+                  fn(loanInputIdTokenName) {
                     let repaymentIdTokenName =
-                      hash_to_repayment_id_token_name(loanInputRefHash)
+                      replace_first_byte(
+                        loanInputIdTokenName,
+                        repayment_id_header,
+                      )
 
                     tokenName == repaymentIdTokenName
                   },
                 ),
               },
               and {
-                quantity == -1,
-                token_name_has_header(tokenName, loan_id_header),
-                list.any(
-                  loanInputs,
-                  fn(loanInput) {
-                    assets.quantity_of(
-                      loanInput.output.value,
-                      loanPolicyId,
-                      tokenName,
-                    ) == 1
-                  },
-                ),
+                quantity < 0,
+                or {
+                  // LoanIds are always at Loan script address so burning it
+                  // requires it be an input to the tx which means it was spent
+                  // which meant it was validated by withdraw validator which
+                  // means the burn reason and amount was validated.
+                  token_name_has_header(tokenName, loan_id_header),
+                  // RepaymentIds go to the Repayment script address when
+                  // created. It would be nice to burn them when the repayment
+                  // is picked up, but if not it doesn't hurt to allow them to
+                  // be burned arbitrarily after pick up.
+                  token_name_has_header(tokenName, repayment_id_header),
+                },
               },
             }
           },
