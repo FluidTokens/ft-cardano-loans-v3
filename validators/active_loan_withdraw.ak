@@ -34,7 +34,7 @@ use utils.{
 
 pub type LoanMintRedeemer {
   LoanMintPoolBorrow {
-    // sort by input ref hash tail
+    // sort by input ref hash tail to avoid O(n^2) pool input hashing
     poolInputs: List<OutputReference>,
   }
   LoanMint
