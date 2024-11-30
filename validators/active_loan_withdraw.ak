@@ -23,13 +23,12 @@ use types/redeemer.{
   ActiveAction, ActiveWithdrawRedeemer, AddCollateral, Claim, Recast, Repay,
 }
 use utils.{
-  borrower_id_header, has_pool_id, hash_output_ref,
-  hash_to_borrower_id_token_name, hash_to_lender_id_token_name,
-  hash_to_loan_id_token_name, is_nft_spent, is_output_to_sc, lender_id_header,
-  loan_id_header, output_to_policy_id_token_name_with_header,
-  quantity_of_policy_id, repayment_id_header, replace_first_byte,
-  retrieve_oracle_data, safe_list_at, token_name_has_header,
-  validate_oracle_ref_input, value_without_policy_id_as_list,
+  borrower_id_header, has_pool_id, hash_output_ref, is_nft_spent,
+  is_output_to_sc, lender_id_header, loan_id_header,
+  output_to_policy_id_token_name_with_header, quantity_of_policy_id,
+  repayment_id_header, replace_first_byte, retrieve_oracle_data, safe_list_at,
+  token_name_has_header, validate_oracle_ref_input,
+  value_without_policy_id_as_list,
 }
 
 pub type LoanMintRedeemer {
