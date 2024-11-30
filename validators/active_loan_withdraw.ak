@@ -74,105 +74,68 @@ validator loan(
       // This means when minting Loan policy id tokens during a Pool Borrow we
       // need to check that the Pool has its datum loanScriptHash equal to this
       // Loan script hash.
-      // If we have a redeemer list sorted by tail pool_input_ref_hash_tail:
-      // poolARef, poolBRef, ...
+      //
+      // For efficiency:
+      //
+      // Assuming we have a redeemer list sorted by tail
+      // pool_input_ref_hash_tail: poolARef, poolBRef, ...
       //
       // The minted token names will be sorted
-      // 00<poolA_hash_tail>, 00<poolB_hash_tail>, 01<poolA_hash_tail>,
-      // 01<poolB_hash_tail>, 02<poolA_hash_tail>, 02<poolB_hash_tail>, ...
+      // 0<poolA_hash_tail>, 0<poolB_hash_tail>, 1<poolA_hash_tail>,
+      // 1<poolB_hash_tail>, 2<poolA_hash_tail>, 2<poolB_hash_tail>, ...
       //
-      // We need to then check poolARef is spent, and poolBRef is spent.
-      // Then unpack the first 3 minted token names (loan, lender, borrower)
-      // check the tails of each match. Then continue with the next remaining
-      // minted tokens
+      // We need to make sure that the redeemer input ref list are spent, and
+      // actually pools. 
+      //
+      // Then we need to make sure that the minted loan policy id tokens map to
+      // these pools.
       LoanMintPoolBorrow(poolInputRefs) -> {
         let mintedLoanPolicyIdTokenNameQuantityPairs =
           dict.to_pairs(assets.tokens(tx.mint, loanPolicyId))
 
-        let (mintedLoanIdTokenNames, remainingMintedTokenNames1) =
-          list.partition(
-            mintedLoanPolicyIdTokenNameQuantityPairs,
-            fn(Pair(tokenName, _quantity)) {
-              token_name_has_header(tokenName, loan_id_header)
-            },
-          )
-        let (mintedLenderIdTokenNames, remainingMintedTokenNames2) =
-          list.partition(
-            remainingMintedTokenNames1,
-            fn(Pair(tokenName, _quantity)) {
-              token_name_has_header(tokenName, lender_id_header)
-            },
-          )
-        let (mintedBorrowerIdTokenNames, remainingMintedTokenNames3) =
-          list.partition(
-            remainingMintedTokenNames2,
-            fn(Pair(tokenName, _quantity)) {
-              token_name_has_header(tokenName, borrower_id_header)
-            },
-          )
-
-        let arePoolInputRefsSpent =
-          list.all(
+        let poolInputRefHashTails =
+          list.filter_map(
             poolInputRefs,
             fn(poolInputRef) {
               expect Some(poolInput) = find_input(tx.inputs, poolInputRef)
-              let isPoolLoanScriptHashValid =
-                when poolInput.output.datum is {
-                  InlineDatum(datum) ->
-                    if datum is PoolDatum {
-                      datum.loanScriptHash == loanPolicyId
-                    } else {
-                      False
-                    }
-                  _ -> False
+
+              let isPoolLoanScriptHashValid = {
+                expect InlineDatum(rawInputDatum) = poolInput.output.datum
+                expect poolInputDatum: PoolDatum = rawInputDatum
+                poolInputDatum.loanScriptHash == loanPolicyId
+              }
+
+              let isPoolInputValid = and {
+                  has_pool_id(poolInput.output, poolScriptHash),
+                  isPoolLoanScriptHashValid,
                 }
-              and {
-                has_pool_id(poolInput.output, poolScriptHash),
-                isPoolLoanScriptHashValid,
+
+              if isPoolInputValid {
+                let poolInputRefHash = hash_output_ref(poolInputRef)
+                Some(bytearray.drop(poolInputRefHash, 1))
+              } else {
+                None
               }
             },
           )
 
-        let poolInputRefHashTails =
-          list.map(
-            poolInputRefs,
-            fn(inputRef) {
-              let hash = hash_output_ref(inputRef)
-              bytearray.drop(hash, 1)
+        let expectedMintedTokenNames =
+          list.flat_map(
+            [loan_id_header, lender_id_header, borrower_id_header],
+            fn(header) {
+              list.map(
+                poolInputRefHashTails,
+                fn(hashTail) {
+                  let hash = bytearray.push(hashTail, header)
+                  Pair(hash, 1)
+                },
+              )
             },
           )
 
-        let poolInputCount = length(poolInputRefs)
-
-        let areMintedTokenNamesValid =
-          list.all(
-            [
-              mintedLoanIdTokenNames, mintedLenderIdTokenNames,
-              mintedBorrowerIdTokenNames,
-            ],
-            fn(mintedTokenNames) {
-              and {
-                poolInputCount == length(mintedTokenNames),
-                list.all(
-                  list.zip(poolInputRefHashTails, mintedTokenNames),
-                  fn((expectedTokenNameTail, Pair(mintedTokenName, quantity))) {
-                    let actualTokenNameTail = bytearray.drop(mintedTokenName, 1)
-                    and {
-                      actualTokenNameTail == expectedTokenNameTail,
-                      quantity == 1,
-                    }
-                  },
-                )
-              }
-            },
-          )
-        and {
-          // ensures only loan, lender, borrower tokens are minted
-          list.is_empty(remainingMintedTokenNames3),
-          arePoolInputRefsSpent,
-          areMintedTokenNamesValid,
-        }
+        mintedLoanPolicyIdTokenNameQuantityPairs == expectedMintedTokenNames
       }
+
       // Ensure there is a Loan input corresponding to each minted token.
       //
       // How many tokens are minted and where they go are the responsibility of
