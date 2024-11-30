@@ -93,7 +93,7 @@ validator loan(
           dict.to_pairs(assets.tokens(tx.mint, loanPolicyId))
 
         let poolInputRefHashTails =
-          list.filter_map(
+          list.map(
             poolInputRefs,
             fn(poolInputRef) {
               expect Some(poolInput) = find_input(tx.inputs, poolInputRef)
@@ -104,17 +104,13 @@ validator loan(
                 poolInputDatum.loanScriptHash == loanPolicyId
               }
 
-              let isPoolInputValid = and {
+              expect and {
                   has_pool_id(poolInput.output, poolScriptHash),
                   isPoolLoanScriptHashValid,
                 }
 
-              if isPoolInputValid {
-                let poolInputRefHash = hash_output_ref(poolInputRef)
-                Some(bytearray.drop(poolInputRefHash, 1))
-              } else {
-                None
-              }
+              let poolInputRefHash = hash_output_ref(poolInputRef)
+              bytearray.drop(poolInputRefHash, 1)
             },
           )
 
