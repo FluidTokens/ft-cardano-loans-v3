@@ -103,7 +103,7 @@ validator loan(
               token_name_has_header(tokenName, lender_id_header)
             },
           )
-        let (mintedBorrowerIdTokenNames, _remainingMintedTokenNames3) =
+        let (mintedBorrowerIdTokenNames, remainingMintedTokenNames3) =
           list.partition(
             remainingMintedTokenNames2,
             fn(Pair(tokenName, _quantity)) {
@@ -133,6 +133,17 @@ validator loan(
             },
           )
 
+        let poolInputRefHashTails =
+          list.map(
+            poolInputRefs,
+            fn(inputRef) {
+              let hash = hash_output_ref(inputRef)
+              bytearray.drop(hash, 1)
+            },
+          )
+
+        let poolInputCount = length(poolInputRefs)
+
         let areMintedTokenNamesValid =
           list.all(
             [
@@ -140,22 +151,24 @@ validator loan(
               mintedBorrowerIdTokenNames,
             ],
             fn(mintedTokenNames) {
-              list.all(
-                list.zip(poolInputRefs, mintedTokenNames),
-                fn((poolInputRef, Pair(mintedTokenName, quantity))) {
-                  let poolInputRefHash = hash_output_ref(poolInputRef)
-                  let actualTokenNameTail = bytearray.drop(mintedTokenName, 1)
-                  let expectedTokenNameTail =
-                    bytearray.drop(poolInputRefHash, 1)
-                  and {
-                    actualTokenNameTail == expectedTokenNameTail,
-                    quantity == 1,
-                  }
-                },
-              )
+              and {
+                poolInputCount == length(mintedTokenNames),
+                list.all(
+                  list.zip(poolInputRefHashTails, mintedTokenNames),
+                  fn((expectedTokenNameTail, Pair(mintedTokenName, quantity))) {
+                    let actualTokenNameTail = bytearray.drop(mintedTokenName, 1)
+                    and {
+                      actualTokenNameTail == expectedTokenNameTail,
+                      quantity == 1,
+                    }
+                  },
+                )
+              }
             },
           )
         and {
+          // ensures only loan, lender, borrower tokens are minted
+          list.is_empty(remainingMintedTokenNames3),
           arePoolInputRefsSpent,
           areMintedTokenNamesValid,
         }
