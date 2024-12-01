@@ -9,8 +9,8 @@ use types/redeemer.{
   RepaymentWithdrawRedeemer, WithdrawWithBond, WithdrawWithHash,
 }
 use utils.{
-  authorize_action, get_inputs_from_sc_or_delegated_to_sc, is_nft_spent,
-  repayment_id_header, replace_first_byte, safe_list_at,
+  authorize_action, get_inputs_from_sc_or_delegated_to_sc,
+  hash_to_repayment_id_token_name, is_nft_spent, safe_list_at,
 }
 
 validator repayment {
@@ -43,7 +43,7 @@ validator repayment {
             expect RepaymentDatumWithBond(_action, _data, ownerAsset) = datum
             expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
             let repaymentIdTokenName =
-              replace_first_byte(ownerAsset.assetName, repayment_id_header)
+              hash_to_repayment_id_token_name(ownerAsset.assetName)
             and {
               is_nft_spent(ownerAsset.policyId, ownerAsset.assetName, bondInput),
               // Repayment ids are (loanPolicyId, repayment_id_header<loanIdTail>)

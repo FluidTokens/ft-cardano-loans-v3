@@ -23,10 +23,10 @@ use types/redeemer.{
   ActiveAction, ActiveWithdrawRedeemer, AddCollateral, Claim, Recast, Repay,
 }
 use utils.{
-  borrower_id_header, has_pool_id, hash_output_ref, is_nft_spent,
-  is_output_to_sc, lender_id_header, loan_id_header,
-  output_to_policy_id_token_name_with_header, quantity_of_policy_id,
-  repayment_id_header, replace_first_byte, retrieve_oracle_data, safe_list_at,
+  borrower_id_header, has_pool_id, hash_output_ref,
+  hash_to_repayment_id_token_name, is_nft_spent, is_output_to_sc,
+  lender_id_header, loan_id_header, output_to_policy_id_token_name_with_header,
+  quantity_of_policy_id, repayment_id_header, retrieve_oracle_data, safe_list_at,
   token_name_has_header, validate_oracle_ref_input,
   value_without_policy_id_as_list,
 }
@@ -172,10 +172,7 @@ validator loan(
                   loanInputIdTokenNames,
                   fn(loanInputIdTokenName) {
                     let repaymentIdTokenName =
-                      replace_first_byte(
-                        loanInputIdTokenName,
-                        repayment_id_header,
-                      )
+                      hash_to_repayment_id_token_name(loanInputIdTokenName)
 
                     tokenName == repaymentIdTokenName
                   },
@@ -695,8 +692,7 @@ fn validate_borrower_leftover_output(
         fn(output) { !is_output_to_sc(output, repaymentScriptHash) },
       )
 
-    let repaymentIdTokenName =
-      replace_first_byte(loanIdTokenName, repayment_id_header)
+    let repaymentIdTokenName = hash_to_repayment_id_token_name(loanIdTokenName)
 
     let isValueValid = {
       let principalPolicyId = loanInputDatum.commonData.principalAsset.policyId
@@ -787,8 +783,7 @@ fn validate_repayment_output(
   let principalPolicyId = loanInputDatum.commonData.principalAsset.policyId
   let principalAssetName = loanInputDatum.commonData.principalAsset.assetName
 
-  let repaymentIdTokenName =
-    replace_first_byte(loanIdTokenName, repayment_id_header)
+  let repaymentIdTokenName = hash_to_repayment_id_token_name(loanIdTokenName)
 
   // do we care about DOS protection?
   let isValueValid = and {

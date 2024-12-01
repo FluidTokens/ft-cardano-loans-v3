@@ -18,12 +18,13 @@ use types/redeemer.{
   PoolMintCreate, PoolMintRedeemer, PoolWithdrawRedeemer, Pooled,
 }
 use utils.{
-  authorize_action, has_exact_loan_id, has_pool_id, hash_output_ref,
+  authorize_action, has_pool_id, hash_output_ref,
   hash_to_borrower_id_token_name, hash_to_lender_id_token_name,
-  hash_to_loan_id_token_name, is_output_to_sc, is_pool_id_token_name,
-  pool_id_header, quantity_of_policy_id, retrieve_oracle_data, safe_list_at,
-  token_b_needed_to_purchase_token_a, validate_oracle_ref_input,
-  validity_range_within_an_hour, value_to_policy_id_token_name_with_header,
+  hash_to_loan_id_token_name, is_output_to_sc, pool_id_header,
+  quantity_of_policy_id, retrieve_oracle_data, safe_list_at,
+  token_b_needed_to_purchase_token_a, token_name_has_header,
+  validate_oracle_ref_input, validity_range_within_an_hour,
+  value_to_policy_id_token_name_with_header,
 }
 
 validator pool {
@@ -63,7 +64,8 @@ validator pool {
           list.all(
             mintedOwnPolicyIdTokenNameQuantityPairs,
             fn(Pair(tokenName, quantity)) {
-              let isPoolIdTokenName = is_pool_id_token_name(tokenName)
+              let isPoolIdTokenName =
+                token_name_has_header(tokenName, pool_id_header)
 
               let matchesInputRefHash =
                 bytearray.drop(tokenName, 2) == bytearray.drop(inputRefHash, 2)
@@ -298,7 +300,7 @@ pub fn validate_pool_actions(
                 list.drop_while(
                   outputs,
                   fn(output) {
-                    !has_exact_loan_id(output, loanScriptHash, loanIdTokenName)
+                    !is_output_to_sc(output, loanScriptHash)
                   },
                 )
 

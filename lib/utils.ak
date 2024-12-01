@@ -2,11 +2,11 @@ use aiken/builtin
 use aiken/collection/dict.{to_pairs}
 use aiken/collection/list.{length}
 use aiken/collection/pairs
-use aiken/option
-use aiken/primitive/bytearray
-use aiken/crypto.{VerificationKeyHash, ScriptHash}
+use aiken/crypto.{VerificationKeyHash}
 use aiken/interval.{Finite}
 use aiken/math/rational.{Rational}
+use aiken/option
+use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
 use cardano/assets.{
   AssetName, PolicyId, Value, quantity_of, reduce, to_dict, tokens,
@@ -354,32 +354,45 @@ pub fn validate_oracle_ref_input(
 
 // namespaced by Pool policy id
 pub const pool_id_header: Int = 0
+
 // namespaced by Loan policy id
 pub const loan_id_header: Int = 0
+
 pub const lender_id_header: Int = 1
+
 pub const borrower_id_header: Int = 2
+
 pub const repayment_id_header: Int = 3
 
-pub fn has_policy_id_token_with_header(output: Output, policyId: PolicyId, token_header: Int) -> Bool {
-  let mbPoolPolicyIdTokenName = 
-    value_to_policy_id_token_name_with_header(output.value, policyId, token_header)
+pub fn has_policy_id_token_with_header(
+  output: Output,
+  policyId: PolicyId,
+  token_header: Int,
+) -> Bool {
+  let mbPoolPolicyIdTokenName =
+    value_to_policy_id_token_name_with_header(
+      output.value,
+      policyId,
+      token_header,
+    )
   option.is_some(mbPoolPolicyIdTokenName)
 }
 
 pub fn value_to_policy_id_token_name_with_header(
-  value: Value, poolPolicyId: PolicyId, token_header: Int
+  value: Value,
+  poolPolicyId: PolicyId,
+  token_header: Int,
 ) -> Option<AssetName> {
   let poolPolicyIdTokens = assets.tokens(value, poolPolicyId)
   let poolPolicyIdTokenNameQuantityPairs = dict.to_pairs(poolPolicyIdTokens)
-  let poolPolicyIdTokenNames = 
-    list.filter_map(poolPolicyIdTokenNameQuantityPairs, fn (Pair(tokenName, quantity)) {
-      if (token_name_has_header(tokenName, token_header) && quantity == 1) {
-        Some(tokenName)
-      } else {
-        None
-      }
-    })
-  list.head(poolPolicyIdTokenNames)
+  let mbTokenName =
+    list.find(
+      poolPolicyIdTokenNameQuantityPairs,
+      fn(Pair(tokenName, quantity)) {
+        token_name_has_header(tokenName, token_header) && quantity == 1
+      },
+    )
+  option.map(mbTokenName, fn(Pair(tokenName, _)) { tokenName })
 }
 
 pub fn output_to_policy_id_token_name_with_header(
@@ -389,131 +402,19 @@ pub fn output_to_policy_id_token_name_with_header(
 ) -> Option<AssetName> {
   if is_output_to_sc(output, policyId) {
     value_to_policy_id_token_name_with_header(
-      output.value, policyId, token_header
+      output.value,
+      policyId,
+      token_header,
     )
   } else {
     None
   }
 }
 
-pub fn value_has_exact_id_header(
-  value: Value,
-  policyId: PolicyId,
-  tokenName: AssetName,
-  header: Int
-) -> Bool {
-  let targetTokenName = replace_first_byte(tokenName, header)
-  assets.quantity_of(value, policyId, targetTokenName) == 1
-}
-
-pub fn has_exact_repayment_id(
-  output: Output,
-  loanPolicyId: PolicyId,
-  loanIdTokenName: AssetName,
-  repaymentScriptHash: ScriptHash,
-) -> Bool {
-  and {
-    is_output_to_sc(output, repaymentScriptHash),
-    value_has_exact_id_header(output.value, loanPolicyId, loanIdTokenName, repayment_id_header),
-  }
-}
-
-pub fn has_exact_loan_id(
-  output: Output,
-  loanPolicyId: PolicyId,
-  loanIdTokenName: AssetName,
-) -> Bool {
-  and {
-    is_output_to_sc(output, loanPolicyId),
-    value_has_exact_id_header(output.value, loanPolicyId, loanIdTokenName, loan_id_header),
-  }
-}
-
 pub fn has_pool_id(output: Output, poolPolicyId: PolicyId) -> Bool {
   and {
     is_output_to_sc(output, poolPolicyId),
-    has_policy_id_token_with_header(output, poolPolicyId, pool_id_header)
-  }
-}
-
-pub fn has_lender_id(output: Output, poolPolicyId: PolicyId) -> Bool {
-  has_policy_id_token_with_header(output, poolPolicyId, lender_id_header)
-}
-
-pub fn has_borrower_id(output: Output, poolPolicyId: PolicyId) -> Bool {
-  has_policy_id_token_with_header(output, poolPolicyId, borrower_id_header)
-}
-
-pub fn token_name_has_header(tokenName: ByteArray, header: Int) -> Bool {
-  bytearray.at(tokenName, 0) == header
-}
-
-pub fn token_name_has_pool_id_header(tokenName: ByteArray) -> Bool {
-  token_name_has_header(tokenName, pool_id_header)
-}
-
-pub fn token_name_has_loan_id_header(tokenName: ByteArray) -> Bool {
-  token_name_has_header(tokenName, loan_id_header)
-}
-
-pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
-  crypto.sha2_256(
-    bytearray.push(
-      outputRef.transaction_id,
-      outputRef.output_index,
-    ),
-  )
-}
-
-pub fn replace_first_byte(byteArray: ByteArray, header: Int) -> ByteArray {
-  bytearray.push(bytearray.drop(byteArray, 1), header)
-}
-
-pub fn make_id_token_name(inputOutputRef: OutputReference, header: Int) -> ByteArray {
-  let inputOutputRefHash = hash_output_ref(inputOutputRef)
-  replace_first_byte(inputOutputRefHash, header)
-}
-
-pub fn make_pool_id_token_name(inputOutputRef: OutputReference) -> ByteArray {
-  make_id_token_name(inputOutputRef, pool_id_header)
-}
-
-pub fn make_loan_id_token_name(inputOutputRef: OutputReference) -> ByteArray {
-  make_id_token_name(inputOutputRef, loan_id_header)
-}
-
-pub fn make_lender_id_token_name(inputOutputRef: OutputReference) -> ByteArray {
-  make_id_token_name(inputOutputRef, lender_id_header)
-}
-
-pub fn make_borrower_id_token_name(inputOutputRef: OutputReference) -> ByteArray {
-  make_id_token_name(inputOutputRef, borrower_id_header)
-}
-
-pub fn hash_to_id_token_name(hashedInputOutputRef: ByteArray, header: Int) -> ByteArray {
-  replace_first_byte(hashedInputOutputRef, header)
-}
-
-pub fn hash_to_lender_id_token_name(hashedInputOutputRef: ByteArray) -> ByteArray {
-  hash_to_id_token_name(hashedInputOutputRef, lender_id_header)
-}
-
-pub fn hash_to_borrower_id_token_name(hashedInputOutputRef: ByteArray) -> ByteArray {
-  hash_to_id_token_name(hashedInputOutputRef, borrower_id_header)
-}
-
-pub fn hash_to_repayment_id_token_name(hashedInputOutputRef: ByteArray) -> ByteArray {
-  hash_to_id_token_name(hashedInputOutputRef, repayment_id_header)
-}
-
-pub fn is_pool_id_token_name(tokenName: ByteArray) -> Bool {
-  bytearray.at(tokenName, 0) == pool_id_header
-}
-
-pub fn output_to_pool_id(output: Output, poolPolicyId: PolicyId) -> Bool {
-  and {
-    is_output_to_sc(output, poolPolicyId),
-    has_pool_id(output, poolPolicyId)
+    has_policy_id_token_with_header(output, poolPolicyId, pool_id_header),
   }
 }
 
@@ -521,6 +422,38 @@ pub fn has_loan_id(output: Output, poolPolicyId: PolicyId) -> Bool {
   has_policy_id_token_with_header(output, poolPolicyId, loan_id_header)
 }
 
+pub fn token_name_has_header(tokenName: ByteArray, header: Int) -> Bool {
+  bytearray.at(tokenName, 0) == header
+}
+
+pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
+  crypto.sha2_256(
+    bytearray.push(outputRef.transaction_id, outputRef.output_index),
+  )
+}
+
+pub fn replace_first_byte(byteArray: ByteArray, header: Int) -> ByteArray {
+  bytearray.push(bytearray.drop(byteArray, 1), header)
+}
+
 pub fn hash_to_loan_id_token_name(hashedInputOutputRef: ByteArray) -> ByteArray {
-  hash_to_id_token_name(hashedInputOutputRef, loan_id_header)
+  replace_first_byte(hashedInputOutputRef, loan_id_header)
+}
+
+pub fn hash_to_lender_id_token_name(
+  hashedInputOutputRef: ByteArray,
+) -> ByteArray {
+  replace_first_byte(hashedInputOutputRef, lender_id_header)
+}
+
+pub fn hash_to_borrower_id_token_name(
+  hashedInputOutputRef: ByteArray,
+) -> ByteArray {
+  replace_first_byte(hashedInputOutputRef, borrower_id_header)
+}
+
+pub fn hash_to_repayment_id_token_name(
+  hashedInputOutputRef: ByteArray,
+) -> ByteArray {
+  replace_first_byte(hashedInputOutputRef, repayment_id_header)
 }
