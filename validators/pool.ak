@@ -19,11 +19,7 @@ use utils.{
   validate_oracle_ref_input, validity_range_within_an_hour,
 }
 
-validator pool(
-  borrowerTokenPolicyId: ByteArray,
-  lenderTokenPolicyId: ByteArray,
-  activeLoanScriptHash: ByteArray,
-) {
+validator pool(configAsset: Asset) {
   withdraw(
     redeemer: PoolWithdrawRedeemer,
     credential: Credential,
@@ -34,6 +30,12 @@ validator pool(
       get_inputs_from_sc_or_delegated_to_sc(self.inputs, ownScriptHash)
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
     expect length(scInputs) == length(redeemer.actionForEachInput)
+    let config =
+      utils.get_config(
+        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
+        configAsset.policyId,
+        configAsset.assetName,
+      )
 
     list.indexed_foldr(
       scInputs,
@@ -79,7 +81,7 @@ validator pool(
               safe_list_at(
                 get_outputs_to_sc_or_delegated_to_sc(
                   self.outputs,
-                  activeLoanScriptHash,
+                  config.activeLoanSpendScriptHash,
                   isCIP113,
                 ),
                 index,
@@ -116,7 +118,7 @@ validator pool(
                   ) == True
                 validate_output_to_active_with_oracle(
                   activeOutput,
-                  activeLoanScriptHash,
+                  config.activeLoanSpendScriptHash,
                   datum,
                   chosenCollateral,
                   chosenCollateralIndex,
@@ -130,7 +132,7 @@ validator pool(
               } else {
                 validate_output_to_active_no_oracle(
                   activeOutput,
-                  activeLoanScriptHash,
+                  config.activeLoanSpendScriptHash,
                   datum,
                   chosenCollateral,
                   chosenCollateralIndex,
@@ -150,8 +152,8 @@ validator pool(
                 tokens_sent_to_both_parties(
                   self.mint,
                   outputWithLenderToken,
-                  borrowerTokenPolicyId,
-                  lenderTokenPolicyId,
+                  config.borrowerTokenPolicyId,
+                  config.lenderTokenPolicyId,
                   inputUtxoId,
                   datum.lenderAddress,
                   datum.lenderTokenOutputMustHaveLoanInfoDatum,

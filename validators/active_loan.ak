@@ -20,14 +20,7 @@ use utils.{
   safe_list_at, validate_oracle_ref_input, value_without_policy_id_as_list,
 }
 
-validator activeLoan(
-  borrowerTokenPolicyId: ByteArray,
-  lenderTokenPolicyId: ByteArray,
-  repaymentScriptHash: ByteArray,
-  dutchAuctionScriptHash: ByteArray,
-  configNFTPolicyId: ByteArray,
-  configNFTAssetName: ByteArray,
-) {
+validator activeLoan(configAsset: Asset) {
   withdraw(
     redeemer: ActiveWithdrawRedeemer,
     credential: Credential,
@@ -40,6 +33,12 @@ validator activeLoan(
     expect length(scInputs) == length(redeemer.actionForEachInput)
     expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
     expect Finite(validTo) = self.validity_range.upper_bound.bound_type
+    let config =
+      utils.get_config(
+        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
+        configAsset.policyId,
+        configAsset.assetName,
+      )
 
     list.indexed_foldr(
       scInputs,
@@ -58,7 +57,6 @@ validator activeLoan(
         when redeemerAction is {
           Claim(
             bondInputIndex,
-            configRefInputIndex,
             collateralOracleRefInputIndex,
             lenderAuthHash,
             lenderAddress,
@@ -66,7 +64,7 @@ validator activeLoan(
             expect Some(actualBondInput) = list.at(self.inputs, bondInputIndex)
             and {
               is_nft_spent(
-                lenderTokenPolicyId,
+                config.lenderTokenPolicyId,
                 datum.lenderAssetName,
                 actualBondInput,
               ),
@@ -83,13 +81,11 @@ validator activeLoan(
                 NoLiquidationDutchAuctionClaim -> {
                   expect Finite(validTo) =
                     self.validity_range.upper_bound.bound_type
-                  let configRefInput =
-                    safe_list_at(self.reference_inputs, configRefInputIndex)
                   expect Some(dutchAuctionOutput) =
                     list.at(
                       get_outputs_to_sc_or_delegated_to_sc(
                         self.outputs,
-                        dutchAuctionScriptHash,
+                        config.ducthAuctionSpendScriptHash,
                         isCIP113,
                       ),
                       index,
@@ -119,11 +115,7 @@ validator activeLoan(
                         datum.commonData.totalInstallments,
                         datum.repaidInstallments,
                       ),
-                      utils.get_config(
-                        configRefInput,
-                        configNFTPolicyId,
-                        configNFTAssetName,
-                      ),
+                      config,
                     ),
                   }
                 }
@@ -180,12 +172,12 @@ validator activeLoan(
                           datum.commonData.totalInstallments,
                           datum.repaidInstallments,
                         ),
-                        borrowerTokenPolicyId: borrowerTokenPolicyId,
+                        borrowerTokenPolicyId: config.borrowerTokenPolicyId,
                         borrowerAssetName: datum.borrowerAssetName,
                         principalAssetPolicyId: datum.commonData.principalAsset.policyId,
                         principalAssetName: datum.commonData.principalAsset.assetName,
                         differenceOutput: safe_list_at(self.outputs, index),
-                        repaymentScriptHash: repaymentScriptHash,
+                        repaymentScriptHash: config.repaymentSpendScriptHash,
                       ),
                     },
                   }
@@ -200,7 +192,7 @@ validator activeLoan(
               list.at(
                 get_outputs_to_sc_or_delegated_to_sc(
                   self.outputs,
-                  repaymentScriptHash,
+                  config.repaymentSpendScriptHash,
                   isCIP113,
                 ),
                 index,
@@ -226,7 +218,7 @@ validator activeLoan(
               )
             and {
               is_nft_spent(
-                borrowerTokenPolicyId,
+                config.borrowerTokenPolicyId,
                 datum.borrowerAssetName,
                 bondInput,
               ),
@@ -234,9 +226,11 @@ validator activeLoan(
                 repaymentOutput,
                 datum.commonData.principalAsset,
                 nextRepaymentAmount,
+                config.lenderTokenPolicyId,
                 datum.lenderAssetName,
                 "installment_repayment",
                 datum.repaidInstallments + 1,
+                config.repaymentSpendScriptHash,
               ),
               or {
                 datum.repaidInstallments == datum.commonData.totalInstallments - 1,
@@ -273,7 +267,7 @@ validator activeLoan(
             and {
               addedCollateralAmount > 0,
               is_nft_spent(
-                borrowerTokenPolicyId,
+                config.borrowerTokenPolicyId,
                 datum.borrowerAssetName,
                 bondInput,
               ),
@@ -294,7 +288,7 @@ validator activeLoan(
               list.at(
                 get_outputs_to_sc_or_delegated_to_sc(
                   self.outputs,
-                  repaymentScriptHash,
+                  config.repaymentSpendScriptHash,
                   isCIP113,
                 ),
                 index,
@@ -311,7 +305,7 @@ validator activeLoan(
             and {
               principalPaid > 0,
               is_nft_spent(
-                borrowerTokenPolicyId,
+                config.borrowerTokenPolicyId,
                 datum.borrowerAssetName,
                 bondInput,
               ),
@@ -323,9 +317,11 @@ validator activeLoan(
                 repaymentOutput,
                 datum.commonData.principalAsset,
                 principalPaid,
+                config.lenderTokenPolicyId,
                 datum.lenderAssetName,
                 "recast",
                 None,
+                config.repaymentSpendScriptHash,
               ),
               or {
                 debtAfterRecasting == 0,
@@ -413,9 +409,11 @@ fn validate_output_to_repayment(
   repaymentOutput: Output,
   loanAsset: Asset,
   repaymentAmount: Int,
+  lenderTokenPolicyId: ByteArray,
   lenderAssetName: AssetName,
   action: ByteArray,
   extra_data: Data,
+  repaymentSpendScriptHash: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = repaymentOutput.datum
   expect parsedDatum: RepaymentDatum = outputDatum
@@ -427,7 +425,7 @@ fn validate_output_to_repayment(
   let isDatumCorrect = parsedDatum == newDatum
   let dosProtection = length(flatten(repaymentOutput.value)) <= 3
   and {
-    is_output_to_sc(repaymentOutput, repaymentScriptHash),
+    is_output_to_sc(repaymentOutput, repaymentSpendScriptHash),
     quantity_of(repaymentOutput.value, loanAsset.policyId, loanAsset.assetName) >= repaymentAmount,
     isDatumCorrect,
     dosProtection,
@@ -594,7 +592,7 @@ fn validate_output_to_dutch_auction(
     }
   let isDatumCorrect = parsedDatum == newDatum
   and {
-    is_output_to_sc(dutchAuctionOutput, dutchAuctionScriptHash),
+    is_output_to_sc(dutchAuctionOutput, config.ducthAuctionSpendScriptHash),
     activeLoanInput.output.value == dutchAuctionOutput.value,
     isDatumCorrect,
   }
