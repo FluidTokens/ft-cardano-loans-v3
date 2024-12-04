@@ -1,3 +1,4 @@
+use aiken/cbor
 use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/crypto.{ScriptHash}
@@ -69,19 +70,20 @@ validator pool {
 
               let matchesInputRefHash =
                 bytearray.drop(tokenName, 2) == bytearray.drop(inputRefHash, 2)
+              //trace cbor.diagnostic((inputRefHash, tokenName))
 
               let isPoolOutputValid =
                 list.any(
                   ownOutputs,
                   fn(output) {
+                    let exactPoolIdCount =
+                      assets.quantity_of(output.value, poolPolicyId, tokenName)
                     let isPoolOutputValueValid = and {
-                        dict.size(assets.tokens(output.value, poolPolicyId)) == 1,
-                        assets.quantity_of(
-                          output.value,
-                          poolPolicyId,
-                          tokenName,
-                        ) == 1,
+                        (dict.size(assets.tokens(output.value, poolPolicyId)) == 1)?,
+                        (exactPoolIdCount == 1)?,
                       }
+                    //trace cbor.diagnostic(exactPoolIdCount)
+                    //trace cbor.diagnostic(output.datum)
 
                     let isPoolOutputDatumValid =
                       when output.datum is {
@@ -95,23 +97,23 @@ validator pool {
                       }
                     // we can validate any other pool creation invariants here
                     and {
-                      isPoolOutputValueValid,
-                      isPoolOutputDatumValid,
+                      isPoolOutputValueValid?,
+                      isPoolOutputDatumValid?,
                     }
                   },
                 )
 
               and {
-                isPoolIdTokenName,
-                quantity == 1,
-                matchesInputRefHash,
-                isPoolOutputValid,
+                isPoolIdTokenName?,
+                (quantity == 1)?,
+                matchesInputRefHash?,
+                isPoolOutputValid?,
               }
             },
           )
         and {
-          isInputRefSpent,
-          isEachMintedTokenAccountedFor,
+          isInputRefSpent?,
+          isEachMintedTokenAccountedFor?,
         }
       }
       // If we are burning pool policy id tokens, then they must be poolIds. If
@@ -181,9 +183,9 @@ validator pool {
       )
 
     and {
-      validity_range_within_an_hour(self),
-      isEachMintedTokenAccountedFor,
-      arePoolActionsValid,
+      validity_range_within_an_hour(self)?,
+      isEachMintedTokenAccountedFor?,
+      arePoolActionsValid?,
     }
   }
 
@@ -331,7 +333,6 @@ pub fn validate_pool_actions(
                   chosenCollateral,
                   minNeededCollateralAmount,
                   targetLtvDivider,
-                  ownScriptHash,
                   poolInputRefHash,
                   poolInputDatum,
                   borrowerAddress,
@@ -363,13 +364,13 @@ pub fn validate_pool_actions(
                   |> assets.merge(mintedPoolIdValue)
 
               let isBorrowValid = and {
-                  wantedPrincipal > 0,
-                  isLoanOutputValid,
-                  isLenderOutputValid,
-                  isPoolOutputValid,
+                  (wantedPrincipal > 0)?,
+                  isLoanOutputValid?,
+                  isLenderOutputValid?,
+                  isPoolOutputValid?,
                 }
 
-              (isBorrowValid, remainingOutputs, mintedValue)
+              (isBorrowValid?, remainingOutputs, mintedValue)
             }
           }
 
@@ -416,6 +417,10 @@ fn get_min_needed_collateral_amount_with_oracle(
 
   let oracleRefInput =
     safe_list_at(tx.reference_inputs, chosenCollateralOracleInputIndex)
+
+  //trace cbor.diagnostic(chosenCollateralOracleInputIndex)
+  //trace cbor.diagnostic(tx.reference_inputs)
+
   expect Some(oraclePriceFeed) =
     retrieve_oracle_data(oracleRefInput, tx.redeemers, end, chosenCollateral)
   expect
@@ -463,7 +468,6 @@ fn validate_loan_output(
   chosenCollateral: CollateralAsset,
   minNeededCollateralAmount: Int,
   targetLtvDivider: Int,
-  poolScriptHash: ScriptHash,
   poolInputRefHash: ByteArray,
   poolInputDatum: PoolDatum,
   borrowerAddress: Address,
@@ -483,19 +487,15 @@ fn validate_loan_output(
     }
 
   let loanIdTokenName = hash_to_loan_id_token_name(poolInputRefHash)
-  let lenderIdTokenName = hash_to_lender_id_token_name(poolInputRefHash)
-  let borrowerIdTokenName = hash_to_borrower_id_token_name(poolInputRefHash)
 
   let containsLoanIdNft =
-    quantity_of(loanOutput.value, poolScriptHash, loanIdTokenName) == 1
+    quantity_of(loanOutput.value, loanScriptHash, loanIdTokenName) == 1
 
   expect InlineDatum(outputDatum) = loanOutput.datum
   expect parsedDatum: ActiveDatum = outputDatum
   let newDatum =
     ActiveDatum {
       commonData: poolInputDatum.commonData,
-      borrowerAssetName: borrowerIdTokenName,
-      lenderAssetName: lenderIdTokenName,
       collateral: chosenCollateral,
       principalAmount: wantedPrincipal,
       principalDivider: targetLtvDivider,
@@ -504,13 +504,16 @@ fn validate_loan_output(
       doneRecasts: 0,
     }
 
+  //trace cbor.diagnostic(parsedDatum)
+  //trace cbor.diagnostic(newDatum)
+
   let isLiquidationCorrectlySet =
     when newDatum.commonData.liquidationMode is {
       Liquidation { .. } -> newDatum.collateral.maybeOracleTokenAsset != None
       _ -> True
     }
 
-  let isDatumCorrect = parsedDatum == newDatum && isLiquidationCorrectlySet
+  let isDatumCorrect = (parsedDatum == newDatum)? && isLiquidationCorrectlySet?
 
   let toCorrectStaking = or {
       isCIP113 == True,
@@ -519,12 +522,12 @@ fn validate_loan_output(
 
   let dosProtection = length(flatten(loanOutput.value)) <= 21
   and {
-    toCorrectStaking,
-    is_output_to_sc(loanOutput, loanScriptHash),
-    containsCorrectCollateral,
-    containsLoanIdNft,
-    isDatumCorrect,
-    dosProtection,
+    toCorrectStaking?,
+    is_output_to_sc(loanOutput, loanScriptHash)?,
+    containsCorrectCollateral?,
+    containsLoanIdNft?,
+    isDatumCorrect?,
+    dosProtection?,
   }
 }
 

@@ -1,3 +1,4 @@
+use aiken/cbor
 use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/crypto.{ScriptHash}
@@ -26,9 +27,9 @@ use utils.{
   borrower_id_header, has_pool_id, hash_output_ref,
   hash_to_repayment_id_token_name, is_nft_spent, is_output_to_sc,
   lender_id_header, loan_id_header, output_to_policy_id_token_name_with_header,
-  quantity_of_policy_id, repayment_id_header, retrieve_oracle_data, safe_list_at,
-  token_name_has_header, validate_oracle_ref_input,
-  value_without_policy_id_as_list,
+  quantity_of_policy_id, repayment_id_header, replace_first_byte,
+  retrieve_oracle_data, safe_list_at, token_name_has_header,
+  validate_oracle_ref_input, value_without_policy_id_as_list,
 }
 
 pub type LoanMintRedeemer {
@@ -105,8 +106,8 @@ validator loan(
               }
 
               expect and {
-                  has_pool_id(poolInput.output, poolScriptHash),
-                  isPoolLoanScriptHashValid,
+                  has_pool_id(poolInput.output, poolScriptHash)?,
+                  isPoolLoanScriptHashValid?,
                 }
 
               let poolInputRefHash = hash_output_ref(poolInputRef)
@@ -128,7 +129,9 @@ validator loan(
             },
           )
 
-        mintedLoanPolicyIdTokenNameQuantityPairs == expectedMintedTokenNames
+        //trace cbor.diagnostic(mintedLoanPolicyIdTokenNameQuantityPairs)
+        //trace cbor.diagnostic(expectedMintedTokenNames)
+        (mintedLoanPolicyIdTokenNameQuantityPairs == expectedMintedTokenNames)?
       }
 
       // Ensure there is a Loan input corresponding to each minted token.
@@ -334,8 +337,10 @@ pub fn validate_loan_actions(
         expect InlineDatum(rawLoanInputDatum) = loanInput.output.datum
         expect loanInputDatum: ActiveDatum = rawLoanInputDatum
 
-        let lenderIdTokenName = loanInputDatum.lenderAssetName
-        let borrowerIdTokenName = loanInputDatum.borrowerAssetName
+        let lenderIdTokenName =
+          replace_first_byte(loanIdTokenName, lender_id_header)
+        let borrowerIdTokenName =
+          replace_first_byte(loanIdTokenName, borrower_id_header)
 
         // FIXME: How does this relate to the stake credentials of the input?
         // Additionally, the previous implementation doesn't even need the input
@@ -1067,3 +1072,4 @@ fn validate_output_to_dutch_auction(
     isDatumCorrect,
   }
 }
+// blah

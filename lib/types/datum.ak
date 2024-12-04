@@ -82,8 +82,6 @@ pub type PoolDatum {
   principalLTVDivider: List<Int>,
   //True if borrowable amount of the collateralOptions must be updated through oracles
   dynamicCollateralPrice: Bool,
-  //If true, the output of lender's bond contains LoanInfoDatum, useful if the lender is a SC to do onchain validation.
-  lenderTokenOutputMustHaveLoanInfoDatum: Bool,
 }
 
 //Optional datum of the lender's bond output 
@@ -92,8 +90,10 @@ pub type LoanInfoDatum =
 
 pub type ActiveDatum {
   commonData: CommonData,
-  borrowerAssetName: AssetName,
-  lenderAssetName: AssetName,
+  // use loanId with header replaced by borrower_id_header
+  //borrowerAssetName: AssetName,
+  // use loanId with header replaced by lender_id_header
+  //lenderAssetName: AssetName,
   collateral: CollateralAsset,
   principalAmount: Int,
   principalDivider: Int,

@@ -1,3 +1,4 @@
+use aiken/cbor
 use aiken/builtin
 use aiken/collection/dict.{to_pairs}
 use aiken/collection/list.{length}
@@ -247,6 +248,7 @@ pub fn retrieve_oracle_data(
   transaction_valid_to: Int,
   expectedCollateral: CollateralAsset,
 ) -> Option<OraclePriceFeed> {
+  //trace cbor.diagnostic(redeemers)
   expect Some(loan_oracle_redeemer) =
     pairs.get_first(
       redeemers,
@@ -265,7 +267,9 @@ pub fn retrieve_oracle_data(
         trace @"oracle is expired or has wrong token"
         None
       }
-    Aggregated(data) ->
+    Aggregated(data) -> {
+      //trace cbor.diagnostic((data.valid_to, transaction_valid_to))
+      //trace cbor.diagnostic((data.token, expectedCollateral))
       if and {
         data.valid_to >= transaction_valid_to,
         is_feed_token_correct(expectedCollateral, data.token),
@@ -275,6 +279,7 @@ pub fn retrieve_oracle_data(
         trace @"oracle is expired or has wrong token"
         None
       }
+    }
     Dedicated(data) ->
       if and {
         data.valid_to >= transaction_valid_to,
