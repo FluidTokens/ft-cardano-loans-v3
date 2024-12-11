@@ -67,9 +67,9 @@ pub fn get_repayment_amount(
         rational.sub(
           rational_pow(
             rational.add(oneAsRational, interestPerInstallmentAsRational),
-            totalInstallments
+            totalInstallments,
           ),
-          oneAsRational
+          oneAsRational,
         )
       expect Some(result) = rational.div(numerator, denominator)
       if isLate {
@@ -137,23 +137,19 @@ pub fn get_collateral_value_in_principal_currency(
       },
     )
   when oraclePriceFeed is {
-    Aggregated(aggregated_data) -> {
+    Aggregated { token_price_in_lovelaces, denominator, .. } -> {
       expect Some(tokenPrice) =
-        rational.new(
-          aggregated_data.token_price_in_lovelaces,
-          aggregated_data.denominator,
-        )
+        rational.new(token_price_in_lovelaces, denominator)
       rational.ceil(rational.mul(collateralAmount, tokenPrice))
     }
-    Pooled(pooled_data) ->
+    Pooled { token_b_amount, token_a_amount, .. } ->
       token_b_needed_to_purchase_token_a(
         collateralAmount,
-        pooled_data.token_b_amount,
-        pooled_data.token_a_amount,
+        token_b_amount,
+        token_a_amount,
       )
-    Dedicated(dedicated_data) -> {
-      expect Some(tokenPrice) =
-        rational.new(dedicated_data.token_price, dedicated_data.denominator)
+    Dedicated { token_price, denominator, .. } -> {
+      expect Some(tokenPrice) = rational.new(token_price, denominator)
 
       rational.ceil(rational.mul(collateralAmount, tokenPrice))
     }

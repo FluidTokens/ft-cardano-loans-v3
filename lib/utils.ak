@@ -252,37 +252,21 @@ pub fn retrieve_oracle_data(
     )
   expect loan_tokens_price: OracleRedeemer = loan_oracle_redeemer
 
-  when loan_tokens_price.data is {
-    Pooled(data) ->
-      if and {
-        data.valid_to >= transaction_valid_to,
-        is_feed_token_correct(expectedCollateral, data.token),
-      } {
-        Some(Pooled(data))
-      } else {
-        trace @"oracle is expired or has wrong token"
-        None
-      }
-    Aggregated(data) ->
-      if and {
-        data.valid_to >= transaction_valid_to,
-        is_feed_token_correct(expectedCollateral, data.token),
-      } {
-        Some(Aggregated(data))
-      } else {
-        trace @"oracle is expired or has wrong token"
-        None
-      }
-    Dedicated(data) ->
-      if and {
-        data.valid_to >= transaction_valid_to,
-        is_feed_token_correct(expectedCollateral, data.token),
-      } {
-        Some(Dedicated(data))
-      } else {
-        trace @"oracle is expired or has wrong token"
-        None
-      }
+  let commonFeedData =
+    when loan_tokens_price.data is {
+      Pooled { common, .. } -> common
+      Aggregated { common, .. } -> common
+      Dedicated { common, .. } -> common
+    }
+  if and {
+    commonFeedData.valid_to - commonFeedData.valid_from <= 3600000,
+    commonFeedData.valid_to >= transaction_valid_to,
+    is_feed_token_correct(expectedCollateral, commonFeedData.token),
+  } {
+    Some(loan_tokens_price.data)
+  } else {
+    trace @"oracle is expired or has wrong token"
+    None
   }
 }
 

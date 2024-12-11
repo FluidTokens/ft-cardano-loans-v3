@@ -1,16 +1,17 @@
+use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/crypto.{sha2_256}
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{Value, flatten, quantity_of}
+use cardano/assets.{PolicyId, Value, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
 use types/datum.{ActiveDatum, Liquidation, LoanInfoDatum, PoolDatum}
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
-  Aggregated, Borrow, Cancel, Dedicated, OraclePriceFeed, PoolWithdrawRedeemer,
-  Pooled,
+  Aggregated, Borrow, Cancel, ClosePool, CreatePool, Dedicated, OraclePriceFeed,
+  PoolMintRedeemer, PoolWithdrawRedeemer, Pooled,
 }
 use utils.{
   authorize_action, get_inputs_from_sc_or_delegated_to_sc,
@@ -20,6 +21,23 @@ use utils.{
 }
 
 validator pool(configAsset: Asset) {
+  mint(redeemer: PoolMintRedeemer, policy_id: PolicyId, self: Transaction) {
+    when redeemer is {
+      CreatePool(inputRef) ->
+        //and {
+        //   each_token_with_proper_utxo_name(),
+        //   each_token_goes_to_pool_sc(),
+        //   each_token_goes_alone(),
+        // }
+        inputRef == inputRef
+      ClosePool ->
+        list.all(
+          dict.values(assets.tokens(self.mint, policy_id)),
+          fn(quantity) { quantity == -1 },
+        )
+    }
+  }
+
   withdraw(
     redeemer: PoolWithdrawRedeemer,
     credential: Credential,
@@ -305,26 +323,22 @@ fn validate_output_to_active_with_oracle(
 
   let minNeededCollateralAmount =
     when oraclePriceFeed is {
-      Aggregated(aggregated_data) -> {
+      Aggregated { token_price_in_lovelaces, denominator, .. } -> {
         expect Some(tokenPrice) =
-          rational.new(
-            aggregated_data.token_price_in_lovelaces,
-            aggregated_data.denominator,
-          )
+          rational.new(token_price_in_lovelaces, denominator)
 
         expect Some(minNeededCollateralAmountAsRational) =
           rational.div(minNeededCollateralInPrincipalCurrency, tokenPrice)
         rational.ceil(minNeededCollateralAmountAsRational)
       }
-      Pooled(pooled_data) ->
+      Pooled { token_a_amount, token_b_amount, .. } ->
         token_b_needed_to_purchase_token_a(
           minNeededCollateralInPrincipalCurrency,
-          pooled_data.token_a_amount,
-          pooled_data.token_b_amount,
+          token_a_amount,
+          token_b_amount,
         )
-      Dedicated(dedicated_data) -> {
-        expect Some(tokenPrice) =
-          rational.new(dedicated_data.token_price, dedicated_data.denominator)
+      Dedicated { token_price, denominator, .. } -> {
+        expect Some(tokenPrice) = rational.new(token_price, denominator)
 
         expect Greater =
           rational.compare(tokenPrice, minNeededCollateralInPrincipalCurrency)

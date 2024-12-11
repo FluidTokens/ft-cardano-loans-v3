@@ -1,4 +1,5 @@
 use cardano/address.{Address}
+use cardano/transaction.{OutputReference}
 use types/general.{Asset, Authorization}
 
 //Tokens that have a lot of liquidity are in CEX. The price is in lovelace
@@ -6,6 +7,7 @@ pub type AggregatedFeed {
   token: Asset,
   token_price_in_lovelaces: Int,
   denominator: Int,
+  valid_from: Int,
   valid_to: Int,
 }
 
@@ -14,6 +16,7 @@ pub type PooledFeed {
   token: Asset,
   token_a_amount: Int,
   token_b_amount: Int,
+  valid_from: Int,
   valid_to: Int,
 }
 
@@ -23,13 +26,32 @@ pub type DedicatedFeed {
   token_price_currency: Asset,
   token_price: Int,
   denominator: Int,
+  valid_from: Int,
   valid_to: Int,
 }
 
+pub type CommonFeedData {
+  valid_from: Int,
+  valid_to: Int,
+  token: Asset,
+}
+
 pub type OraclePriceFeed {
-  Aggregated(AggregatedFeed)
-  Pooled(PooledFeed)
-  Dedicated(DedicatedFeed)
+  //Tokens that have a lot of liquidity are in CEX. The price is in lovelace
+  Aggregated {
+    common: CommonFeedData,
+    token_price_in_lovelaces: Int,
+    denominator: Int,
+  }
+  //Tokens that have lower liquidity, AMM pool data is used to calculate the price
+  Pooled { common: CommonFeedData, token_a_amount: Int, token_b_amount: Int }
+  //Complex vaults can have a dedicated oracle that calculates the value of all collateral assets in a custom currency
+  Dedicated {
+    common: CommonFeedData,
+    token_price_currency: Asset,
+    token_price: Int,
+    denominator: Int,
+  }
 }
 
 pub type Signature {
@@ -40,6 +62,11 @@ pub type Signature {
 pub type OracleRedeemer {
   data: OraclePriceFeed,
   signatures: List<Signature>,
+}
+
+pub type PoolMintRedeemer {
+  CreatePool { inputRef: OutputReference }
+  ClosePool
 }
 
 pub type PoolAction {
