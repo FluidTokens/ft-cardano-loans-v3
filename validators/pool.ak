@@ -127,6 +127,7 @@ validator pool(configAsset: Asset) {
             chosenCollateralIndex,
             chosenCollateralOracleInputIndex,
             wantedPrincipal,
+            poolId,
           ) -> {
             expect Finite(end) = self.validity_range.upper_bound.bound_type
             let inputUtxoId =
@@ -225,12 +226,14 @@ validator pool(configAsset: Asset) {
                 remainingAmount == 0,
                 and {
                   remainingAmount > 0,
+                  quantity_of(input.output.value, ownScriptHash, poolId) == 1,
                   validate_eventual_output_to_pool(
                     safe_list_at(self.outputs, index),
                     datum,
                     remainingAmount,
                     ownScriptHash,
                     isCIP113,
+                    poolId,
                   ),
                 },
               },
@@ -443,6 +446,7 @@ fn validate_eventual_output_to_pool(
   remainingAmount: Int,
   ownScriptHash: ByteArray,
   isCIP113: Bool,
+  poolId: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = output.datum
   expect parsedDatum: PoolDatum = outputDatum
@@ -454,9 +458,11 @@ fn validate_eventual_output_to_pool(
       datum.commonData.principalAsset.assetName,
     ) == remainingAmount
 
+  let containsPoolNFT = quantity_of(output.value, ownScriptHash, poolId) == 1
+
   let isDatumCorrect = parsedDatum == datum
 
-  let dosProtection = length(flatten(output.value)) <= 3
+  let dosProtection = length(flatten(output.value)) <= 5
 
   let toCorrectStaking = or {
       isCIP113 == True,
@@ -466,6 +472,7 @@ fn validate_eventual_output_to_pool(
   and {
     is_output_to_sc(output, ownScriptHash),
     containsCorrectAmount,
+    containsPoolNFT,
     isDatumCorrect,
     dosProtection,
     toCorrectStaking,

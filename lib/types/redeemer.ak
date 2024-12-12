@@ -78,6 +78,7 @@ pub type PoolAction {
     //If collateral doesn't use oracle, this must be -1
     chosenCollateralOracleInputIndex: Int,
     wantedPrincipal: Int,
+    poolId: ByteArray,
   }
 }
 
