@@ -1,7 +1,7 @@
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use cardano/address.{Address, Credential, Script, StakeCredential}
-use cardano/assets.{AssetName, Value, add, flatten, quantity_of}
+use cardano/assets.{AssetName, PolicyId, Value, add, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use finance.{
   can_liquidate, get_collateral_value_in_principal_currency, get_remaining_debt,
@@ -13,16 +13,29 @@ use types/datum.{
   RepaymentDatum, RepaymentDatumWithBond,
 }
 use types/general.{Asset, CollateralAsset}
-use types/redeemer.{ActiveWithdrawRedeemer, AddCollateral, Claim, Recast, Repay}
+use types/redeemer.{
+  AddCollateral, Claim, LoanMintRedeemer, LoanWithdrawRedeemer, Recast, Repay,
+}
 use utils.{
   get_inputs_from_sc_or_delegated_to_sc, get_outputs_to_sc_or_delegated_to_sc,
   is_nft_spent, is_output_to_sc, quantity_of_policy_id, retrieve_oracle_data,
   safe_list_at, validate_oracle_ref_input, value_without_policy_id_as_list,
 }
 
-validator activeLoan(configAsset: Asset) {
+// The first byte of minted token names is reserved for teh type of token
+//
+// There are 4 types of tokens that can be minted:
+// loanId: first byte = 0 = loan_id_header
+// lenderId: first byte = 1 = lender_id_header
+// borrowerId: first byte = 2 = borrower_id_header
+// repaymentId: first byte = 3 = repayment_id_header
+validator loan(configAsset: Asset) {
+  mint(redeemer: LoanMintRedeemer, policy_id: PolicyId, self: Transaction) {
+    todo
+  }
+
   withdraw(
-    redeemer: ActiveWithdrawRedeemer,
+    redeemer: LoanWithdrawRedeemer,
     credential: Credential,
     self: Transaction,
   ) {

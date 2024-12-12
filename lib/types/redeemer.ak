@@ -65,12 +65,11 @@ pub type OracleRedeemer {
 }
 
 pub type PoolMintRedeemer {
-  CreatePool { inputRef: OutputReference }
-  ClosePool
+  inputRef: OutputReference,
 }
 
 pub type PoolAction {
-  Cancel { auth: Authorization }
+  Cancel { auth: Authorization, poolAssetName: ByteArray }
   Borrow {
     borrowerAddress: Address,
     outputWithLenderTokenIndex: Int,
@@ -85,6 +84,10 @@ pub type PoolAction {
 pub type PoolWithdrawRedeemer {
   configRefInputIndex: Int,
   actionForEachInput: List<PoolAction>,
+}
+
+pub type LoanMintRedeemer {
+  LoanMintRedeemer
 }
 
 pub type ActiveAction {
@@ -110,7 +113,7 @@ pub type ActiveAction {
   Recast { bondInputIndex: Int, principalPaid: Int }
 }
 
-pub type ActiveWithdrawRedeemer {
+pub type LoanWithdrawRedeemer {
   configRefInputIndex: Int,
   actionForEachInput: List<ActiveAction>,
 }

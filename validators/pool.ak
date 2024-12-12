@@ -3,15 +3,19 @@ use aiken/collection/list.{length}
 use aiken/crypto.{sha2_256}
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
+use aiken/option
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{PolicyId, Value, flatten, quantity_of}
-use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
+use cardano/assets.{PolicyId, Value, flatten, quantity_of, tokens}
+use cardano/transaction.{
+  InlineDatum, Output, OutputReference, Transaction, find_input,
+}
+use constants
 use types/datum.{ActiveDatum, Liquidation, LoanInfoDatum, PoolDatum}
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
-  Aggregated, Borrow, Cancel, ClosePool, CreatePool, Dedicated, OraclePriceFeed,
-  PoolMintRedeemer, PoolWithdrawRedeemer, Pooled,
+  Aggregated, Borrow, Cancel, Dedicated, OraclePriceFeed, PoolMintRedeemer,
+  PoolWithdrawRedeemer, Pooled,
 }
 use utils.{
   authorize_action, get_inputs_from_sc_or_delegated_to_sc,
@@ -20,21 +24,56 @@ use utils.{
   validate_oracle_ref_input, validity_range_within_an_hour,
 }
 
+// The first byte of minted token names is reserved for the type of token.
+//
+// There is 1 type of token that can be minted:
+// poolId: first byte = 0 = pool_id_header
+// When minting poolIds the first byte of the token name must be the
+// pool_id_header, and the second byte differentiates the Pools in the
+// transaction.
+//
+// The second byte is needed so we only need a single input reference to
+// create multiple pools in one transaction.
 validator pool(configAsset: Asset) {
   mint(redeemer: PoolMintRedeemer, policy_id: PolicyId, self: Transaction) {
-    when redeemer is {
-      CreatePool(inputRef) ->
-        //and {
-        //   each_token_with_proper_utxo_name(),
-        //   each_token_goes_to_pool_sc(),
-        //   each_token_goes_alone(),
-        // }
-        inputRef == inputRef
-      ClosePool ->
-        list.all(
-          dict.values(assets.tokens(self.mint, policy_id)),
-          fn(quantity) { quantity == -1 },
-        )
+    let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
+    let poolOutputs = utils.get_outputs_to_sc(self.outputs, policy_id)
+    let isInputRefSpent =
+      option.is_some(find_input(self.inputs, redeemer.inputRef))
+
+    let isEachMintedTokenAccountedFor =
+      list.indexed_foldr(
+        dict.to_pairs(tokens(self.mint, policy_id)),
+        True,
+        fn(index, Pair(assetName, quantity), result) {
+          expect result
+
+          if quantity > 0 {
+            let correctAssetName = and {
+                utils.token_name_has_header(assetName, constants.pool_id_header),
+                bytearray.at(assetName, 1) == index,
+                bytearray.drop(assetName, 2) == bytearray.drop(inputRefHash, 2),
+              }
+
+            expect Some(output) = list.at(poolOutputs, index)
+            let outputHasUniqueToken = and {
+                dict.size(assets.tokens(output.value, policy_id)) == 1,
+                assets.quantity_of(output.value, policy_id, assetName) == 1,
+              }
+            and {
+              quantity == 1,
+              correctAssetName,
+              outputHasUniqueToken,
+            }
+          } else {
+            //Burning the token is always allowed
+            True
+          }
+        },
+      )
+    and {
+      isInputRefSpent,
+      isEachMintedTokenAccountedFor,
     }
   }
 
@@ -70,7 +109,9 @@ validator pool(configAsset: Asset) {
         let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
 
         when redeemerAction is {
-          Cancel(auth) -> and {
+          Cancel(auth, poolAssetName) -> and {
+              quantity_of(input.output.value, ownScriptHash, poolAssetName) == 1,
+              quantity_of(self.mint, ownScriptHash, poolAssetName) == -1,
               datum.lenderAuthHash == auth.hash,
               authorize_action(
                 auth,

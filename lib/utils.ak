@@ -5,6 +5,7 @@ use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
 use aiken/interval.{Finite}
 use aiken/math/rational.{Rational}
+use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
 use cardano/assets.{
   AssetName, PolicyId, Value, quantity_of, reduce, to_dict, tokens,
@@ -20,6 +21,16 @@ use types/general.{
 }
 use types/redeemer.{
   Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
+}
+
+pub fn token_name_has_header(tokenName: ByteArray, header: Int) -> Bool {
+  bytearray.at(tokenName, 0) == header
+}
+
+pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
+  crypto.sha2_256(
+    bytearray.push(outputRef.transaction_id, outputRef.output_index),
+  )
 }
 
 pub fn get_config(
