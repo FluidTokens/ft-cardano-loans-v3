@@ -31,6 +31,7 @@ use utils.{
 //
 // The second byte is needed so we only need a single input reference to
 // create multiple pools in one transaction.
+//TODO is the pool_id_header needed?
 validator pool(configAsset: Asset) {
   mint(redeemer: PoolMintRedeemer, policy_id: PolicyId, self: Transaction) {
     let config =
@@ -87,16 +88,16 @@ validator pool(configAsset: Asset) {
     self: Transaction,
   ) {
     expect Script(poolPolicyId) = credential
-    let scInputs =
-      get_inputs_from_sc_or_delegated_to_sc(self.inputs, poolPolicyId)
-    //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
-    expect length(scInputs) == length(redeemer.actionForEachInput)
     let config =
       utils.get_config(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configAsset.policyId,
         configAsset.assetName,
       )
+    let scInputs =
+      get_inputs_from_sc_or_delegated_to_sc(self.inputs, poolPolicyId)
+    //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
+    expect length(scInputs) == length(redeemer.actionForEachInput)
 
     list.indexed_foldr(
       scInputs,
@@ -113,9 +114,9 @@ validator pool(configAsset: Asset) {
         let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
 
         when redeemerAction is {
-          Cancel(auth, poolAssetName) -> and {
-              quantity_of(input.output.value, poolPolicyId, poolAssetName) == 1,
-              quantity_of(self.mint, poolPolicyId, poolAssetName) == -1,
+          Cancel(auth, poolId) -> and {
+              quantity_of(input.output.value, poolPolicyId, poolId) == 1,
+              quantity_of(self.mint, poolPolicyId, poolId) == -1,
               datum.lenderAuthHash == auth.hash,
               authorize_action(
                 auth,
@@ -288,6 +289,7 @@ fn validate_output_to_loan(
 
   let minNeededCollateralAmount =
     when oraclePriceFeed is {
+      //Dynamic pricing pool
       Some(oraclePriceFeed) -> {
         expect Some(ltv) =
           list.at(poolDatum.principalLTV, chosenCollateralIndex)
@@ -323,6 +325,7 @@ fn validate_output_to_loan(
           }
         }
       }
+      //Fixed price pool
       None -> {
         expect Some(singleRequiredAmount) =
           list.at(poolDatum.principalLTV, chosenCollateralIndex)

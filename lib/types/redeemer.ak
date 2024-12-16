@@ -42,7 +42,7 @@ pub type PoolMintRedeemer {
 }
 
 pub type PoolAction {
-  Cancel { auth: Authorization, poolAssetName: ByteArray }
+  Cancel { auth: Authorization, poolId: ByteArray }
   Borrow {
     borrowerAddress: Address,
     outputWithLenderTokenIndex: Int,
