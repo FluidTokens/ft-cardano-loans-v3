@@ -1,17 +1,14 @@
 use aiken/collection/dict
 use aiken/collection/list.{length}
-use aiken/crypto.{sha2_256}
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use aiken/option
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
 use cardano/assets.{PolicyId, Value, flatten, quantity_of, tokens}
-use cardano/transaction.{
-  InlineDatum, Output, OutputReference, Transaction, find_input,
-}
+use cardano/transaction.{InlineDatum, Output, Transaction, find_input}
 use constants
-use types/datum.{ActiveDatum, Liquidation, LoanInfoDatum, PoolDatum}
+use types/datum.{Liquidation, LoanDatum, LoanInfoDatum, PoolDatum}
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
   Aggregated, Borrow, Cancel, Dedicated, OraclePriceFeed, PoolMintRedeemer,
@@ -36,8 +33,15 @@ use utils.{
 // create multiple pools in one transaction.
 validator pool(configAsset: Asset) {
   mint(redeemer: PoolMintRedeemer, policy_id: PolicyId, self: Transaction) {
+    let config =
+      utils.get_config(
+        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
+        configAsset.policyId,
+        configAsset.assetName,
+      )
     let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
-    let poolOutputs = utils.get_outputs_to_sc(self.outputs, policy_id)
+    let poolOutputs =
+      utils.get_outputs_to_sc(self.outputs, config.poolSpendScriptHash)
     let isInputRefSpent =
       option.is_some(find_input(self.inputs, redeemer.inputRef))
 
@@ -66,7 +70,7 @@ validator pool(configAsset: Asset) {
               outputHasUniqueToken,
             }
           } else {
-            //Burning the token is always allowed
+            //Burning the tokens is always allowed
             True
           }
         },
@@ -82,9 +86,9 @@ validator pool(configAsset: Asset) {
     credential: Credential,
     self: Transaction,
   ) {
-    expect Script(ownScriptHash) = credential
+    expect Script(poolPolicyId) = credential
     let scInputs =
-      get_inputs_from_sc_or_delegated_to_sc(self.inputs, ownScriptHash)
+      get_inputs_from_sc_or_delegated_to_sc(self.inputs, poolPolicyId)
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
     expect length(scInputs) == length(redeemer.actionForEachInput)
     let config =
@@ -110,8 +114,8 @@ validator pool(configAsset: Asset) {
 
         when redeemerAction is {
           Cancel(auth, poolAssetName) -> and {
-              quantity_of(input.output.value, ownScriptHash, poolAssetName) == 1,
-              quantity_of(self.mint, ownScriptHash, poolAssetName) == -1,
+              quantity_of(input.output.value, poolPolicyId, poolAssetName) == 1,
+              quantity_of(self.mint, poolPolicyId, poolAssetName) == -1,
               datum.lenderAuthHash == auth.hash,
               authorize_action(
                 auth,
@@ -130,18 +134,12 @@ validator pool(configAsset: Asset) {
             poolId,
           ) -> {
             expect Finite(end) = self.validity_range.upper_bound.bound_type
-            let inputUtxoId =
-              sha2_256(
-                bytearray.push(
-                  input.output_reference.transaction_id,
-                  input.output_reference.output_index,
-                ),
-              )
-            let activeOutput =
+            let inputUtxoId = utils.hash_output_ref(input.output_reference)
+            let loanOutput =
               safe_list_at(
                 get_outputs_to_sc_or_delegated_to_sc(
                   self.outputs,
-                  config.activeLoanSpendScriptHash,
+                  config.loanSpendScriptHash,
                   isCIP113,
                 ),
                 index,
@@ -157,12 +155,17 @@ validator pool(configAsset: Asset) {
                 datum.commonData.principalAsset.assetName,
               ) - wantedPrincipal
 
-            let outputToActiveValidationResults =
+            let loanOutputValidationResults =
               if datum.dynamicCollateralPrice {
                 let oracleRefInput =
                   safe_list_at(
                     self.reference_inputs,
                     chosenCollateralOracleInputIndex,
+                  )
+                expect
+                  validate_oracle_ref_input(
+                    oracleRefInput.output.value,
+                    chosenCollateral,
                   )
                 expect Some(oraclePriceFeed) =
                   retrieve_oracle_data(
@@ -171,14 +174,11 @@ validator pool(configAsset: Asset) {
                     end,
                     chosenCollateral,
                   )
-                expect
-                  validate_oracle_ref_input(
-                    oracleRefInput.output.value,
-                    chosenCollateral,
-                  ) == True
-                validate_output_to_active_with_oracle(
-                  activeOutput,
-                  config.activeLoanSpendScriptHash,
+                validate_output_to_loan(
+                  Some(oraclePriceFeed),
+                  loanOutput,
+                  config.loanPolicyId,
+                  config.loanSpendScriptHash,
                   datum,
                   chosenCollateral,
                   chosenCollateralIndex,
@@ -186,13 +186,14 @@ validator pool(configAsset: Asset) {
                   inputUtxoId,
                   end,
                   borrowerAddress,
-                  oraclePriceFeed,
                   isCIP113,
                 )
               } else {
-                validate_output_to_active_no_oracle(
-                  activeOutput,
-                  config.activeLoanSpendScriptHash,
+                validate_output_to_loan(
+                  None,
+                  loanOutput,
+                  config.loanPolicyId,
+                  config.loanSpendScriptHash,
                   datum,
                   chosenCollateral,
                   chosenCollateralIndex,
@@ -204,34 +205,31 @@ validator pool(configAsset: Asset) {
                 )
               }
 
-            let basicChecks = and {
-                wantedPrincipal > 0,
-                remainingAmount >= 0,
-                validity_range_within_an_hour(self),
-                outputToActiveValidationResults.1st,
-                tokens_sent_to_both_parties(
-                  self.mint,
-                  outputWithLenderToken,
-                  config.borrowerTokenPolicyId,
-                  config.lenderTokenPolicyId,
-                  inputUtxoId,
-                  datum.lenderAddress,
-                  datum.lenderTokenOutputMustHaveLoanInfoDatum,
-                  outputToActiveValidationResults.2nd,
-                ),
-              }
             and {
-              basicChecks,
+              wantedPrincipal > 0,
+              validity_range_within_an_hour(self),
+              loanOutputValidationResults.1st,
+              bonds_sent_to_both_parties(
+                self.mint,
+                outputWithLenderToken,
+                config.borrowerTokenPolicyId,
+                config.lenderTokenPolicyId,
+                inputUtxoId,
+                datum.lenderAddress,
+                datum.lenderTokenOutputMustHaveLoanInfoDatum,
+                loanOutputValidationResults.2nd,
+              ),
               or {
                 remainingAmount == 0,
                 and {
                   remainingAmount > 0,
-                  quantity_of(input.output.value, ownScriptHash, poolId) == 1,
+                  quantity_of(input.output.value, poolPolicyId, poolId) == 1,
                   validate_eventual_output_to_pool(
                     safe_list_at(self.outputs, index),
                     datum,
                     remainingAmount,
-                    ownScriptHash,
+                    poolPolicyId,
+                    config.poolSpendScriptHash,
                     isCIP113,
                     poolId,
                   ),
@@ -249,20 +247,20 @@ validator pool(configAsset: Asset) {
   }
 }
 
-fn tokens_sent_to_both_parties(
+fn bonds_sent_to_both_parties(
   mintedValue: Value,
   outputWithLenderToken: Output,
   borrowerTokenPolicyId: ByteArray,
   lenderTokenPolicyId: ByteArray,
-  inputUtxoId: ByteArray,
+  bondId: ByteArray,
   lenderAddress: Address,
   lenderTokenOutputMustHaveLoanInfoDatum: Bool,
   lenderBondOutputDatum: LoanInfoDatum,
 ) {
   and {
-    quantity_of(mintedValue, borrowerTokenPolicyId, inputUtxoId) == 1,
+    quantity_of(mintedValue, borrowerTokenPolicyId, bondId) == 1,
     outputWithLenderToken.address == lenderAddress,
-    quantity_of(outputWithLenderToken.value, lenderTokenPolicyId, inputUtxoId) == 1,
+    quantity_of(outputWithLenderToken.value, lenderTokenPolicyId, bondId) == 1,
     or {
       lenderTokenOutputMustHaveLoanInfoDatum == False,
       outputWithLenderToken.datum == InlineDatum(lenderBondOutputDatum),
@@ -271,33 +269,75 @@ fn tokens_sent_to_both_parties(
   }
 }
 
-fn validate_output_to_active_no_oracle(
+fn validate_output_to_loan(
+  oraclePriceFeed: Option<OraclePriceFeed>,
   output: Output,
-  activeLoanScriptHash: ByteArray,
+  loanPolicyId: ByteArray,
+  loanSpendScriptHash: ByteArray,
   poolDatum: PoolDatum,
   chosenCollateral: CollateralAsset,
   chosenCollateralIndex: Int,
   wantedPrincipal: Int,
-  inputUtxoId: ByteArray,
+  loanId: ByteArray,
   end: Int,
   borrowerAddress: Address,
   isCIP113: Bool,
 ) -> (Bool, LoanInfoDatum) {
-  expect Some(singleRequiredAmount) =
-    list.at(poolDatum.principalLTV, chosenCollateralIndex)
   expect Some(principalDivider) =
     list.at(poolDatum.principalLTVDivider, chosenCollateralIndex)
-  expect Some(singleRequiredAmountAsRational) =
-    rational.new(singleRequiredAmount, principalDivider)
-  expect Some(minNeededCollateralAmountAsRational) =
-    rational.div(
-      rational.from_int(wantedPrincipal),
-      singleRequiredAmountAsRational,
-    )
-  let minNeededCollateralAmount =
-    rational.ceil(minNeededCollateralAmountAsRational)
 
-  let containsCorrectCollateral =
+  let minNeededCollateralAmount =
+    when oraclePriceFeed is {
+      Some(oraclePriceFeed) -> {
+        expect Some(ltv) =
+          list.at(poolDatum.principalLTV, chosenCollateralIndex)
+        let ltvDivider = principalDivider
+        expect Some(ltvAsRational) = rational.new(ltv, ltvDivider)
+        expect Some(minNeededCollateralInPrincipalCurrency) =
+          rational.div(rational.from_int(wantedPrincipal), ltvAsRational)
+
+        when oraclePriceFeed is {
+          Aggregated { token_price_in_lovelaces, denominator, .. } -> {
+            expect Some(tokenPrice) =
+              rational.new(token_price_in_lovelaces, denominator)
+
+            expect Some(minNeededCollateralAmountAsRational) =
+              rational.div(minNeededCollateralInPrincipalCurrency, tokenPrice)
+            rational.ceil(minNeededCollateralAmountAsRational)
+          }
+          Pooled { token_a_amount, token_b_amount, .. } ->
+            token_b_needed_to_purchase_token_a(
+              minNeededCollateralInPrincipalCurrency,
+              token_a_amount,
+              token_b_amount,
+            )
+          Dedicated { token_price, denominator, .. } -> {
+            expect Some(tokenPrice) = rational.new(token_price, denominator)
+
+            expect Greater =
+              rational.compare(
+                tokenPrice,
+                minNeededCollateralInPrincipalCurrency,
+              )
+            1
+          }
+        }
+      }
+      None -> {
+        expect Some(singleRequiredAmount) =
+          list.at(poolDatum.principalLTV, chosenCollateralIndex)
+        expect Some(singleRequiredAmountAsRational) =
+          rational.new(singleRequiredAmount, principalDivider)
+        expect Some(minNeededCollateralAmountAsRational) =
+          rational.div(
+            rational.from_int(wantedPrincipal),
+            singleRequiredAmountAsRational,
+          )
+        rational.ceil(minNeededCollateralAmountAsRational)
+      }
+    }
+
+  let containsEnoughCollateral =
     when chosenCollateral.maybeAssetName is {
       Some(chosenCollateralAssetName) ->
         quantity_of(
@@ -309,13 +349,14 @@ fn validate_output_to_active_no_oracle(
         quantity_of_policy_id(output.value, chosenCollateral.policyId) >= minNeededCollateralAmount
     }
 
+  let containsLoanNFT = quantity_of(output.value, loanPolicyId, loanId) == 1
   expect InlineDatum(outputDatum) = output.datum
-  expect parsedDatum: ActiveDatum = outputDatum
+  expect parsedDatum: LoanDatum = outputDatum
   let newDatum =
-    ActiveDatum {
+    LoanDatum {
       commonData: poolDatum.commonData,
-      borrowerAssetName: inputUtxoId,
-      lenderAssetName: inputUtxoId,
+      borrowerAssetName: loanId,
+      lenderAssetName: loanId,
       collateral: chosenCollateral,
       principalAmount: wantedPrincipal,
       principalDivider,
@@ -337,103 +378,10 @@ fn validate_output_to_active_no_oracle(
     }
   let dosProtection = length(flatten(output.value)) <= 21
   (and {
+      is_output_to_sc(output, loanSpendScriptHash),
       toCorrectStaking,
-      is_output_to_sc(output, activeLoanScriptHash),
-      containsCorrectCollateral,
-      isDatumCorrect,
-      dosProtection,
-    }, newDatum)
-}
-
-fn validate_output_to_active_with_oracle(
-  output: Output,
-  activeLoanScriptHash: ByteArray,
-  poolDatum: PoolDatum,
-  chosenCollateral: CollateralAsset,
-  chosenCollateralIndex: Int,
-  wantedPrincipal: Int,
-  inputUtxoId: ByteArray,
-  end: Int,
-  borrowerAddress: Address,
-  oraclePriceFeed: OraclePriceFeed,
-  isCIP113: Bool,
-) -> (Bool, LoanInfoDatum) {
-  expect Some(ltv) = list.at(poolDatum.principalLTV, chosenCollateralIndex)
-  expect Some(ltvDivider) =
-    list.at(poolDatum.principalLTVDivider, chosenCollateralIndex)
-  expect Some(ltvAsRational) = rational.new(ltv, ltvDivider)
-  expect Some(minNeededCollateralInPrincipalCurrency) =
-    rational.div(rational.from_int(wantedPrincipal), ltvAsRational)
-
-  let minNeededCollateralAmount =
-    when oraclePriceFeed is {
-      Aggregated { token_price_in_lovelaces, denominator, .. } -> {
-        expect Some(tokenPrice) =
-          rational.new(token_price_in_lovelaces, denominator)
-
-        expect Some(minNeededCollateralAmountAsRational) =
-          rational.div(minNeededCollateralInPrincipalCurrency, tokenPrice)
-        rational.ceil(minNeededCollateralAmountAsRational)
-      }
-      Pooled { token_a_amount, token_b_amount, .. } ->
-        token_b_needed_to_purchase_token_a(
-          minNeededCollateralInPrincipalCurrency,
-          token_a_amount,
-          token_b_amount,
-        )
-      Dedicated { token_price, denominator, .. } -> {
-        expect Some(tokenPrice) = rational.new(token_price, denominator)
-
-        expect Greater =
-          rational.compare(tokenPrice, minNeededCollateralInPrincipalCurrency)
-        1
-      }
-    }
-  let containsCorrectCollateral =
-    when chosenCollateral.maybeAssetName is {
-      Some(chosenCollateralAssetName) ->
-        quantity_of(
-          output.value,
-          chosenCollateral.policyId,
-          chosenCollateralAssetName,
-        ) >= minNeededCollateralAmount
-      None ->
-        quantity_of_policy_id(output.value, chosenCollateral.policyId) >= minNeededCollateralAmount
-    }
-
-  expect InlineDatum(outputDatum) = output.datum
-  expect parsedDatum: ActiveDatum = outputDatum
-  let newDatum =
-    ActiveDatum {
-      commonData: poolDatum.commonData,
-      borrowerAssetName: inputUtxoId,
-      lenderAssetName: inputUtxoId,
-      collateral: chosenCollateral,
-      principalAmount: wantedPrincipal,
-      principalDivider: ltvDivider,
-      lendDate: end,
-      repaidInstallments: 0,
-      doneRecasts: 0,
-    }
-
-  let isLiquidationCorrectlySet =
-    when newDatum.commonData.liquidationMode is {
-      Liquidation { .. } -> newDatum.collateral.maybeOracleTokenAsset != None
-      _ -> True
-    }
-
-  let isDatumCorrect = parsedDatum == newDatum && isLiquidationCorrectlySet
-
-  let toCorrectStaking = or {
-      isCIP113 == True,
-      output.address.stake_credential == borrowerAddress.stake_credential,
-    }
-
-  let dosProtection = length(flatten(output.value)) <= 21
-  (and {
-      toCorrectStaking,
-      is_output_to_sc(output, activeLoanScriptHash),
-      containsCorrectCollateral,
+      containsLoanNFT,
+      containsEnoughCollateral,
       isDatumCorrect,
       dosProtection,
     }, newDatum)
@@ -444,7 +392,8 @@ fn validate_eventual_output_to_pool(
   output: Output,
   datum: PoolDatum,
   remainingAmount: Int,
-  ownScriptHash: ByteArray,
+  poolPolicyId: ByteArray,
+  poolSpendScriptHash: ByteArray,
   isCIP113: Bool,
   poolId: ByteArray,
 ) {
@@ -458,7 +407,7 @@ fn validate_eventual_output_to_pool(
       datum.commonData.principalAsset.assetName,
     ) == remainingAmount
 
-  let containsPoolNFT = quantity_of(output.value, ownScriptHash, poolId) == 1
+  let containsPoolNFT = quantity_of(output.value, poolPolicyId, poolId) == 1
 
   let isDatumCorrect = parsedDatum == datum
 
@@ -470,11 +419,11 @@ fn validate_eventual_output_to_pool(
     }
 
   and {
-    is_output_to_sc(output, ownScriptHash),
-    containsCorrectAmount,
+    is_output_to_sc(output, poolSpendScriptHash),
+    toCorrectStaking,
     containsPoolNFT,
+    containsCorrectAmount,
     isDatumCorrect,
     dosProtection,
-    toCorrectStaking,
   }
 }

@@ -150,7 +150,7 @@
           }
         },
         {
-          "title": "activeLoanScriptHash",
+          "title": "loanScriptHash",
           "schema": {
             "$ref": "#/definitions/ByteArray"
           }
@@ -187,7 +187,7 @@
           }
         },
         {
-          "title": "activeLoanScriptHash",
+          "title": "loanScriptHash",
           "schema": {
             "$ref": "#/definitions/ByteArray"
           }
@@ -218,7 +218,7 @@
           }
         },
         {
-          "title": "activeLoanScriptHash",
+          "title": "loanScriptHash",
           "schema": {
             "$ref": "#/definitions/ByteArray"
           }

@@ -276,7 +276,7 @@ pub fn retrieve_oracle_data(
   } {
     Some(loan_tokens_price.data)
   } else {
-    trace @"oracle is expired or has wrong token"
+    trace @"oracle is expired, has wrong token or wrong interval"
     None
   }
 }

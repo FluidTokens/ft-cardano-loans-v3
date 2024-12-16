@@ -1,14 +1,20 @@
+use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
+use aiken/option
+use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script, StakeCredential}
-use cardano/assets.{AssetName, PolicyId, Value, add, flatten, quantity_of}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use cardano/assets.{
+  AssetName, PolicyId, Value, add, flatten, quantity_of, tokens,
+}
+use cardano/transaction.{InlineDatum, Input, Output, Transaction, find_input}
+use constants
 use finance.{
   can_liquidate, get_collateral_value_in_principal_currency, get_remaining_debt,
   get_repayment_amount, is_recasting_permitted, is_repayment_late,
 }
 use types/datum.{
-  ActiveDatum, ConfigDatum, DutchAuctionDatum, Liquidation,
+  ConfigDatum, DutchAuctionDatum, Liquidation, LoanDatum,
   NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
   RepaymentDatum, RepaymentDatumWithBond,
 }
@@ -22,7 +28,7 @@ use utils.{
   safe_list_at, validate_oracle_ref_input, value_without_policy_id_as_list,
 }
 
-// The first byte of minted token names is reserved for teh type of token
+// The first byte of minted token names is reserved for the type of token
 //
 // There are 4 types of tokens that can be minted:
 // loanId: first byte = 0 = loan_id_header
@@ -31,7 +37,45 @@ use utils.{
 // repaymentId: first byte = 3 = repayment_id_header
 validator loan(configAsset: Asset) {
   mint(redeemer: LoanMintRedeemer, policy_id: PolicyId, self: Transaction) {
-    todo
+    let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
+    let loanOutputs = utils.get_outputs_to_sc(self.outputs, policy_id)
+    let isInputRefSpent =
+      option.is_some(find_input(self.inputs, redeemer.inputRef))
+
+    let isEachMintedTokenAccountedFor =
+      list.indexed_foldr(
+        dict.to_pairs(tokens(self.mint, policy_id)),
+        True,
+        fn(index, Pair(assetName, quantity), result) {
+          expect result
+
+          if quantity > 0 {
+            let correctAssetName = and {
+                utils.token_name_has_header(assetName, constants.pool_id_header),
+                bytearray.at(assetName, 1) == index,
+                bytearray.drop(assetName, 2) == bytearray.drop(inputRefHash, 2),
+              }
+
+            expect Some(output) = list.at(loanOutputs, index)
+            let outputHasUniqueToken = and {
+                dict.size(assets.tokens(output.value, policy_id)) == 1,
+                assets.quantity_of(output.value, policy_id, assetName) == 1,
+              }
+            and {
+              quantity == 1,
+              correctAssetName,
+              outputHasUniqueToken,
+            }
+          } else {
+            //Burning the tokens is always allowed
+            True
+          }
+        },
+      )
+    and {
+      isInputRefSpent,
+      isEachMintedTokenAccountedFor,
+    }
   }
 
   withdraw(
@@ -64,7 +108,7 @@ validator loan(configAsset: Asset) {
         let input = inputAndCIP113Control.1st
         let isCIP113 = inputAndCIP113Control.2nd
         expect InlineDatum(inputDatum) = input.output.datum
-        expect datum: ActiveDatum = inputDatum
+        expect datum: LoanDatum = inputDatum
         let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
 
         when redeemerAction is {
@@ -247,7 +291,7 @@ validator loan(configAsset: Asset) {
               ),
               or {
                 datum.repaidInstallments == datum.commonData.totalInstallments - 1,
-                validate_output_to_active_loan_for_repayment(
+                validate_output_to_loan_for_repayment(
                   safe_list_at(
                     get_outputs_to_sc_or_delegated_to_sc(
                       self.outputs,
@@ -268,7 +312,7 @@ validator loan(configAsset: Asset) {
           }
           AddCollateral(bondInputIndex, addedCollateralAmount) -> {
             expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
-            expect Some(activeLoanOutput) =
+            expect Some(loanOutput) =
               list.at(
                 get_outputs_to_sc_or_delegated_to_sc(
                   self.outputs,
@@ -284,8 +328,8 @@ validator loan(configAsset: Asset) {
                 datum.borrowerAssetName,
                 bondInput,
               ),
-              validate_output_to_active_loan_for_adding_collateral(
-                activeLoanOutput,
+              validate_output_to_loan_for_adding_collateral(
+                loanOutput,
                 datum,
                 addedCollateralAmount,
                 input.output.value,
@@ -341,7 +385,7 @@ validator loan(configAsset: Asset) {
                 and {
                   debtAfterRecasting > 0,
                   {
-                    expect Some(activeLoanOutput) =
+                    expect Some(loanOutput) =
                       list.at(
                         get_outputs_to_sc_or_delegated_to_sc(
                           self.outputs,
@@ -350,8 +394,8 @@ validator loan(configAsset: Asset) {
                         ),
                         index,
                       )
-                    validate_output_to_active_loan_for_recasting(
-                      activeLoanOutput,
+                    validate_output_to_loan_for_recasting(
+                      loanOutput,
                       datum,
                       principalPaid,
                       input.output.value,
@@ -445,20 +489,20 @@ fn validate_output_to_repayment(
   }
 }
 
-fn validate_output_to_active_loan_for_repayment(
-  activeLoanOutput: Output,
-  datum: ActiveDatum,
+fn validate_output_to_loan_for_repayment(
+  loanOutput: Output,
+  datum: LoanDatum,
   newRepaidInstallments: Int,
   loanValue: Value,
   ownScriptHash: ByteArray,
   prevStakeCredential: Option<StakeCredential>,
   isCIP113: Bool,
 ) {
-  expect InlineDatum(outputDatum) = activeLoanOutput.datum
-  expect parsedDatum: ActiveDatum = outputDatum
+  expect InlineDatum(outputDatum) = loanOutput.datum
+  expect parsedDatum: LoanDatum = outputDatum
 
   let newDatum =
-    ActiveDatum {
+    LoanDatum {
       commonData: datum.commonData,
       borrowerAssetName: datum.borrowerAssetName,
       lenderAssetName: datum.lenderAssetName,
@@ -473,41 +517,41 @@ fn validate_output_to_active_loan_for_repayment(
 
   let toCorrectStaking = or {
       isCIP113 == True,
-      activeLoanOutput.address.stake_credential == prevStakeCredential,
+      loanOutput.address.stake_credential == prevStakeCredential,
     }
   and {
-    is_output_to_sc(activeLoanOutput, ownScriptHash),
-    activeLoanOutput.value == loanValue,
+    is_output_to_sc(loanOutput, ownScriptHash),
+    loanOutput.value == loanValue,
     isDatumCorrect,
     toCorrectStaking,
   }
 }
 
-fn validate_output_to_active_loan_for_adding_collateral(
-  activeLoanOutput: Output,
-  datum: ActiveDatum,
+fn validate_output_to_loan_for_adding_collateral(
+  loanOutput: Output,
+  datum: LoanDatum,
   additionalCollateralAmount: Int,
   loanValue: Value,
   ownScriptHash: ByteArray,
   prevStakeCredential: Option<StakeCredential>,
   isCIP113: Bool,
 ) {
-  expect InlineDatum(outputDatum) = activeLoanOutput.datum
-  expect parsedDatum: ActiveDatum = outputDatum
+  expect InlineDatum(outputDatum) = loanOutput.datum
+  expect parsedDatum: LoanDatum = outputDatum
 
   let correctValue =
     if datum.collateral.maybeAssetName == None {
       let oldCollateralTokens =
         quantity_of_policy_id(loanValue, datum.collateral.policyId)
       let newCollateralTokens =
-        quantity_of_policy_id(activeLoanOutput.value, datum.collateral.policyId)
+        quantity_of_policy_id(loanOutput.value, datum.collateral.policyId)
       //The Value must be the same as before except for the quantity of tokens with same collateral's policyId
       let sameValueWithoutCollateralTokens =
         value_without_policy_id_as_list(loanValue, datum.collateral.policyId) == value_without_policy_id_as_list(
-          activeLoanOutput.value,
+          loanOutput.value,
           datum.collateral.policyId,
         )
-      let dosProtection = length(flatten(activeLoanOutput.value)) <= 21
+      let dosProtection = length(flatten(loanOutput.value)) <= 21
       and {
         sameValueWithoutCollateralTokens,
         newCollateralTokens > oldCollateralTokens,
@@ -522,36 +566,36 @@ fn validate_output_to_active_loan_for_adding_collateral(
           assetName,
           additionalCollateralAmount,
         )
-      activeLoanOutput.value == expectedValue
+      loanOutput.value == expectedValue
     }
 
   let toCorrectStaking = or {
       isCIP113 == True,
-      activeLoanOutput.address.stake_credential == prevStakeCredential,
+      loanOutput.address.stake_credential == prevStakeCredential,
     }
 
   and {
-    is_output_to_sc(activeLoanOutput, ownScriptHash),
+    is_output_to_sc(loanOutput, ownScriptHash),
     parsedDatum == datum,
     correctValue,
     toCorrectStaking,
   }
 }
 
-fn validate_output_to_active_loan_for_recasting(
-  activeLoanOutput: Output,
-  datum: ActiveDatum,
+fn validate_output_to_loan_for_recasting(
+  loanOutput: Output,
+  datum: LoanDatum,
   principalPaid: Int,
   loanValue: Value,
   ownScriptHash: ByteArray,
   prevStakeCredential: Option<StakeCredential>,
   isCIP113: Bool,
 ) {
-  expect InlineDatum(outputDatum) = activeLoanOutput.datum
-  expect parsedDatum: ActiveDatum = outputDatum
+  expect InlineDatum(outputDatum) = loanOutput.datum
+  expect parsedDatum: LoanDatum = outputDatum
 
   let newDatum =
-    ActiveDatum {
+    LoanDatum {
       commonData: datum.commonData,
       borrowerAssetName: datum.borrowerAssetName,
       lenderAssetName: datum.lenderAssetName,
@@ -565,18 +609,18 @@ fn validate_output_to_active_loan_for_recasting(
 
   let toCorrectStaking = or {
       isCIP113 == True,
-      activeLoanOutput.address.stake_credential == prevStakeCredential,
+      loanOutput.address.stake_credential == prevStakeCredential,
     }
   and {
-    is_output_to_sc(activeLoanOutput, ownScriptHash),
+    is_output_to_sc(loanOutput, ownScriptHash),
     parsedDatum == newDatum,
-    activeLoanOutput.value == loanValue,
+    loanOutput.value == loanValue,
     toCorrectStaking,
   }
 }
 
 fn validate_output_to_dutch_auction(
-  activeLoanInput: Input,
+  loanInput: Input,
   borrower_bond_input: Input,
   dutchAuctionOutput: Output,
   validTo: Int,
@@ -606,7 +650,7 @@ fn validate_output_to_dutch_auction(
   let isDatumCorrect = parsedDatum == newDatum
   and {
     is_output_to_sc(dutchAuctionOutput, config.ducthAuctionSpendScriptHash),
-    activeLoanInput.output.value == dutchAuctionOutput.value,
+    loanInput.output.value == dutchAuctionOutput.value,
     isDatumCorrect,
   }
 }

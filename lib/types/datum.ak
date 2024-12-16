@@ -13,9 +13,10 @@ pub type ConfigDatum {
   adminAddress: Address,
   borrowerTokenPolicyId: ByteArray,
   lenderTokenPolicyId: ByteArray,
+  loanPolicyId: ByteArray,
   poolSpendScriptHash: ByteArray,
   loanRequestSpendScriptHash: ByteArray,
-  activeLoanSpendScriptHash: ByteArray,
+  loanSpendScriptHash: ByteArray,
   repaymentSpendScriptHash: ByteArray,
   ducthAuctionSpendScriptHash: ByteArray,
   dutchAuctionStartingIncreasePerMille: Int,
@@ -93,9 +94,9 @@ pub type PoolDatum {
 
 //Optional datum of the lender's bond output 
 pub type LoanInfoDatum =
-  ActiveDatum
+  LoanDatum
 
-pub type ActiveDatum {
+pub type LoanDatum {
   commonData: CommonData,
   borrowerAssetName: AssetName,
   lenderAssetName: AssetName,
