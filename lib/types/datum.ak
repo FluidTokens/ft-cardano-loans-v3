@@ -11,9 +11,11 @@ use types/general.{Asset, CollateralAsset}
 
 pub type ConfigDatum {
   adminAddress: Address,
+  poolPolicyId: ByteArray,
   borrowerTokenPolicyId: ByteArray,
   lenderTokenPolicyId: ByteArray,
   loanPolicyId: ByteArray,
+  repaymentPolicyId: ByteArray,
   poolSpendScriptHash: ByteArray,
   loanRequestSpendScriptHash: ByteArray,
   loanSpendScriptHash: ByteArray,
@@ -109,7 +111,7 @@ pub type LoanDatum {
 }
 
 pub type RepaymentDatum {
-  RepaymentDatumWithBond { action: ByteArray, data: Data, ownerAsset: Asset }
+  RepaymentDatumWithToken { action: ByteArray, data: Data, ownerAsset: Asset }
   RepaymentDatumWithHash {
     action: ByteArray,
     data: Data,

@@ -41,34 +41,44 @@ pub type PoolMintRedeemer {
   inputRef: OutputReference,
 }
 
+pub type CancelPool {
+  auth: Authorization,
+  poolId: ByteArray,
+}
+
+pub type BorrowFromPool {
+  borrowerAddress: Address,
+  outputWithLenderTokenIndex: Int,
+  //Asset that the borrower is providing, must be accepted by the pool
+  chosenCollateralIndex: Int,
+  //If collateral doesn't use oracle, this must be -1
+  chosenCollateralOracleInputIndex: Int,
+  wantedPrincipal: Int,
+  poolId: ByteArray,
+}
+
 pub type PoolAction {
-  Cancel { auth: Authorization, poolId: ByteArray }
-  Borrow {
-    borrowerAddress: Address,
-    outputWithLenderTokenIndex: Int,
-    //Asset that the borrower is providing, must be accepted by the pool
-    chosenCollateralIndex: Int,
-    //If collateral doesn't use oracle, this must be -1
-    chosenCollateralOracleInputIndex: Int,
-    wantedPrincipal: Int,
-    poolId: ByteArray,
-  }
+  Cancel { actionsForEachInput: List<CancelPool> }
+  Borrow { actionsForEachInput: List<BorrowFromPool> }
 }
 
 pub type PoolWithdrawRedeemer {
   configRefInputIndex: Int,
-  actionForEachInput: List<PoolAction>,
+  action: PoolAction,
 }
 
 pub type LoanMintRedeemer {
+  configRefInputIndex: Int,
   inputRef: OutputReference,
+  poolWithdrawRedeemerIndex: Int,
+  mintingAnyToken: Bool,
 }
 
 pub type LoanAction {
   //Lender action (or anyone who has the permission to spend the lender's bond)
   Claim {
     //This is the absolute input index that contains the lender bond
-    bondInputIndex: Int,
+    lenderBondInputIndex: Int,
     //If loan doesn't use oracle, this is not used
     collateralOracleInputIndex: Int,
     //Used only when an auction must start as part of liquidation
@@ -80,25 +90,30 @@ pub type LoanAction {
   Repay {
     //This is the absolute input index that contains the borrower bond
     bondInputIndex: Int,
+    loanId: ByteArray,
   }
   //Borrower action
-  AddCollateral { bondInputIndex: Int, addedCollateralAmount: Int }
+  AddCollateral {
+    bondInputIndex: Int,
+    addedCollateralAmount: Int,
+    loanId: ByteArray,
+  }
   //Borrower action
   Recast { bondInputIndex: Int, principalPaid: Int }
 }
 
 pub type LoanWithdrawRedeemer {
   configRefInputIndex: Int,
-  actionForEachInput: List<LoanAction>,
+  actionsForEachInput: List<LoanAction>,
 }
 
 pub type RepaymentAction {
-  WithdrawWithBond { bondInputIndex: Int }
+  WithdrawWithToken { tokenInputIndex: Int }
   WithdrawWithHash { auth: Authorization }
 }
 
 pub type RepaymentWithdrawRedeemer {
-  actionForEachInput: List<RepaymentAction>,
+  actionsForEachInput: List<RepaymentAction>,
 }
 
 pub type DutchAuctionAction {
@@ -107,5 +122,5 @@ pub type DutchAuctionAction {
 }
 
 pub type DutchAuctionRedeemer {
-  actionForEachInput: List<DutchAuctionAction>,
+  actionsForEachInput: List<DutchAuctionAction>,
 }

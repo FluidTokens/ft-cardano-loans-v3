@@ -18,7 +18,7 @@ validator dutch_auction {
     let scInputs =
       get_inputs_from_sc_or_delegated_to_sc(self.inputs, ownScriptHash)
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
-    expect length(scInputs) == length(redeemer.actionForEachInput)
+    expect length(scInputs) == length(redeemer.actionsForEachInput)
     expect Finite(validTo) = self.validity_range.upper_bound.bound_type
 
     list.indexed_foldr(
@@ -33,7 +33,7 @@ validator dutch_auction {
         let isCIP113 = inputAndCIP113Control.2nd
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: DutchAuctionDatum = inputDatum
-        let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
+        let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
         let currentPrice =
           get_current_price(
             datum.startingPrice,
@@ -50,9 +50,7 @@ validator dutch_auction {
             }
           DA_Buy -> {
             expect Some(ownerOutput) = list.at(self.outputs, index)
-            if
-            datum.borrowerAddress != None && currentPrice > datum.debtAmount{
-            
+            if datum.borrowerAddress != None && currentPrice > datum.debtAmount {
               expect Some(borrowerAddress) = datum.borrowerAddress
               //TODO Is the index correct?
               expect Some(borrowerOutput) = list.at(self.outputs, index + 1)

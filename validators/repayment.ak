@@ -2,10 +2,11 @@
 use aiken/collection/list.{length}
 use cardano/address.{Credential, Script}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
-use types/datum.{RepaymentDatum, RepaymentDatumWithBond, RepaymentDatumWithHash}
+use types/datum.{RepaymentDatum,
+  RepaymentDatumWithHash, RepaymentDatumWithToken}
 use types/general.{Asset}
 use types/redeemer.{
-  RepaymentWithdrawRedeemer, WithdrawWithBond, WithdrawWithHash,
+  RepaymentWithdrawRedeemer, WithdrawWithHash, WithdrawWithToken,
 }
 use utils.{
   authorize_action, get_inputs_from_sc_or_delegated_to_sc, is_nft_spent,
@@ -22,7 +23,7 @@ validator repayment {
     let scInputs =
       get_inputs_from_sc_or_delegated_to_sc(self.inputs, ownScriptHash)
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
-    expect length(scInputs) == length(redeemer.actionForEachInput)
+    expect length(scInputs) == length(redeemer.actionsForEachInput)
 
     list.indexed_foldr(
       scInputs,
@@ -35,13 +36,13 @@ validator repayment {
         let input = inputAndCIP113Control.1st
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: RepaymentDatum = inputDatum
-        let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
+        let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
 
         when redeemerAction is {
-          WithdrawWithBond(bondInputIndex) -> {
-            expect RepaymentDatumWithBond(_action, _data, ownerAsset) = datum
-            expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
-            is_nft_spent(ownerAsset.policyId, ownerAsset.assetName, bondInput)
+          WithdrawWithToken(tokenInputIndex) -> {
+            expect RepaymentDatumWithToken(_action, _data, ownerAsset) = datum
+            expect Some(tokenInput) = list.at(self.inputs, tokenInputIndex)
+            is_nft_spent(ownerAsset.policyId, ownerAsset.assetName, tokenInput)
           }
           WithdrawWithHash(auth) -> {
             expect RepaymentDatumWithHash(_action, _data, ownerAuthHash) = datum

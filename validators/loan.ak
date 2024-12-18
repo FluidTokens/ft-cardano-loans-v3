@@ -7,7 +7,9 @@ use cardano/address.{Address, Credential, Script, StakeCredential}
 use cardano/assets.{
   AssetName, PolicyId, Value, add, flatten, quantity_of, tokens,
 }
-use cardano/transaction.{InlineDatum, Input, Output, Transaction, find_input}
+use cardano/transaction.{
+  InlineDatum, Input, Output, Transaction, Withdraw, find_input,
+}
 use constants
 use finance.{
   can_liquidate, get_collateral_value_in_principal_currency, get_remaining_debt,
@@ -16,11 +18,12 @@ use finance.{
 use types/datum.{
   ConfigDatum, DutchAuctionDatum, Liquidation, LoanDatum,
   NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
-  RepaymentDatum, RepaymentDatumWithBond,
+  RepaymentDatum, RepaymentDatumWithToken,
 }
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
-  AddCollateral, Claim, LoanMintRedeemer, LoanWithdrawRedeemer, Recast, Repay,
+  AddCollateral, Borrow, Claim, LoanMintRedeemer, LoanWithdrawRedeemer, Recast,
+  Repay,
 }
 use utils.{
   get_inputs_from_sc_or_delegated_to_sc, get_outputs_to_sc_or_delegated_to_sc,
@@ -28,17 +31,19 @@ use utils.{
   safe_list_at, validate_oracle_ref_input, value_without_policy_id_as_list,
 }
 
-// The first byte of minted token names is reserved for the type of token
-//
-// There are 4 types of tokens that can be minted:
-// loanId: first byte = 0 = loan_id_header
-// lenderId: first byte = 1 = lender_id_header
-// borrowerId: first byte = 2 = borrower_id_header
-// repaymentId: first byte = 3 = repayment_id_header
+//TODO Remove loan_id_header?
+//TODO Should we limit the max number of minted tokens per tx?
 validator loan(configAsset: Asset) {
   mint(redeemer: LoanMintRedeemer, policy_id: PolicyId, self: Transaction) {
+    let config =
+      utils.get_config(
+        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
+        configAsset.policyId,
+        configAsset.assetName,
+      )
     let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
-    let loanOutputs = utils.get_outputs_to_sc(self.outputs, policy_id)
+    let loanOutputs =
+      utils.get_outputs_to_sc(self.outputs, config.loanSpendScriptHash)
     let isInputRefSpent =
       option.is_some(find_input(self.inputs, redeemer.inputRef))
 
@@ -50,8 +55,15 @@ validator loan(configAsset: Asset) {
           expect result
 
           if quantity > 0 {
+            let poolWithdrawRedeemer =
+              safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
+            //TODO These 2 checks could be executed only once if there's at least 1 mint
+            expect
+              poolWithdrawRedeemer.1st == Withdraw(Script(config.poolPolicyId))
+            expect Borrow { .. } = poolWithdrawRedeemer.2nd
+
             let correctAssetName = and {
-                utils.token_name_has_header(assetName, constants.pool_id_header),
+                utils.token_name_has_header(assetName, constants.loan_id_header),
                 bytearray.at(assetName, 1) == index,
                 bytearray.drop(assetName, 2) == bytearray.drop(inputRefHash, 2),
               }
@@ -72,6 +84,7 @@ validator loan(configAsset: Asset) {
           }
         },
       )
+
     and {
       isInputRefSpent,
       isEachMintedTokenAccountedFor,
@@ -83,19 +96,22 @@ validator loan(configAsset: Asset) {
     credential: Credential,
     self: Transaction,
   ) {
-    expect Script(ownScriptHash) = credential
-    let scInputs =
-      get_inputs_from_sc_or_delegated_to_sc(self.inputs, ownScriptHash)
-    //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
-    expect length(scInputs) == length(redeemer.actionForEachInput)
-    expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
-    expect Finite(validTo) = self.validity_range.upper_bound.bound_type
+    expect Script(loanPolicyId) = credential
     let config =
       utils.get_config(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configAsset.policyId,
         configAsset.assetName,
       )
+    let scInputs =
+      get_inputs_from_sc_or_delegated_to_sc(
+        self.inputs,
+        config.loanSpendScriptHash,
+      )
+    //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
+    expect length(scInputs) == length(redeemer.actionsForEachInput)
+    expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
+    expect Finite(validTo) = self.validity_range.upper_bound.bound_type
 
     list.indexed_foldr(
       scInputs,
@@ -109,32 +125,34 @@ validator loan(configAsset: Asset) {
         let isCIP113 = inputAndCIP113Control.2nd
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: LoanDatum = inputDatum
-        let redeemerAction = safe_list_at(redeemer.actionForEachInput, index)
+        let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
+        let inputUtxoId = utils.hash_output_ref(input.output_reference)
 
         when redeemerAction is {
           Claim(
-            bondInputIndex,
+            lenderBondInputIndex,
             collateralOracleRefInputIndex,
             lenderAuthHash,
             lenderAddress,
           ) -> {
-            expect Some(actualBondInput) = list.at(self.inputs, bondInputIndex)
+            expect Some(bondInput) = list.at(self.inputs, lenderBondInputIndex)
+            let isRepaymentLate =
+              is_repayment_late(
+                validFrom,
+                datum.lendDate,
+                datum.commonData.initialGracePeriod,
+                datum.repaidInstallments,
+                datum.commonData.installmentPeriod,
+                datum.commonData.repaymentTimeWindow,
+              )
             and {
               is_nft_spent(
                 config.lenderTokenPolicyId,
                 datum.lenderAssetName,
-                actualBondInput,
+                bondInput,
               ),
               when datum.commonData.liquidationMode is {
-                NoLiquidationFullCollateralClaim ->
-                  is_repayment_late(
-                    validFrom,
-                    datum.lendDate,
-                    datum.commonData.initialGracePeriod,
-                    datum.repaidInstallments,
-                    datum.commonData.installmentPeriod,
-                    datum.commonData.repaymentTimeWindow,
-                  )
+                NoLiquidationFullCollateralClaim -> isRepaymentLate
                 NoLiquidationDutchAuctionClaim -> {
                   expect Finite(validTo) =
                     self.validity_range.upper_bound.bound_type
@@ -147,31 +165,26 @@ validator loan(configAsset: Asset) {
                       ),
                       index,
                     )
-                  and {
-                    is_repayment_late(
-                      validFrom,
-                      datum.lendDate,
-                      datum.commonData.initialGracePeriod,
+                  let remainingDebt =
+                    get_remaining_debt(
+                      datum.commonData.repaymentMode,
+                      datum.principalAmount,
+                      datum.principalDivider,
+                      datum.commonData.interestRate,
+                      datum.commonData.totalInstallments,
                       datum.repaidInstallments,
-                      datum.commonData.installmentPeriod,
-                      datum.commonData.repaymentTimeWindow,
-                    ),
+                    )
+                  and {
+                    isRepaymentLate,
                     validate_output_to_dutch_auction(
                       input,
-                      actualBondInput,
+                      bondInput,
                       dutchAuctionOutput,
                       validTo,
                       lenderAuthHash,
                       lenderAddress,
                       datum.commonData.principalAsset,
-                      get_remaining_debt(
-                        datum.commonData.repaymentMode,
-                        datum.principalAmount,
-                        datum.principalDivider,
-                        datum.commonData.interestRate,
-                        datum.commonData.totalInstallments,
-                        datum.repaidInstallments,
-                      ),
+                      remainingDebt,
                       config,
                     ),
                   }
@@ -195,20 +208,22 @@ validator loan(configAsset: Asset) {
                       datum.collateral,
                       input.output.value,
                     )
+                  let remainingDebt =
+                    get_remaining_debt(
+                      datum.commonData.repaymentMode,
+                      datum.principalAmount,
+                      datum.principalDivider,
+                      datum.commonData.interestRate,
+                      datum.commonData.totalInstallments,
+                      datum.repaidInstallments,
+                    )
                   and {
                     validate_oracle_ref_input(
                       oracleRefInput.output.value,
                       datum.collateral,
                     ),
                     or {
-                      is_repayment_late(
-                        validFrom,
-                        datum.lendDate,
-                        datum.commonData.initialGracePeriod,
-                        datum.repaidInstallments,
-                        datum.commonData.installmentPeriod,
-                        datum.commonData.repaymentTimeWindow,
-                      ),
+                      isRepaymentLate,
                       can_liquidate(
                         collateralValueInPrincipalCurrency,
                         datum.principalAmount,
@@ -221,20 +236,15 @@ validator loan(configAsset: Asset) {
                       partialLiquidation == False,
                       difference_sent_to_borrower(
                         collateralValueInPrincipalCurrency: collateralValueInPrincipalCurrency,
-                        totalDebtInPrincipalCurrency: get_remaining_debt(
-                          datum.commonData.repaymentMode,
-                          datum.principalAmount,
-                          datum.principalDivider,
-                          datum.commonData.interestRate,
-                          datum.commonData.totalInstallments,
-                          datum.repaidInstallments,
-                        ),
+                        totalDebtInPrincipalCurrency: remainingDebt,
                         borrowerTokenPolicyId: config.borrowerTokenPolicyId,
                         borrowerAssetName: datum.borrowerAssetName,
                         principalAssetPolicyId: datum.commonData.principalAsset.policyId,
                         principalAssetName: datum.commonData.principalAsset.assetName,
                         differenceOutput: safe_list_at(self.outputs, index),
-                        repaymentScriptHash: config.repaymentSpendScriptHash,
+                        repaymentSpendScriptHash: config.repaymentSpendScriptHash,
+                        repaymentPolicyId: config.loanPolicyId,
+                        repaymentId: inputUtxoId,
                       ),
                     },
                   }
@@ -243,8 +253,9 @@ validator loan(configAsset: Asset) {
             }
           }
 
-          Repay(bondInputIndex) -> {
-            expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
+          Repay(borrowerBondInputIndex, loanId) -> {
+            expect Some(bondInput) =
+              list.at(self.inputs, borrowerBondInputIndex)
             expect Some(repaymentOutput) =
               list.at(
                 get_outputs_to_sc_or_delegated_to_sc(
@@ -254,7 +265,7 @@ validator loan(configAsset: Asset) {
                 ),
                 index,
               )
-            let isLate =
+            let isRepaymentLate =
               is_repayment_late(
                 validFrom,
                 datum.lendDate,
@@ -270,7 +281,7 @@ validator loan(configAsset: Asset) {
                 datum.principalDivider,
                 datum.commonData.interestRate,
                 datum.commonData.totalInstallments,
-                isLate,
+                isRepaymentLate,
                 datum.commonData.penaltyFeeForLateRepayment,
               )
             and {
@@ -288,35 +299,43 @@ validator loan(configAsset: Asset) {
                 "installment_repayment",
                 datum.repaidInstallments + 1,
                 config.repaymentSpendScriptHash,
+                config.repaymentPolicyId,
+                inputUtxoId,
               ),
               or {
                 datum.repaidInstallments == datum.commonData.totalInstallments - 1,
-                validate_output_to_loan_for_repayment(
-                  safe_list_at(
-                    get_outputs_to_sc_or_delegated_to_sc(
-                      self.outputs,
-                      ownScriptHash,
-                      isCIP113,
+                and {
+                  quantity_of(input.output.value, loanPolicyId, loanId) == 1,
+                  validate_output_to_loan_for_repayment(
+                    safe_list_at(
+                      get_outputs_to_sc_or_delegated_to_sc(
+                        self.outputs,
+                        loanPolicyId,
+                        isCIP113,
+                      ),
+                      index,
                     ),
-                    index,
+                    datum,
+                    datum.repaidInstallments + 1,
+                    input.output.value,
+                    input.output.address.stake_credential,
+                    isCIP113,
+                    config.loanSpendScriptHash,
+                    loanPolicyId,
+                    loanId,
                   ),
-                  datum,
-                  datum.repaidInstallments + 1,
-                  input.output.value,
-                  ownScriptHash,
-                  input.output.address.stake_credential,
-                  isCIP113,
-                ),
+                },
               },
             }
           }
-          AddCollateral(bondInputIndex, addedCollateralAmount) -> {
-            expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
+          AddCollateral(borrowerBondInputIndex, addedCollateralAmount, loanId) -> {
+            expect Some(bondInput) =
+              list.at(self.inputs, borrowerBondInputIndex)
             expect Some(loanOutput) =
               list.at(
                 get_outputs_to_sc_or_delegated_to_sc(
                   self.outputs,
-                  ownScriptHash,
+                  loanPolicyId,
                   isCIP113,
                 ),
                 index,
@@ -328,19 +347,21 @@ validator loan(configAsset: Asset) {
                 datum.borrowerAssetName,
                 bondInput,
               ),
+              quantity_of(input.output.value, loanPolicyId, loanId) == 1,
               validate_output_to_loan_for_adding_collateral(
                 loanOutput,
                 datum,
                 addedCollateralAmount,
                 input.output.value,
-                ownScriptHash,
                 input.output.address.stake_credential,
                 isCIP113,
+                config.loanSpendScriptHash,
               ),
             }
           }
-          Recast(bondInputIndex, principalPaid) -> {
-            expect Some(bondInput) = list.at(self.inputs, bondInputIndex)
+          Recast(borrowerBondInputIndex, principalPaid) -> {
+            expect Some(bondInput) =
+              list.at(self.inputs, borrowerBondInputIndex)
             expect Some(repaymentOutput) =
               list.at(
                 get_outputs_to_sc_or_delegated_to_sc(
@@ -379,6 +400,8 @@ validator loan(configAsset: Asset) {
                 "recast",
                 None,
                 config.repaymentSpendScriptHash,
+                config.repaymentPolicyId,
+                inputUtxoId,
               ),
               or {
                 debtAfterRecasting == 0,
@@ -389,7 +412,7 @@ validator loan(configAsset: Asset) {
                       list.at(
                         get_outputs_to_sc_or_delegated_to_sc(
                           self.outputs,
-                          ownScriptHash,
+                          loanPolicyId,
                           isCIP113,
                         ),
                         index,
@@ -399,9 +422,9 @@ validator loan(configAsset: Asset) {
                       datum,
                       principalPaid,
                       input.output.value,
-                      ownScriptHash,
                       input.output.address.stake_credential,
                       isCIP113,
+                      config.loanSpendScriptHash,
                     )
                   },
                 },
@@ -426,16 +449,17 @@ fn difference_sent_to_borrower(
   principalAssetPolicyId: ByteArray,
   principalAssetName: AssetName,
   differenceOutput: Output,
-  repaymentScriptHash: ByteArray,
+  repaymentSpendScriptHash: ByteArray,
+  repaymentPolicyId: ByteArray,
+  repaymentId: ByteArray,
 ) {
-  expect Script(scriptHash) = differenceOutput.address.payment_credential
   expect InlineDatum(outputDatum) = differenceOutput.datum
   expect parsedDatum: RepaymentDatum = outputDatum
 
   let borrowerAsset =
     Asset { policyId: borrowerTokenPolicyId, assetName: borrowerAssetName }
   let newDatum =
-    RepaymentDatumWithBond {
+    RepaymentDatumWithToken {
       action: "partial_liquidation",
       data: None,
       ownerAsset: borrowerAsset,
@@ -451,13 +475,18 @@ fn difference_sent_to_borrower(
     ) == remainingAmount
 
   let isDatumCorrect = parsedDatum == newDatum
+  let containsRepaymentNFT =
+    quantity_of(differenceOutput.value, repaymentPolicyId, repaymentId) == 1
+  let dosProtection = length(flatten(differenceOutput.value)) <= 21
   or {
     remainingAmount < 0,
     and {
-      containsCorrectAmount,
-      scriptHash == repaymentScriptHash,
+      is_output_to_sc(differenceOutput, repaymentSpendScriptHash),
+      //TODO No staking check here, right?
       isDatumCorrect,
-      length(flatten(differenceOutput.value)) <= 21,
+      containsRepaymentNFT,
+      containsCorrectAmount,
+      dosProtection,
     },
   }
 }
@@ -471,6 +500,8 @@ fn validate_output_to_repayment(
   action: ByteArray,
   extra_data: Data,
   repaymentSpendScriptHash: ByteArray,
+  repaymentPolicyId: ByteArray,
+  repaymentId: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = repaymentOutput.datum
   expect parsedDatum: RepaymentDatum = outputDatum
@@ -478,13 +509,23 @@ fn validate_output_to_repayment(
   let lenderAsset =
     Asset { policyId: lenderTokenPolicyId, assetName: lenderAssetName }
   let newDatum =
-    RepaymentDatumWithBond { action, data: extra_data, ownerAsset: lenderAsset }
+    RepaymentDatumWithToken {
+      action,
+      data: extra_data,
+      ownerAsset: lenderAsset,
+    }
+  let containsCorrectAmount =
+    quantity_of(repaymentOutput.value, loanAsset.policyId, loanAsset.assetName) >= repaymentAmount
+  let containsRepaymentNFT =
+    quantity_of(repaymentOutput.value, repaymentPolicyId, repaymentId) == 1
   let isDatumCorrect = parsedDatum == newDatum
   let dosProtection = length(flatten(repaymentOutput.value)) <= 3
   and {
     is_output_to_sc(repaymentOutput, repaymentSpendScriptHash),
-    quantity_of(repaymentOutput.value, loanAsset.policyId, loanAsset.assetName) >= repaymentAmount,
+    //TODO No staking check here, right?
     isDatumCorrect,
+    containsRepaymentNFT,
+    containsCorrectAmount,
     dosProtection,
   }
 }
@@ -494,9 +535,11 @@ fn validate_output_to_loan_for_repayment(
   datum: LoanDatum,
   newRepaidInstallments: Int,
   loanValue: Value,
-  ownScriptHash: ByteArray,
   prevStakeCredential: Option<StakeCredential>,
   isCIP113: Bool,
+  loanSpendScriptHash: ByteArray,
+  loanPolicyId: ByteArray,
+  loanId: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = loanOutput.datum
   expect parsedDatum: LoanDatum = outputDatum
@@ -513,6 +556,7 @@ fn validate_output_to_loan_for_repayment(
       repaidInstallments: newRepaidInstallments,
       doneRecasts: datum.doneRecasts,
     }
+  let containsLoanNFT = quantity_of(loanOutput.value, loanPolicyId, loanId) == 1
   let isDatumCorrect = parsedDatum == newDatum
 
   let toCorrectStaking = or {
@@ -520,10 +564,11 @@ fn validate_output_to_loan_for_repayment(
       loanOutput.address.stake_credential == prevStakeCredential,
     }
   and {
-    is_output_to_sc(loanOutput, ownScriptHash),
-    loanOutput.value == loanValue,
-    isDatumCorrect,
+    is_output_to_sc(loanOutput, loanSpendScriptHash),
     toCorrectStaking,
+    isDatumCorrect,
+    containsLoanNFT,
+    loanOutput.value == loanValue,
   }
 }
 
@@ -532,9 +577,9 @@ fn validate_output_to_loan_for_adding_collateral(
   datum: LoanDatum,
   additionalCollateralAmount: Int,
   loanValue: Value,
-  ownScriptHash: ByteArray,
   prevStakeCredential: Option<StakeCredential>,
   isCIP113: Bool,
+  loanSpendScriptHash: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = loanOutput.datum
   expect parsedDatum: LoanDatum = outputDatum
@@ -575,10 +620,11 @@ fn validate_output_to_loan_for_adding_collateral(
     }
 
   and {
-    is_output_to_sc(loanOutput, ownScriptHash),
-    parsedDatum == datum,
-    correctValue,
+    is_output_to_sc(loanOutput, loanSpendScriptHash),
     toCorrectStaking,
+    parsedDatum == datum,
+    //loanNFT is already included in the value
+    correctValue,
   }
 }
 
@@ -587,9 +633,9 @@ fn validate_output_to_loan_for_recasting(
   datum: LoanDatum,
   principalPaid: Int,
   loanValue: Value,
-  ownScriptHash: ByteArray,
   prevStakeCredential: Option<StakeCredential>,
   isCIP113: Bool,
+  loanSpendScriptHash: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = loanOutput.datum
   expect parsedDatum: LoanDatum = outputDatum
@@ -612,10 +658,11 @@ fn validate_output_to_loan_for_recasting(
       loanOutput.address.stake_credential == prevStakeCredential,
     }
   and {
-    is_output_to_sc(loanOutput, ownScriptHash),
-    parsedDatum == newDatum,
-    loanOutput.value == loanValue,
+    is_output_to_sc(loanOutput, loanSpendScriptHash),
     toCorrectStaking,
+    parsedDatum == newDatum,
+    //loanNFT is already included in the value
+    loanOutput.value == loanValue,
   }
 }
 
@@ -650,7 +697,8 @@ fn validate_output_to_dutch_auction(
   let isDatumCorrect = parsedDatum == newDatum
   and {
     is_output_to_sc(dutchAuctionOutput, config.ducthAuctionSpendScriptHash),
-    loanInput.output.value == dutchAuctionOutput.value,
+    //TODO No staking check here, right?
     isDatumCorrect,
+    loanInput.output.value == dutchAuctionOutput.value,
   }
 }
