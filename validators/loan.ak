@@ -44,15 +44,24 @@ validator loan(configAsset: Asset) {
     expect poolWithdrawRedeemer.1st == Withdraw(Script(config.poolPolicyId))
     expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
 
+    let poolInputs =
+      get_inputs_from_sc_or_delegated_to_sc(
+        self.inputs,
+        config.poolSpendScriptHash,
+      )
     let poolInputOutRefsWithTheirActionAndLoanId =
       list.map3(
-        self.inputs,
+        poolInputs,
         poolRedeemer.actionsForEachInput,
         redeemer.poolIds,
-        fn(input, action, poolId) {
+        fn(inputAndCIP113Control, action, poolId) {
           expect
-            quantity_of(input.output.value, config.poolPolicyId, poolId) == 1
-          (input.output_reference, action, poolId)
+            quantity_of(
+              inputAndCIP113Control.1st.output.value,
+              config.poolPolicyId,
+              poolId,
+            ) == 1
+          (inputAndCIP113Control.1st.output_reference, action, poolId)
         },
       )
 

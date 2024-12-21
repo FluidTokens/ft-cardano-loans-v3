@@ -35,15 +35,24 @@ validator repayment(configAsset: Asset) {
     expect loanWithdrawRedeemer.1st == Withdraw(Script(config.loanPolicyId))
     expect loanRedeemer: LoanWithdrawRedeemer = loanWithdrawRedeemer.2nd
 
+    let loanInputs =
+      get_inputs_from_sc_or_delegated_to_sc(
+        self.inputs,
+        config.loanSpendScriptHash,
+      )
     let loanInputOutRefsWithTheirActionAndLoanId =
       list.map3(
-        self.inputs,
+        loanInputs,
         loanRedeemer.actionsForEachInput,
         redeemer.loanIds,
-        fn(input, action, loanId) {
+        fn(inputAndCIP113Control, action, loanId) {
           expect
-            quantity_of(input.output.value, config.loanPolicyId, loanId) == 1
-          (input.output_reference, action, loanId)
+            quantity_of(
+              inputAndCIP113Control.1st.output.value,
+              config.loanPolicyId,
+              loanId,
+            ) == 1
+          (inputAndCIP113Control.1st.output_reference, action, loanId)
         },
       )
 
