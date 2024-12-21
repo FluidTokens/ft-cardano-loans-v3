@@ -110,8 +110,6 @@ pub type RepaymentMintRedeemer {
   configRefInputIndex: Int,
   inputRef: OutputReference,
   loanWithdrawRedeemerIndex: Int,
-  //These are the loanId of the input loans that must mint an NFT
-  loanIds: List<ByteArray>,
 }
 
 pub type RepaymentAction {

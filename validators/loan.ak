@@ -83,341 +83,341 @@ validator loan(configAsset: Asset) {
         self.inputs,
         config.loanSpendScriptHash,
       )
-    //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
-    expect length(loanInputs) == length(redeemer.actionsForEachInput)
     expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
     expect Finite(validTo) = self.validity_range.upper_bound.bound_type
 
-    list.indexed_foldr(
-      loanInputs,
-      True,
-      fn(index, inputAndCIP113Control, result) {
-        //As all inputs must return True, if any of previous input returned False, then fail
-        //The last input is not checked but will return its value at the end, so if False withdraw will fail
-        expect result
+    and {
+      //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
+      length(loanInputs) == length(redeemer.actionsForEachInput),
+      list.indexed_foldr(
+        loanInputs,
+        True,
+        fn(index, inputAndCIP113Control, result) {
+          //As all inputs must return True, if any of previous input returned False, then fail
+          //The last input is not checked but will return its value at the end, so if False withdraw will fail
+          expect result
 
-        let input = inputAndCIP113Control.1st
-        let isCIP113 = inputAndCIP113Control.2nd
-        expect InlineDatum(inputDatum) = input.output.datum
-        expect datum: LoanDatum = inputDatum
-        let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
+          let input = inputAndCIP113Control.1st
+          let isCIP113 = inputAndCIP113Control.2nd
+          expect InlineDatum(inputDatum) = input.output.datum
+          expect datum: LoanDatum = inputDatum
+          let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
 
-        when redeemerAction is {
-          Claim(
-            liquidationMode,
-            lenderBondInputIndex,
-            collateralOracleRefInputIndex,
-            lenderAuthHash,
-            lenderAddress,
-            equity,
-            loanId,
-          ) -> {
-            expect Some(bondInput) = list.at(self.inputs, lenderBondInputIndex)
-            let isRepaymentLate =
-              is_repayment_late(
-                validFrom,
-                datum.lendDate,
-                datum.commonData.initialGracePeriod,
-                datum.repaidInstallments,
-                datum.commonData.installmentPeriod,
-                datum.commonData.repaymentTimeWindow,
-              )
-            and {
-              liquidationMode == datum.commonData.liquidationMode,
-              quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-              quantity_of(self.mint, loanPolicyId, loanId) == -1,
-              is_nft_spent(
-                config.lenderBondPolicyId,
-                datum.lenderAssetName,
-                bondInput,
-              ),
-              when datum.commonData.liquidationMode is {
-                NoLiquidationFullCollateralClaim -> isRepaymentLate
-                NoLiquidationDutchAuctionClaim -> {
-                  expect Some(dutchAuctionOutput) =
-                    list.at(
+          when redeemerAction is {
+            Claim(
+              liquidationMode,
+              lenderBondInputIndex,
+              collateralOracleRefInputIndex,
+              lenderAuthHash,
+              lenderAddress,
+              equity,
+              loanId,
+            ) -> {
+              expect Some(bondInput) =
+                list.at(self.inputs, lenderBondInputIndex)
+              let isRepaymentLate =
+                is_repayment_late(
+                  validFrom,
+                  datum.lendDate,
+                  datum.commonData.initialGracePeriod,
+                  datum.repaidInstallments,
+                  datum.commonData.installmentPeriod,
+                  datum.commonData.repaymentTimeWindow,
+                )
+              and {
+                liquidationMode == datum.commonData.liquidationMode,
+                quantity_of(input.output.value, loanPolicyId, loanId) == 1,
+                quantity_of(self.mint, loanPolicyId, loanId) == -1,
+                is_nft_spent(
+                  config.lenderBondPolicyId,
+                  datum.lenderAssetName,
+                  bondInput,
+                ),
+                when datum.commonData.liquidationMode is {
+                  NoLiquidationFullCollateralClaim -> isRepaymentLate
+                  NoLiquidationDutchAuctionClaim -> {
+                    expect Some(dutchAuctionOutput) =
+                      list.at(
+                        get_outputs_to_sc_or_delegated_to_sc(
+                          self.outputs,
+                          config.ducthAuctionSpendScriptHash,
+                          isCIP113,
+                        ),
+                        index,
+                      )
+                    let remainingDebt =
+                      get_remaining_debt(
+                        datum.commonData.repaymentMode,
+                        datum.principalAmount,
+                        datum.principalDivider,
+                        datum.commonData.interestRate,
+                        datum.commonData.totalInstallments,
+                        datum.repaidInstallments,
+                      )
+                    and {
+                      isRepaymentLate,
+                      validate_output_to_dutch_auction(
+                        input,
+                        bondInput,
+                        dutchAuctionOutput,
+                        validTo,
+                        lenderAuthHash,
+                        lenderAddress,
+                        datum.commonData.principalAsset,
+                        remainingDebt,
+                        config,
+                      ),
+                    }
+                  }
+                  Liquidation(lTV, lTVDivider, partialLiquidation) -> {
+                    let oracleRefInput =
+                      safe_list_at(
+                        self.reference_inputs,
+                        collateralOracleRefInputIndex,
+                      )
+                    expect Some(oraclePriceFeed) =
+                      retrieve_oracle_data(
+                        oracleRefInput,
+                        self.redeemers,
+                        validTo,
+                        datum.collateral,
+                      )
+                    let collateralValueInPrincipalCurrency =
+                      get_collateral_value_in_principal_currency(
+                        oraclePriceFeed,
+                        datum.collateral,
+                        input.output.value,
+                      )
+                    let remainingDebt =
+                      get_remaining_debt(
+                        datum.commonData.repaymentMode,
+                        datum.principalAmount,
+                        datum.principalDivider,
+                        datum.commonData.interestRate,
+                        datum.commonData.totalInstallments,
+                        datum.repaidInstallments,
+                      )
+                    and {
+                      equity == collateralValueInPrincipalCurrency - remainingDebt,
+                      validate_oracle_ref_input(
+                        oracleRefInput.output.value,
+                        datum.collateral,
+                      ),
+                      or {
+                        isRepaymentLate,
+                        can_liquidate(
+                          collateralValueInPrincipalCurrency,
+                          datum.principalAmount,
+                          datum.principalDivider,
+                          lTV,
+                          lTVDivider,
+                        ),
+                      },
+                      or {
+                        partialLiquidation == False,
+                        equity <= 0,
+                        equity_sent_to_borrower(
+                          equity: equity,
+                          borrowerBondPolicyId: config.borrowerBondPolicyId,
+                          borrowerAssetName: datum.borrowerAssetName,
+                          principalAssetPolicyId: datum.commonData.principalAsset.policyId,
+                          principalAssetName: datum.commonData.principalAsset.assetName,
+                          differenceOutput: safe_list_at(self.outputs, index),
+                          repaymentSpendScriptHash: config.repaymentSpendScriptHash,
+                          repaymentPolicyId: config.loanPolicyId,
+                          repaymentId: loanId,
+                        ),
+                      },
+                    }
+                  }
+                },
+              }
+            }
+
+            Repay(borrowerBondInputIndex, loanId) -> {
+              expect Some(bondInput) =
+                list.at(self.inputs, borrowerBondInputIndex)
+              expect Some(repaymentOutput) =
+                list.at(
+                  get_outputs_to_sc_or_delegated_to_sc(
+                    self.outputs,
+                    config.repaymentSpendScriptHash,
+                    isCIP113,
+                  ),
+                  index,
+                )
+              let isRepaymentLate =
+                is_repayment_late(
+                  validFrom,
+                  datum.lendDate,
+                  datum.commonData.initialGracePeriod,
+                  datum.repaidInstallments,
+                  datum.commonData.installmentPeriod,
+                  datum.commonData.repaymentTimeWindow,
+                )
+              let nextRepaymentAmount =
+                get_repayment_amount(
+                  datum.commonData.repaymentMode,
+                  datum.principalAmount,
+                  datum.principalDivider,
+                  datum.commonData.interestRate,
+                  datum.commonData.totalInstallments,
+                  isRepaymentLate,
+                  datum.commonData.penaltyFeeForLateRepayment,
+                )
+              and {
+                quantity_of(input.output.value, loanPolicyId, loanId) == 1,
+                is_nft_spent(
+                  config.borrowerBondPolicyId,
+                  datum.borrowerAssetName,
+                  bondInput,
+                ),
+                validate_output_to_repayment(
+                  repaymentOutput,
+                  datum.commonData.principalAsset,
+                  nextRepaymentAmount,
+                  config.lenderBondPolicyId,
+                  datum.lenderAssetName,
+                  "installment_repayment",
+                  datum.repaidInstallments + 1,
+                  config.repaymentSpendScriptHash,
+                  config.repaymentPolicyId,
+                  loanId,
+                ),
+                or {
+                  and {
+                    datum.repaidInstallments == datum.commonData.totalInstallments - 1,
+                    quantity_of(self.mint, loanPolicyId, loanId) == -1,
+                  },
+                  validate_eventual_output_to_loan_for_repayment(
+                    safe_list_at(
                       get_outputs_to_sc_or_delegated_to_sc(
                         self.outputs,
-                        config.ducthAuctionSpendScriptHash,
+                        loanPolicyId,
                         isCIP113,
                       ),
                       index,
-                    )
-                  let remainingDebt =
-                    get_remaining_debt(
-                      datum.commonData.repaymentMode,
-                      datum.principalAmount,
-                      datum.principalDivider,
-                      datum.commonData.interestRate,
-                      datum.commonData.totalInstallments,
-                      datum.repaidInstallments,
-                    )
-                  and {
-                    isRepaymentLate,
-                    validate_output_to_dutch_auction(
-                      input,
-                      bondInput,
-                      dutchAuctionOutput,
-                      validTo,
-                      lenderAuthHash,
-                      lenderAddress,
-                      datum.commonData.principalAsset,
-                      remainingDebt,
-                      config,
                     ),
-                  }
-                }
-                Liquidation(lTV, lTVDivider, partialLiquidation) -> {
-                  let oracleRefInput =
-                    safe_list_at(
-                      self.reference_inputs,
-                      collateralOracleRefInputIndex,
-                    )
-                  expect Some(oraclePriceFeed) =
-                    retrieve_oracle_data(
-                      oracleRefInput,
-                      self.redeemers,
-                      validTo,
-                      datum.collateral,
-                    )
-                  let collateralValueInPrincipalCurrency =
-                    get_collateral_value_in_principal_currency(
-                      oraclePriceFeed,
-                      datum.collateral,
-                      input.output.value,
-                    )
-                  let remainingDebt =
-                    get_remaining_debt(
-                      datum.commonData.repaymentMode,
-                      datum.principalAmount,
-                      datum.principalDivider,
-                      datum.commonData.interestRate,
-                      datum.commonData.totalInstallments,
-                      datum.repaidInstallments,
-                    )
-                  and {
-                    equity == collateralValueInPrincipalCurrency - remainingDebt,
-                    validate_oracle_ref_input(
-                      oracleRefInput.output.value,
-                      datum.collateral,
-                    ),
-                    or {
-                      isRepaymentLate,
-                      can_liquidate(
-                        collateralValueInPrincipalCurrency,
-                        datum.principalAmount,
-                        datum.principalDivider,
-                        lTV,
-                        lTVDivider,
-                      ),
-                    },
-                    or {
-                      partialLiquidation == False,
-                      equity <= 0,
-                      equity_sent_to_borrower(
-                        equity: equity,
-                        borrowerBondPolicyId: config.borrowerBondPolicyId,
-                        borrowerAssetName: datum.borrowerAssetName,
-                        principalAssetPolicyId: datum.commonData.principalAsset.policyId,
-                        principalAssetName: datum.commonData.principalAsset.assetName,
-                        differenceOutput: safe_list_at(self.outputs, index),
-                        repaymentSpendScriptHash: config.repaymentSpendScriptHash,
-                        repaymentPolicyId: config.loanPolicyId,
-                        repaymentId: loanId,
-                      ),
-                    },
-                  }
-                }
-              },
-            }
-          }
-
-          Repay(borrowerBondInputIndex, loanId) -> {
-            expect Some(bondInput) =
-              list.at(self.inputs, borrowerBondInputIndex)
-            expect Some(repaymentOutput) =
-              list.at(
-                get_outputs_to_sc_or_delegated_to_sc(
-                  self.outputs,
-                  config.repaymentSpendScriptHash,
-                  isCIP113,
-                ),
-                index,
-              )
-            let isRepaymentLate =
-              is_repayment_late(
-                validFrom,
-                datum.lendDate,
-                datum.commonData.initialGracePeriod,
-                datum.repaidInstallments,
-                datum.commonData.installmentPeriod,
-                datum.commonData.repaymentTimeWindow,
-              )
-            let nextRepaymentAmount =
-              get_repayment_amount(
-                datum.commonData.repaymentMode,
-                datum.principalAmount,
-                datum.principalDivider,
-                datum.commonData.interestRate,
-                datum.commonData.totalInstallments,
-                isRepaymentLate,
-                datum.commonData.penaltyFeeForLateRepayment,
-              )
-            and {
-              quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-              is_nft_spent(
-                config.borrowerBondPolicyId,
-                datum.borrowerAssetName,
-                bondInput,
-              ),
-              validate_output_to_repayment(
-                repaymentOutput,
-                datum.commonData.principalAsset,
-                nextRepaymentAmount,
-                config.lenderBondPolicyId,
-                datum.lenderAssetName,
-                "installment_repayment",
-                datum.repaidInstallments + 1,
-                config.repaymentSpendScriptHash,
-                config.repaymentPolicyId,
-                loanId,
-              ),
-              or {
-                and {
-                  datum.repaidInstallments == datum.commonData.totalInstallments - 1,
-                  quantity_of(self.mint, loanPolicyId, loanId) == -1,
-                },
-                validate_output_to_loan_for_repayment(
-                  safe_list_at(
-                    get_outputs_to_sc_or_delegated_to_sc(
-                      self.outputs,
-                      loanPolicyId,
-                      isCIP113,
-                    ),
-                    index,
+                    datum,
+                    datum.repaidInstallments + 1,
+                    input.output.value,
+                    input.output.address.stake_credential,
+                    isCIP113,
+                    config.loanSpendScriptHash,
+                    loanPolicyId,
+                    loanId,
                   ),
+                },
+              }
+            }
+            AddCollateral(borrowerBondInputIndex, addedCollateralAmount, loanId) -> {
+              expect Some(bondInput) =
+                list.at(self.inputs, borrowerBondInputIndex)
+              expect Some(loanOutput) =
+                list.at(
+                  get_outputs_to_sc_or_delegated_to_sc(
+                    self.outputs,
+                    loanPolicyId,
+                    isCIP113,
+                  ),
+                  index,
+                )
+              and {
+                addedCollateralAmount > 0,
+                quantity_of(input.output.value, loanPolicyId, loanId) == 1,
+                is_nft_spent(
+                  config.borrowerBondPolicyId,
+                  datum.borrowerAssetName,
+                  bondInput,
+                ),
+                validate_output_to_loan_for_adding_collateral(
+                  loanOutput,
                   datum,
-                  datum.repaidInstallments + 1,
+                  addedCollateralAmount,
                   input.output.value,
                   input.output.address.stake_credential,
                   isCIP113,
                   config.loanSpendScriptHash,
-                  loanPolicyId,
+                ),
+              }
+            }
+            Recast(borrowerBondInputIndex, principalPaid, loanId) -> {
+              expect Some(bondInput) =
+                list.at(self.inputs, borrowerBondInputIndex)
+              expect Some(repaymentOutput) =
+                list.at(
+                  get_outputs_to_sc_or_delegated_to_sc(
+                    self.outputs,
+                    config.repaymentSpendScriptHash,
+                    isCIP113,
+                  ),
+                  index,
+                )
+              //TODO is this the correct way to know how much debt you have after the recast?
+              let debtAfterRecasting =
+                get_remaining_debt(
+                  datum.commonData.repaymentMode,
+                  datum.principalAmount,
+                  datum.principalDivider,
+                  datum.commonData.interestRate,
+                  datum.commonData.totalInstallments,
+                  datum.repaidInstallments,
+                ) - principalPaid
+              and {
+                principalPaid > 0,
+                quantity_of(input.output.value, loanPolicyId, loanId) == 1,
+                is_nft_spent(
+                  config.borrowerBondPolicyId,
+                  datum.borrowerAssetName,
+                  bondInput,
+                ),
+                is_recasting_permitted(
+                  datum.commonData.repaymentMode,
+                  datum.doneRecasts,
+                ),
+                validate_output_to_repayment(
+                  repaymentOutput,
+                  datum.commonData.principalAsset,
+                  principalPaid,
+                  config.lenderBondPolicyId,
+                  datum.lenderAssetName,
+                  "recast",
+                  None,
+                  config.repaymentSpendScriptHash,
+                  config.repaymentPolicyId,
                   loanId,
                 ),
-              },
-            }
-          }
-          AddCollateral(borrowerBondInputIndex, addedCollateralAmount, loanId) -> {
-            expect Some(bondInput) =
-              list.at(self.inputs, borrowerBondInputIndex)
-            expect Some(loanOutput) =
-              list.at(
-                get_outputs_to_sc_or_delegated_to_sc(
-                  self.outputs,
-                  loanPolicyId,
-                  isCIP113,
-                ),
-                index,
-              )
-            and {
-              addedCollateralAmount > 0,
-              is_nft_spent(
-                config.borrowerBondPolicyId,
-                datum.borrowerAssetName,
-                bondInput,
-              ),
-              quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-              validate_output_to_loan_for_adding_collateral(
-                loanOutput,
-                datum,
-                addedCollateralAmount,
-                input.output.value,
-                input.output.address.stake_credential,
-                isCIP113,
-                config.loanSpendScriptHash,
-              ),
-            }
-          }
-          Recast(borrowerBondInputIndex, principalPaid, loanId) -> {
-            expect Some(bondInput) =
-              list.at(self.inputs, borrowerBondInputIndex)
-            expect Some(repaymentOutput) =
-              list.at(
-                get_outputs_to_sc_or_delegated_to_sc(
-                  self.outputs,
-                  config.repaymentSpendScriptHash,
-                  isCIP113,
-                ),
-                index,
-              )
-            let debtAfterRecasting =
-              get_remaining_debt(
-                datum.commonData.repaymentMode,
-                datum.principalAmount,
-                datum.principalDivider,
-                datum.commonData.interestRate,
-                datum.commonData.totalInstallments,
-                datum.repaidInstallments,
-              ) - principalPaid
-            and {
-              principalPaid > 0,
-              quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-              is_nft_spent(
-                config.borrowerBondPolicyId,
-                datum.borrowerAssetName,
-                bondInput,
-              ),
-              is_recasting_permitted(
-                datum.commonData.repaymentMode,
-                datum.doneRecasts,
-              ),
-              validate_output_to_repayment(
-                repaymentOutput,
-                datum.commonData.principalAsset,
-                principalPaid,
-                config.lenderBondPolicyId,
-                datum.lenderAssetName,
-                "recast",
-                None,
-                config.repaymentSpendScriptHash,
-                config.repaymentPolicyId,
-                loanId,
-              ),
-              or {
-                and {
-                  debtAfterRecasting == 0,
-                  quantity_of(self.mint, loanPolicyId, loanId) == -1,
-                },
-                and {
-                  debtAfterRecasting > 0,
-                  {
-                    expect Some(loanOutput) =
-                      list.at(
+                or {
+                  and {
+                    debtAfterRecasting == 0,
+                    quantity_of(self.mint, loanPolicyId, loanId) == -1,
+                  },
+                  and {
+                    debtAfterRecasting > 0,
+                    validate_eventual_output_to_loan_for_recasting(
+                      safe_list_at(
                         get_outputs_to_sc_or_delegated_to_sc(
                           self.outputs,
                           loanPolicyId,
                           isCIP113,
                         ),
                         index,
-                      )
-                    validate_output_to_loan_for_recasting(
-                      loanOutput,
+                      ),
                       datum,
                       principalPaid,
                       input.output.value,
                       input.output.address.stake_credential,
                       isCIP113,
                       config.loanSpendScriptHash,
-                    )
+                    ),
                   },
                 },
-              },
+              }
             }
           }
-        }
-      },
-    )
+        },
+      ),
+    }
   }
 
   else(_) {
@@ -508,7 +508,7 @@ fn validate_output_to_repayment(
   }
 }
 
-fn validate_output_to_loan_for_repayment(
+fn validate_eventual_output_to_loan_for_repayment(
   loanOutput: Output,
   datum: LoanDatum,
   newRepaidInstallments: Int,
@@ -606,7 +606,7 @@ fn validate_output_to_loan_for_adding_collateral(
   }
 }
 
-fn validate_output_to_loan_for_recasting(
+fn validate_eventual_output_to_loan_for_recasting(
   loanOutput: Output,
   datum: LoanDatum,
   principalPaid: Int,

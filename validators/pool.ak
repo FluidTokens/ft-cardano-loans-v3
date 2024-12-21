@@ -87,154 +87,157 @@ validator pool(configAsset: Asset) {
         self.inputs,
         config.poolSpendScriptHash,
       )
-    //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
-    expect length(poolInputs) == length(redeemer.actionsForEachInput)
 
-    list.indexed_foldr(
-      poolInputs,
-      True,
-      fn(index, inputAndCIP113Control, result) {
-        //As all inputs must return True, if any of previous input returned False, then fail
-        //The last input is not checked but will return its value at the end, so if False withdraw will fail
-        expect result
+    and {
+      //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
+      length(poolInputs) == length(redeemer.actionsForEachInput),
+      list.indexed_foldr(
+        poolInputs,
+        True,
+        fn(index, inputAndCIP113Control, result) {
+          //As all inputs must return True, if any of previous input returned False, then fail
+          //The last input is not checked but will return its value at the end, so if False withdraw will fail
+          expect result
 
-        let input = inputAndCIP113Control.1st
-        expect InlineDatum(inputDatum) = input.output.datum
-        expect datum: PoolDatum = inputDatum
-        let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
+          let input = inputAndCIP113Control.1st
+          expect InlineDatum(inputDatum) = input.output.datum
+          expect datum: PoolDatum = inputDatum
+          let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
 
-        when redeemerAction is {
-          Cancel(auth, poolId) -> and {
-              quantity_of(input.output.value, poolPolicyId, poolId) == 1,
-              quantity_of(self.mint, poolPolicyId, poolId) == -1,
-              datum.lenderAuthHash == auth.hash,
-              authorize_action(
-                auth,
-                self.inputs,
-                self.withdrawals,
-                self.extra_signatories,
-                self.mint,
-              ),
-            }
-          Borrow(
-            borrowerAddress,
-            outputWithLenderTokenIndex,
-            chosenCollateralIndex,
-            chosenCollateralOracleInputIndex,
-            wantedPrincipal,
-            poolId,
-          ) -> {
-            let isCIP113 = inputAndCIP113Control.2nd
-            expect Finite(validTo) = self.validity_range.upper_bound.bound_type
-            let inputUtxoId = utils.hash_output_ref(input.output_reference)
-            let loanOutput =
-              safe_list_at(
-                get_outputs_to_sc_or_delegated_to_sc(
-                  self.outputs,
-                  config.loanSpendScriptHash,
-                  isCIP113,
+          when redeemerAction is {
+            Cancel(auth, poolId) -> and {
+                quantity_of(input.output.value, poolPolicyId, poolId) == 1,
+                quantity_of(self.mint, poolPolicyId, poolId) == -1,
+                datum.lenderAuthHash == auth.hash,
+                authorize_action(
+                  auth,
+                  self.inputs,
+                  self.withdrawals,
+                  self.extra_signatories,
+                  self.mint,
                 ),
-                index,
-              )
-            let outputWithLenderToken =
-              safe_list_at(self.outputs, outputWithLenderTokenIndex)
-            let chosenCollateral =
-              safe_list_at(datum.collateralOptions, chosenCollateralIndex)
-            let remainingAmount =
-              quantity_of(
-                input.output.value,
-                datum.commonData.principalAsset.policyId,
-                datum.commonData.principalAsset.assetName,
-              ) - wantedPrincipal
-
-            let loanOutputValidationResults =
-              if datum.dynamicCollateralPrice {
-                let oracleRefInput =
-                  safe_list_at(
-                    self.reference_inputs,
-                    chosenCollateralOracleInputIndex,
-                  )
-                expect
-                  validate_oracle_ref_input(
-                    oracleRefInput.output.value,
-                    chosenCollateral,
-                  )
-                expect Some(oraclePriceFeed) =
-                  retrieve_oracle_data(
-                    oracleRefInput,
-                    self.redeemers,
-                    validTo,
-                    chosenCollateral,
-                  )
-                validate_output_to_loan(
-                  Some(oraclePriceFeed),
-                  loanOutput,
-                  config.loanPolicyId,
-                  config.loanSpendScriptHash,
-                  datum,
-                  chosenCollateral,
-                  chosenCollateralIndex,
-                  wantedPrincipal,
-                  inputUtxoId,
-                  validTo,
-                  borrowerAddress,
-                  isCIP113,
-                )
-              } else {
-                validate_output_to_loan(
-                  None,
-                  loanOutput,
-                  config.loanPolicyId,
-                  config.loanSpendScriptHash,
-                  datum,
-                  chosenCollateral,
-                  chosenCollateralIndex,
-                  wantedPrincipal,
-                  inputUtxoId,
-                  validTo,
-                  borrowerAddress,
-                  isCIP113,
-                )
               }
-
-            and {
-              wantedPrincipal > 0,
-              quantity_of(input.output.value, poolPolicyId, poolId) == 1,
-              validity_range_within_an_hour(self),
-              loanOutputValidationResults.1st,
-              bonds_sent_to_both_parties(
-                self.mint,
-                outputWithLenderToken,
-                config.borrowerBondPolicyId,
-                config.lenderBondPolicyId,
-                inputUtxoId,
-                datum.lenderAddress,
-                datum.lenderTokenOutputMustHaveLoanInfoDatum,
-                loanOutputValidationResults.2nd,
-              ),
-              or {
-                and {
-                  remainingAmount == 0,
-                  quantity_of(self.mint, poolPolicyId, poolId) == -1,
-                },
-                and {
-                  remainingAmount > 0,
-                  validate_eventual_output_to_pool(
-                    safe_list_at(self.outputs, index),
-                    datum,
-                    remainingAmount,
-                    poolPolicyId,
-                    config.poolSpendScriptHash,
+            Borrow(
+              borrowerAddress,
+              outputWithLenderTokenIndex,
+              chosenCollateralIndex,
+              chosenCollateralOracleInputIndex,
+              wantedPrincipal,
+              poolId,
+            ) -> {
+              let isCIP113 = inputAndCIP113Control.2nd
+              expect Finite(validTo) =
+                self.validity_range.upper_bound.bound_type
+              let inputUtxoId = utils.hash_output_ref(input.output_reference)
+              let loanOutput =
+                safe_list_at(
+                  get_outputs_to_sc_or_delegated_to_sc(
+                    self.outputs,
+                    config.loanSpendScriptHash,
                     isCIP113,
-                    poolId,
                   ),
+                  index,
+                )
+              let outputWithLenderToken =
+                safe_list_at(self.outputs, outputWithLenderTokenIndex)
+              let chosenCollateral =
+                safe_list_at(datum.collateralOptions, chosenCollateralIndex)
+              let remainingAmount =
+                quantity_of(
+                  input.output.value,
+                  datum.commonData.principalAsset.policyId,
+                  datum.commonData.principalAsset.assetName,
+                ) - wantedPrincipal
+
+              let loanOutputValidationResults =
+                if datum.dynamicCollateralPrice {
+                  let oracleRefInput =
+                    safe_list_at(
+                      self.reference_inputs,
+                      chosenCollateralOracleInputIndex,
+                    )
+                  expect
+                    validate_oracle_ref_input(
+                      oracleRefInput.output.value,
+                      chosenCollateral,
+                    )
+                  expect Some(oraclePriceFeed) =
+                    retrieve_oracle_data(
+                      oracleRefInput,
+                      self.redeemers,
+                      validTo,
+                      chosenCollateral,
+                    )
+                  validate_output_to_loan(
+                    Some(oraclePriceFeed),
+                    loanOutput,
+                    config.loanPolicyId,
+                    config.loanSpendScriptHash,
+                    datum,
+                    chosenCollateral,
+                    chosenCollateralIndex,
+                    wantedPrincipal,
+                    inputUtxoId,
+                    validTo,
+                    borrowerAddress,
+                    isCIP113,
+                  )
+                } else {
+                  validate_output_to_loan(
+                    None,
+                    loanOutput,
+                    config.loanPolicyId,
+                    config.loanSpendScriptHash,
+                    datum,
+                    chosenCollateral,
+                    chosenCollateralIndex,
+                    wantedPrincipal,
+                    inputUtxoId,
+                    validTo,
+                    borrowerAddress,
+                    isCIP113,
+                  )
+                }
+
+              and {
+                wantedPrincipal > 0,
+                quantity_of(input.output.value, poolPolicyId, poolId) == 1,
+                validity_range_within_an_hour(self),
+                loanOutputValidationResults.1st,
+                bonds_sent_to_both_parties(
+                  self.mint,
+                  outputWithLenderToken,
+                  config.borrowerBondPolicyId,
+                  config.lenderBondPolicyId,
+                  inputUtxoId,
+                  datum.lenderAddress,
+                  datum.lenderTokenOutputMustHaveLoanInfoDatum,
+                  loanOutputValidationResults.2nd,
+                ),
+                or {
+                  and {
+                    remainingAmount == 0,
+                    quantity_of(self.mint, poolPolicyId, poolId) == -1,
+                  },
+                  and {
+                    remainingAmount > 0,
+                    validate_eventual_output_to_pool(
+                      safe_list_at(self.outputs, index),
+                      datum,
+                      remainingAmount,
+                      poolPolicyId,
+                      config.poolSpendScriptHash,
+                      isCIP113,
+                      poolId,
+                    ),
+                  },
                 },
-              },
+              }
             }
           }
-        }
-      },
-    )
+        },
+      ),
+    }
   }
 
   else(_) {
