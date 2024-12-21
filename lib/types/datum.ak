@@ -12,8 +12,9 @@ use types/general.{Asset, CollateralAsset}
 pub type ConfigDatum {
   adminAddress: Address,
   poolPolicyId: ByteArray,
-  borrowerTokenPolicyId: ByteArray,
-  lenderTokenPolicyId: ByteArray,
+  loanRequestPolicyId: ByteArray,
+  borrowerBondPolicyId: ByteArray,
+  lenderBondPolicyId: ByteArray,
   loanPolicyId: ByteArray,
   repaymentPolicyId: ByteArray,
   poolSpendScriptHash: ByteArray,

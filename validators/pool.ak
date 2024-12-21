@@ -7,7 +7,6 @@ use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
 use cardano/assets.{PolicyId, Value, flatten, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Output, Transaction, find_input}
-use constants
 use types/datum.{Liquidation, LoanDatum, LoanInfoDatum, PoolDatum}
 use types/general.{Asset, CollateralAsset}
 use types/redeemer.{
@@ -21,7 +20,6 @@ use utils.{
   validate_oracle_ref_input, validity_range_within_an_hour,
 }
 
-//TODO Remove pool_id_header?
 //TODO Should we limit the max number of minted tokens per tx?
 validator pool(configAsset: Asset) {
   mint(redeemer: PoolMintRedeemer, policy_id: PolicyId, self: Transaction) {
@@ -46,9 +44,8 @@ validator pool(configAsset: Asset) {
 
           if quantity > 0 {
             let correctAssetName = and {
-                utils.token_name_has_header(assetName, constants.pool_id_header),
-                bytearray.at(assetName, 1) == index,
-                bytearray.drop(assetName, 2) == bytearray.drop(inputRefHash, 2),
+                bytearray.at(assetName, 0) == index,
+                bytearray.drop(assetName, 1) == bytearray.drop(inputRefHash, 2),
               }
 
             expect Some(output) = list.at(poolOutputs, index)
@@ -85,14 +82,16 @@ validator pool(configAsset: Asset) {
         configAsset.policyId,
         configAsset.assetName,
       )
-    let scInputs =
+    let poolInputs =
       get_inputs_from_sc_or_delegated_to_sc(
         self.inputs,
         config.poolSpendScriptHash,
       )
+    //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
+    expect length(poolInputs) == length(redeemer.actionsForEachInput)
 
     list.indexed_foldr(
-      scInputs,
+      poolInputs,
       True,
       fn(index, inputAndCIP113Control, result) {
         //As all inputs must return True, if any of previous input returned False, then fail
@@ -103,30 +102,32 @@ validator pool(configAsset: Asset) {
         let isCIP113 = inputAndCIP113Control.2nd
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: PoolDatum = inputDatum
+        let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
+        let inputUtxoId = utils.hash_output_ref(input.output_reference)
 
-        when redeemer.action is {
-          Cancel(actionsForEachInput) -> {
-            let inputAction = safe_list_at(actionsForEachInput, index)
-            and {
-              //TODO this could be checked only once outside the inputs loop
-              //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
-              length(scInputs) == length(actionsForEachInput),
-              quantity_of(input.output.value, poolPolicyId, inputAction.poolId) == 1,
-              quantity_of(self.mint, poolPolicyId, inputAction.poolId) == -1,
-              datum.lenderAuthHash == inputAction.auth.hash,
+        when redeemerAction is {
+          Cancel(auth, poolId) -> and {
+              quantity_of(input.output.value, poolPolicyId, poolId) == 1,
+              quantity_of(self.mint, poolPolicyId, poolId) == -1,
+              datum.lenderAuthHash == auth.hash,
               authorize_action(
-                inputAction.auth,
+                auth,
                 self.inputs,
                 self.withdrawals,
                 self.extra_signatories,
                 self.mint,
               ),
             }
-          }
-          Borrow(actionsForEachInput) -> {
-            let inputAction = safe_list_at(actionsForEachInput, index)
-            expect Finite(end) = self.validity_range.upper_bound.bound_type
-            let inputUtxoId = utils.hash_output_ref(input.output_reference)
+
+          Borrow(
+            borrowerAddress,
+            outputWithLenderTokenIndex,
+            chosenCollateralIndex,
+            chosenCollateralOracleInputIndex,
+            wantedPrincipal,
+            poolId,
+          ) -> {
+            expect Finite(validTo) = self.validity_range.upper_bound.bound_type
             let loanOutput =
               safe_list_at(
                 get_outputs_to_sc_or_delegated_to_sc(
@@ -137,25 +138,22 @@ validator pool(configAsset: Asset) {
                 index,
               )
             let outputWithLenderToken =
-              safe_list_at(self.outputs, inputAction.outputWithLenderTokenIndex)
+              safe_list_at(self.outputs, outputWithLenderTokenIndex)
             let chosenCollateral =
-              safe_list_at(
-                datum.collateralOptions,
-                inputAction.chosenCollateralIndex,
-              )
+              safe_list_at(datum.collateralOptions, chosenCollateralIndex)
             let remainingAmount =
               quantity_of(
                 input.output.value,
                 datum.commonData.principalAsset.policyId,
                 datum.commonData.principalAsset.assetName,
-              ) - inputAction.wantedPrincipal
+              ) - wantedPrincipal
 
             let loanOutputValidationResults =
               if datum.dynamicCollateralPrice {
                 let oracleRefInput =
                   safe_list_at(
                     self.reference_inputs,
-                    inputAction.chosenCollateralOracleInputIndex,
+                    chosenCollateralOracleInputIndex,
                   )
                 expect
                   validate_oracle_ref_input(
@@ -166,7 +164,7 @@ validator pool(configAsset: Asset) {
                   retrieve_oracle_data(
                     oracleRefInput,
                     self.redeemers,
-                    end,
+                    validTo,
                     chosenCollateral,
                   )
                 validate_output_to_loan(
@@ -176,11 +174,11 @@ validator pool(configAsset: Asset) {
                   config.loanSpendScriptHash,
                   datum,
                   chosenCollateral,
-                  inputAction.chosenCollateralIndex,
-                  inputAction.wantedPrincipal,
+                  chosenCollateralIndex,
+                  wantedPrincipal,
                   inputUtxoId,
-                  end,
-                  inputAction.borrowerAddress,
+                  validTo,
+                  borrowerAddress,
                   isCIP113,
                 )
               } else {
@@ -191,26 +189,24 @@ validator pool(configAsset: Asset) {
                   config.loanSpendScriptHash,
                   datum,
                   chosenCollateral,
-                  inputAction.chosenCollateralIndex,
-                  inputAction.wantedPrincipal,
+                  chosenCollateralIndex,
+                  wantedPrincipal,
                   inputUtxoId,
-                  end,
-                  inputAction.borrowerAddress,
+                  validTo,
+                  borrowerAddress,
                   isCIP113,
                 )
               }
 
             and {
-              //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
-              length(scInputs) == length(actionsForEachInput),
-              inputAction.wantedPrincipal > 0,
+              wantedPrincipal > 0,
               validity_range_within_an_hour(self),
               loanOutputValidationResults.1st,
               bonds_sent_to_both_parties(
                 self.mint,
                 outputWithLenderToken,
-                config.borrowerTokenPolicyId,
-                config.lenderTokenPolicyId,
+                config.borrowerBondPolicyId,
+                config.lenderBondPolicyId,
                 inputUtxoId,
                 datum.lenderAddress,
                 datum.lenderTokenOutputMustHaveLoanInfoDatum,
@@ -220,11 +216,7 @@ validator pool(configAsset: Asset) {
                 remainingAmount == 0,
                 and {
                   remainingAmount > 0,
-                  quantity_of(
-                    input.output.value,
-                    poolPolicyId,
-                    inputAction.poolId,
-                  ) == 1,
+                  quantity_of(input.output.value, poolPolicyId, poolId) == 1,
                   validate_eventual_output_to_pool(
                     safe_list_at(self.outputs, index),
                     datum,
@@ -232,7 +224,7 @@ validator pool(configAsset: Asset) {
                     poolPolicyId,
                     config.poolSpendScriptHash,
                     isCIP113,
-                    inputAction.poolId,
+                    poolId,
                   ),
                 },
               },
@@ -251,17 +243,17 @@ validator pool(configAsset: Asset) {
 fn bonds_sent_to_both_parties(
   mintedValue: Value,
   outputWithLenderToken: Output,
-  borrowerTokenPolicyId: ByteArray,
-  lenderTokenPolicyId: ByteArray,
+  borrowerBondPolicyId: ByteArray,
+  lenderBondPolicyId: ByteArray,
   bondId: ByteArray,
   lenderAddress: Address,
   lenderTokenOutputMustHaveLoanInfoDatum: Bool,
   lenderBondOutputDatum: LoanInfoDatum,
 ) {
   and {
-    quantity_of(mintedValue, borrowerTokenPolicyId, bondId) == 1,
+    quantity_of(mintedValue, borrowerBondPolicyId, bondId) == 1,
     outputWithLenderToken.address == lenderAddress,
-    quantity_of(outputWithLenderToken.value, lenderTokenPolicyId, bondId) == 1,
+    quantity_of(outputWithLenderToken.value, lenderBondPolicyId, bondId) == 1,
     or {
       lenderTokenOutputMustHaveLoanInfoDatum == False,
       outputWithLenderToken.datum == InlineDatum(lenderBondOutputDatum),

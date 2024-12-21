@@ -138,13 +138,13 @@
       },
       "parameters": [
         {
-          "title": "borrowerTokenPolicyId",
+          "title": "borrowerBondPolicyId",
           "schema": {
             "$ref": "#/definitions/ByteArray"
           }
         },
         {
-          "title": "lenderTokenPolicyId",
+          "title": "lenderBondPolicyId",
           "schema": {
             "$ref": "#/definitions/ByteArray"
           }
@@ -175,13 +175,13 @@
       },
       "parameters": [
         {
-          "title": "borrowerTokenPolicyId",
+          "title": "borrowerBondPolicyId",
           "schema": {
             "$ref": "#/definitions/ByteArray"
           }
         },
         {
-          "title": "lenderTokenPolicyId",
+          "title": "lenderBondPolicyId",
           "schema": {
             "$ref": "#/definitions/ByteArray"
           }
@@ -206,13 +206,13 @@
       "title": "oracle_ltv_pool.pool.else",
       "parameters": [
         {
-          "title": "borrowerTokenPolicyId",
+          "title": "borrowerBondPolicyId",
           "schema": {
             "$ref": "#/definitions/ByteArray"
           }
         },
         {
-          "title": "lenderTokenPolicyId",
+          "title": "lenderBondPolicyId",
           "schema": {
             "$ref": "#/definitions/ByteArray"
           }

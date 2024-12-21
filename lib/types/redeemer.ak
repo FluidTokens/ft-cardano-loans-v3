@@ -1,5 +1,6 @@
 use cardano/address.{Address}
 use cardano/transaction.{OutputReference}
+use types/datum.{LiquidationMode}
 use types/general.{Asset, Authorization}
 
 pub type CommonFeedData {
@@ -41,42 +42,37 @@ pub type PoolMintRedeemer {
   inputRef: OutputReference,
 }
 
-pub type CancelPool {
-  auth: Authorization,
-  poolId: ByteArray,
-}
-
-pub type BorrowFromPool {
-  borrowerAddress: Address,
-  outputWithLenderTokenIndex: Int,
-  //Asset that the borrower is providing, must be accepted by the pool
-  chosenCollateralIndex: Int,
-  //If collateral doesn't use oracle, this must be -1
-  chosenCollateralOracleInputIndex: Int,
-  wantedPrincipal: Int,
-  poolId: ByteArray,
-}
-
 pub type PoolAction {
-  Cancel { actionsForEachInput: List<CancelPool> }
-  Borrow { actionsForEachInput: List<BorrowFromPool> }
+  Cancel { auth: Authorization, poolId: ByteArray }
+  Borrow {
+    borrowerAddress: Address,
+    outputWithLenderTokenIndex: Int,
+    //Asset that the borrower is providing, must be accepted by the pool
+    chosenCollateralIndex: Int,
+    //If collateral doesn't use oracle, this must be -1
+    chosenCollateralOracleInputIndex: Int,
+    wantedPrincipal: Int,
+    poolId: ByteArray,
+  }
 }
 
 pub type PoolWithdrawRedeemer {
   configRefInputIndex: Int,
-  action: PoolAction,
+  actionsForEachInput: List<PoolAction>,
 }
 
 pub type LoanMintRedeemer {
   configRefInputIndex: Int,
   inputRef: OutputReference,
   poolWithdrawRedeemerIndex: Int,
-  mintingAnyToken: Bool,
+  //These are the loanId of the input loans that must mint an NFT
+  poolIds: List<ByteArray>,
 }
 
 pub type LoanAction {
   //Lender action (or anyone who has the permission to spend the lender's bond)
   Claim {
+    liquidationMode: LiquidationMode,
     //This is the absolute input index that contains the lender bond
     lenderBondInputIndex: Int,
     //If loan doesn't use oracle, this is not used
@@ -85,6 +81,8 @@ pub type LoanAction {
     lenderAuthHash: ByteArray,
     //Used only when an auction must start as part of liquidation
     lenderAddress: Address,
+    //Only for partialLiquidation, it's the amount to send to borrower
+    remainingAmount: Int,
   }
   //Borrower action
   Repay {
@@ -107,13 +105,22 @@ pub type LoanWithdrawRedeemer {
   actionsForEachInput: List<LoanAction>,
 }
 
+pub type RepaymentMintRedeemer {
+  configRefInputIndex: Int,
+  inputRef: OutputReference,
+  loanWithdrawRedeemerIndex: Int,
+  //These are the loanId of the input loans that must mint an NFT
+  loanIds: List<ByteArray>,
+}
+
 pub type RepaymentAction {
   WithdrawWithToken { tokenInputIndex: Int }
   WithdrawWithHash { auth: Authorization }
 }
 
 pub type RepaymentWithdrawRedeemer {
-  actionsForEachInput: List<RepaymentAction>,
+  configRefInputIndex: Int,
+  actionsForEachInput: List<(RepaymentAction, ByteArray)>,
 }
 
 pub type DutchAuctionAction {
