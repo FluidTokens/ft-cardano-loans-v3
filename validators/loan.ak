@@ -109,7 +109,7 @@ validator loan(configAsset: Asset) {
             collateralOracleRefInputIndex,
             lenderAuthHash,
             lenderAddress,
-            remainingAmount,
+            equity,
             loanId,
           ) -> {
             expect Some(bondInput) = list.at(self.inputs, lenderBondInputIndex)
@@ -124,6 +124,8 @@ validator loan(configAsset: Asset) {
               )
             and {
               liquidationMode == datum.commonData.liquidationMode,
+              quantity_of(input.output.value, loanPolicyId, loanId) == 1,
+              quantity_of(self.mint, loanPolicyId, loanId) == -1,
               is_nft_spent(
                 config.lenderBondPolicyId,
                 datum.lenderAssetName,
@@ -132,8 +134,6 @@ validator loan(configAsset: Asset) {
               when datum.commonData.liquidationMode is {
                 NoLiquidationFullCollateralClaim -> isRepaymentLate
                 NoLiquidationDutchAuctionClaim -> {
-                  expect Finite(validTo) =
-                    self.validity_range.upper_bound.bound_type
                   expect Some(dutchAuctionOutput) =
                     list.at(
                       get_outputs_to_sc_or_delegated_to_sc(
@@ -196,6 +196,7 @@ validator loan(configAsset: Asset) {
                       datum.repaidInstallments,
                     )
                   and {
+                    equity == collateralValueInPrincipalCurrency - remainingDebt,
                     validate_oracle_ref_input(
                       oracleRefInput.output.value,
                       datum.collateral,
@@ -210,12 +211,11 @@ validator loan(configAsset: Asset) {
                         lTVDivider,
                       ),
                     },
-                    remainingAmount == collateralValueInPrincipalCurrency - remainingDebt,
                     or {
                       partialLiquidation == False,
-                      remainingAmount <= 0,
-                      difference_sent_to_borrower(
-                        remainingAmount: remainingAmount,
+                      equity <= 0,
+                      equity_sent_to_borrower(
+                        equity: equity,
                         borrowerBondPolicyId: config.borrowerBondPolicyId,
                         borrowerAssetName: datum.borrowerAssetName,
                         principalAssetPolicyId: datum.commonData.principalAsset.policyId,
@@ -264,6 +264,7 @@ validator loan(configAsset: Asset) {
                 datum.commonData.penaltyFeeForLateRepayment,
               )
             and {
+              quantity_of(input.output.value, loanPolicyId, loanId) == 1,
               is_nft_spent(
                 config.borrowerBondPolicyId,
                 datum.borrowerAssetName,
@@ -282,28 +283,28 @@ validator loan(configAsset: Asset) {
                 loanId,
               ),
               or {
-                datum.repaidInstallments == datum.commonData.totalInstallments - 1,
                 and {
-                  quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-                  validate_output_to_loan_for_repayment(
-                    safe_list_at(
-                      get_outputs_to_sc_or_delegated_to_sc(
-                        self.outputs,
-                        loanPolicyId,
-                        isCIP113,
-                      ),
-                      index,
-                    ),
-                    datum,
-                    datum.repaidInstallments + 1,
-                    input.output.value,
-                    input.output.address.stake_credential,
-                    isCIP113,
-                    config.loanSpendScriptHash,
-                    loanPolicyId,
-                    loanId,
-                  ),
+                  datum.repaidInstallments == datum.commonData.totalInstallments - 1,
+                  quantity_of(self.mint, loanPolicyId, loanId) == -1,
                 },
+                validate_output_to_loan_for_repayment(
+                  safe_list_at(
+                    get_outputs_to_sc_or_delegated_to_sc(
+                      self.outputs,
+                      loanPolicyId,
+                      isCIP113,
+                    ),
+                    index,
+                  ),
+                  datum,
+                  datum.repaidInstallments + 1,
+                  input.output.value,
+                  input.output.address.stake_credential,
+                  isCIP113,
+                  config.loanSpendScriptHash,
+                  loanPolicyId,
+                  loanId,
+                ),
               },
             }
           }
@@ -361,6 +362,7 @@ validator loan(configAsset: Asset) {
               ) - principalPaid
             and {
               principalPaid > 0,
+              quantity_of(input.output.value, loanPolicyId, loanId) == 1,
               is_nft_spent(
                 config.borrowerBondPolicyId,
                 datum.borrowerAssetName,
@@ -383,7 +385,10 @@ validator loan(configAsset: Asset) {
                 loanId,
               ),
               or {
-                debtAfterRecasting == 0,
+                and {
+                  debtAfterRecasting == 0,
+                  quantity_of(self.mint, loanPolicyId, loanId) == -1,
+                },
                 and {
                   debtAfterRecasting > 0,
                   {
@@ -420,8 +425,8 @@ validator loan(configAsset: Asset) {
   }
 }
 
-fn difference_sent_to_borrower(
-  remainingAmount: Int,
+fn equity_sent_to_borrower(
+  equity: Int,
   borrowerBondPolicyId: ByteArray,
   borrowerAssetName: AssetName,
   principalAssetPolicyId: ByteArray,
@@ -448,7 +453,7 @@ fn difference_sent_to_borrower(
       differenceOutput.value,
       principalAssetPolicyId,
       principalAssetName,
-    ) == remainingAmount
+    ) == equity
 
   let isDatumCorrect = parsedDatum == newDatum
   let containsRepaymentNFT =

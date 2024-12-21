@@ -199,6 +199,7 @@ validator pool(configAsset: Asset) {
 
             and {
               wantedPrincipal > 0,
+              quantity_of(input.output.value, poolPolicyId, poolId) == 1,
               validity_range_within_an_hour(self),
               loanOutputValidationResults.1st,
               bonds_sent_to_both_parties(
@@ -212,10 +213,12 @@ validator pool(configAsset: Asset) {
                 loanOutputValidationResults.2nd,
               ),
               or {
-                remainingAmount == 0,
+                and {
+                  remainingAmount == 0,
+                  quantity_of(self.mint, poolPolicyId, poolId) == -1,
+                },
                 and {
                   remainingAmount > 0,
-                  quantity_of(input.output.value, poolPolicyId, poolId) == 1,
                   validate_eventual_output_to_pool(
                     safe_list_at(self.outputs, index),
                     datum,

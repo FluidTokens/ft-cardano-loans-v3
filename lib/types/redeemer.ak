@@ -81,8 +81,8 @@ pub type LoanAction {
     lenderAuthHash: ByteArray,
     //Used only when an auction must start as part of liquidation
     lenderAddress: Address,
-    //Only for partialLiquidation, it's the amount to send to borrower
-    remainingAmount: Int,
+    //Only for partialLiquidation, it's collateralValue - remainingDebt
+    equity: Int,
     loanId: ByteArray,
   }
   //Borrower action

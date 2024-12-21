@@ -42,9 +42,9 @@ validator repayment(configAsset: Asset) {
         [],
         fn(action, result) {
           when action is {
-            Claim { liquidationMode, remainingAmount, loanId, .. } -> {
+            Claim { liquidationMode, equity, loanId, .. } -> {
               expect Liquidation { partialLiquidation, .. } = liquidationMode
-              if partialLiquidation && remainingAmount > 0 {
+              if partialLiquidation && equity > 0 {
                 list.push(result, Pair(loanId, 1))
               } else {
                 result
