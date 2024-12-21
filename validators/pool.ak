@@ -99,11 +99,9 @@ validator pool(configAsset: Asset) {
         expect result
 
         let input = inputAndCIP113Control.1st
-        let isCIP113 = inputAndCIP113Control.2nd
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: PoolDatum = inputDatum
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
-        let inputUtxoId = utils.hash_output_ref(input.output_reference)
 
         when redeemerAction is {
           Cancel(auth, poolId) -> and {
@@ -118,7 +116,6 @@ validator pool(configAsset: Asset) {
                 self.mint,
               ),
             }
-
           Borrow(
             borrowerAddress,
             outputWithLenderTokenIndex,
@@ -127,7 +124,9 @@ validator pool(configAsset: Asset) {
             wantedPrincipal,
             poolId,
           ) -> {
+            let isCIP113 = inputAndCIP113Control.2nd
             expect Finite(validTo) = self.validity_range.upper_bound.bound_type
+            let inputUtxoId = utils.hash_output_ref(input.output_reference)
             let loanOutput =
               safe_list_at(
                 get_outputs_to_sc_or_delegated_to_sc(

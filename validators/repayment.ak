@@ -35,48 +35,25 @@ validator repayment(configAsset: Asset) {
     expect loanWithdrawRedeemer.1st == Withdraw(Script(config.loanPolicyId))
     expect loanRedeemer: LoanWithdrawRedeemer = loanWithdrawRedeemer.2nd
 
-    let loanInputs =
-      get_inputs_from_sc_or_delegated_to_sc(
-        self.inputs,
-        config.loanSpendScriptHash,
-      )
-    let loanInputOutRefsWithTheirActionAndLoanId =
-      list.map3(
-        loanInputs,
-        loanRedeemer.actionsForEachInput,
-        redeemer.loanIds,
-        fn(inputAndCIP113Control, action, loanId) {
-          expect
-            quantity_of(
-              inputAndCIP113Control.1st.output.value,
-              config.loanPolicyId,
-              loanId,
-            ) == 1
-          (inputAndCIP113Control.1st.output_reference, action, loanId)
-        },
-      )
-
-    let loanInputsWithTheirActionThatNeedRepaymentNFTMint =
-      list.filter(
-        loanInputOutRefsWithTheirActionAndLoanId,
-        fn(loanInputAndAction) {
-          when loanInputAndAction.2nd is {
-            Claim(liquidationMode, remainingAmount, ..) -> {
-              expect Liquidation { partialLiquidation, .. } = liquidationMode
-              partialLiquidation && remainingAmount > 0
-            }
-            Repay(..) -> True
-            Recast(..) -> True
-            _ -> False
-          }
-        },
-      )
-
+    //Loan validator already ensures that the actions are in input order, same length and that every loanId is correct
     let expectedNFTMinted =
-      list.map(
-        loanInputsWithTheirActionThatNeedRepaymentNFTMint,
-        fn(loanInputAndActionAndLoanId) {
-          Pair(loanInputAndActionAndLoanId.3rd, 1)
+      list.foldl(
+        loanRedeemer.actionsForEachInput,
+        [],
+        fn(action, result) {
+          when action is {
+            Claim { liquidationMode, remainingAmount, loanId, .. } -> {
+              expect Liquidation { partialLiquidation, .. } = liquidationMode
+              if partialLiquidation && remainingAmount > 0 {
+                list.push(result, Pair(loanId, 1))
+              } else {
+                result
+              }
+            }
+            Repay { loanId, .. } -> list.push(result, Pair(loanId, 1))
+            Recast { loanId, .. } -> list.push(result, Pair(loanId, 1))
+            _ -> result
+          }
         },
       )
 

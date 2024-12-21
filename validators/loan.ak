@@ -44,43 +44,16 @@ validator loan(configAsset: Asset) {
     expect poolWithdrawRedeemer.1st == Withdraw(Script(config.poolPolicyId))
     expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
 
-    let poolInputs =
-      get_inputs_from_sc_or_delegated_to_sc(
-        self.inputs,
-        config.poolSpendScriptHash,
-      )
-    let poolInputOutRefsWithTheirActionAndLoanId =
-      list.map3(
-        poolInputs,
-        poolRedeemer.actionsForEachInput,
-        redeemer.poolIds,
-        fn(inputAndCIP113Control, action, poolId) {
-          expect
-            quantity_of(
-              inputAndCIP113Control.1st.output.value,
-              config.poolPolicyId,
-              poolId,
-            ) == 1
-          (inputAndCIP113Control.1st.output_reference, action, poolId)
-        },
-      )
-
-    let poolInputsWithTheirActionThatNeedLoanNFTMint =
-      list.filter(
-        poolInputOutRefsWithTheirActionAndLoanId,
-        fn(poolInputAndAction) {
-          when poolInputAndAction.2nd is {
-            Borrow(..) -> True
-            _ -> False
-          }
-        },
-      )
-
+    //Pool validator already ensures that the actions are in input order, same length and that every poolId is correct
     let expectedNFTMinted =
-      list.map(
-        poolInputsWithTheirActionThatNeedLoanNFTMint,
-        fn(poolInputAndActionAndPoolId) {
-          Pair(poolInputAndActionAndPoolId.3rd, 1)
+      list.foldl(
+        poolRedeemer.actionsForEachInput,
+        [],
+        fn(action, result) {
+          when action is {
+            Borrow { poolId, .. } -> list.push(result, Pair(poolId, 1))
+            _ -> result
+          }
         },
       )
 
@@ -128,7 +101,6 @@ validator loan(configAsset: Asset) {
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: LoanDatum = inputDatum
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
-        let inputUtxoId = utils.hash_output_ref(input.output_reference)
 
         when redeemerAction is {
           Claim(
@@ -138,6 +110,7 @@ validator loan(configAsset: Asset) {
             lenderAuthHash,
             lenderAddress,
             remainingAmount,
+            loanId,
           ) -> {
             expect Some(bondInput) = list.at(self.inputs, lenderBondInputIndex)
             let isRepaymentLate =
@@ -250,7 +223,7 @@ validator loan(configAsset: Asset) {
                         differenceOutput: safe_list_at(self.outputs, index),
                         repaymentSpendScriptHash: config.repaymentSpendScriptHash,
                         repaymentPolicyId: config.loanPolicyId,
-                        repaymentId: inputUtxoId,
+                        repaymentId: loanId,
                       ),
                     },
                   }
@@ -306,7 +279,7 @@ validator loan(configAsset: Asset) {
                 datum.repaidInstallments + 1,
                 config.repaymentSpendScriptHash,
                 config.repaymentPolicyId,
-                inputUtxoId,
+                loanId,
               ),
               or {
                 datum.repaidInstallments == datum.commonData.totalInstallments - 1,
@@ -365,7 +338,7 @@ validator loan(configAsset: Asset) {
               ),
             }
           }
-          Recast(borrowerBondInputIndex, principalPaid) -> {
+          Recast(borrowerBondInputIndex, principalPaid, loanId) -> {
             expect Some(bondInput) =
               list.at(self.inputs, borrowerBondInputIndex)
             expect Some(repaymentOutput) =
@@ -407,7 +380,7 @@ validator loan(configAsset: Asset) {
                 None,
                 config.repaymentSpendScriptHash,
                 config.repaymentPolicyId,
-                inputUtxoId,
+                loanId,
               ),
               or {
                 debtAfterRecasting == 0,

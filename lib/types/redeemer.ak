@@ -83,6 +83,7 @@ pub type LoanAction {
     lenderAddress: Address,
     //Only for partialLiquidation, it's the amount to send to borrower
     remainingAmount: Int,
+    loanId: ByteArray,
   }
   //Borrower action
   Repay {
@@ -97,7 +98,7 @@ pub type LoanAction {
     loanId: ByteArray,
   }
   //Borrower action
-  Recast { bondInputIndex: Int, principalPaid: Int }
+  Recast { bondInputIndex: Int, principalPaid: Int, loanId: ByteArray }
 }
 
 pub type LoanWithdrawRedeemer {
