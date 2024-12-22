@@ -30,6 +30,7 @@ validator pool(configAsset: Asset) {
         configAsset.assetName,
       )
     let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
+    //TODO this is not cip-113 compatible
     let poolOutputs =
       utils.get_outputs_to_sc(self.outputs, config.poolSpendScriptHash)
     let isInputRefSpent =
@@ -45,7 +46,7 @@ validator pool(configAsset: Asset) {
           if quantity > 0 {
             let correctAssetName = and {
                 bytearray.at(assetName, 0) == index,
-                bytearray.drop(assetName, 1) == bytearray.drop(inputRefHash, 2),
+                bytearray.drop(assetName, 1) == bytearray.drop(inputRefHash, 1),
               }
 
             expect Some(output) = list.at(poolOutputs, index)
@@ -181,6 +182,7 @@ validator pool(configAsset: Asset) {
                     validTo,
                     borrowerAddress,
                     isCIP113,
+                    poolId,
                   )
                 } else {
                   validate_output_to_loan(
@@ -196,6 +198,7 @@ validator pool(configAsset: Asset) {
                     validTo,
                     borrowerAddress,
                     isCIP113,
+                    poolId,
                   )
                 }
 
@@ -280,6 +283,7 @@ fn validate_output_to_loan(
   end: Int,
   borrowerAddress: Address,
   isCIP113: Bool,
+  poolId: ByteArray,
 ) -> (Bool, LoanInfoDatum) {
   expect Some(principalDivider) =
     list.at(poolDatum.principalLTVDivider, chosenCollateralIndex)
@@ -355,6 +359,7 @@ fn validate_output_to_loan(
   let newDatum =
     LoanDatum {
       commonData: poolDatum.commonData,
+      originAssetName: poolId,
       borrowerAssetName: loanId,
       lenderAssetName: loanId,
       collateral: chosenCollateral,

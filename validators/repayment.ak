@@ -1,9 +1,13 @@
 //All money to parties are sent here so they can withdraw them
 use aiken/collection/dict
 use aiken/collection/list.{length}
+use aiken/option
+use aiken/primitive/bytearray
 use cardano/address.{Credential, Script}
 use cardano/assets.{PolicyId, quantity_of, tokens}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
+use cardano/transaction.{
+  InlineDatum, Input, Output, Transaction, Withdraw, find_input,
+}
 use types/datum.{
   Liquidation, RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
 }
@@ -20,8 +24,7 @@ use utils.{
 validator repayment(configAsset: Asset) {
   //Repayment outputs are already checked by the loan validator, here we just ensure we don't mint additional undesired tokens
   //Burning is always allowed
-  //These are NOT NFTs, as in case of multiple repayments for the same loan (recast, installments, etc.) they have the same AssetName
-  //which is the loanId!
+  //Each output has a unique NFT
   mint(redeemer: RepaymentMintRedeemer, policy_id: PolicyId, self: Transaction) {
     let config =
       utils.get_config(
@@ -30,40 +33,56 @@ validator repayment(configAsset: Asset) {
         configAsset.assetName,
       )
 
+    let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
+    //TODO this is not cip-113 compatible
+    let repaymentOutputs =
+      utils.get_outputs_to_sc(self.outputs, config.repaymentSpendScriptHash)
+    let isInputRefSpent =
+      option.is_some(find_input(self.inputs, redeemer.inputRef))
+    let mintedNFTs = dict.to_pairs(tokens(self.mint, policy_id))
+
     let loanWithdrawRedeemer =
       safe_list_at(self.redeemers, redeemer.loanWithdrawRedeemerIndex)
     expect loanWithdrawRedeemer.1st == Withdraw(Script(config.loanPolicyId))
     expect loanRedeemer: LoanWithdrawRedeemer = loanWithdrawRedeemer.2nd
 
-    //Loan validator already ensures that the actions are in input order, same length and that every loanId is correct
-    let expectedNFTMinted =
-      list.foldl(
-        loanRedeemer.actionsForEachInput,
-        [],
-        fn(action, result) {
-          when action is {
-            Claim { liquidationMode, equity, loanId, .. } -> {
-              expect Liquidation { partialLiquidation, .. } = liquidationMode
-              if partialLiquidation && equity > 0 {
-                list.push(result, Pair(loanId, 1))
-              } else {
-                result
+    let expectedMintedNFTs =
+      list.indexed_foldr(
+        list.filter(
+          loanRedeemer.actionsForEachInput,
+          fn(action) {
+            when action is {
+              Claim { liquidationMode, equity, .. } -> {
+                expect Liquidation { partialLiquidation, .. } = liquidationMode
+                if partialLiquidation && equity > 0 {
+                  True
+                } else {
+                  False
+                }
               }
+              Repay { .. } -> True
+              Recast { .. } -> True
+              _ -> False
             }
-            Repay { loanId, .. } -> list.push(result, Pair(loanId, 1))
-            Recast { loanId, .. } -> list.push(result, Pair(loanId, 1))
-            _ -> result
-          }
+          },
+        ),
+        [],
+        fn(index, _action, result) {
+          let repaymentAssetName =
+            bytearray.push(bytearray.drop(inputRefHash, 1), index)
+          expect Some(output) = list.at(repaymentOutputs, index)
+          expect and {
+              dict.size(assets.tokens(output.value, policy_id)) == 1,
+              assets.quantity_of(output.value, policy_id, repaymentAssetName) == 1,
+            }
+          list.push(result, Pair(repaymentAssetName, 1))
         },
       )
 
-    //We check only minted tokens as burning is always allowed
-    let mintedTokens =
-      list.filter(
-        dict.to_pairs(tokens(self.mint, policy_id)),
-        fn(token) { token.2nd > 0 },
-      )
-    expectedNFTMinted == mintedTokens
+    and {
+      isInputRefSpent,
+      expectedMintedNFTs == mintedNFTs,
+    }
   }
 
   withdraw(

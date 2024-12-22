@@ -101,6 +101,7 @@ pub type LoanInfoDatum =
 
 pub type LoanDatum {
   commonData: CommonData,
+  originAssetName: AssetName,
   borrowerAssetName: AssetName,
   lenderAssetName: AssetName,
   collateral: CollateralAsset,

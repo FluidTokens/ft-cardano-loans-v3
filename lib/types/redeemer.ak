@@ -65,8 +65,6 @@ pub type LoanMintRedeemer {
   configRefInputIndex: Int,
   inputRef: OutputReference,
   poolWithdrawRedeemerIndex: Int,
-  //These are the loanId of the input loans that must mint an NFT
-  poolIds: List<ByteArray>,
 }
 
 pub type LoanAction {

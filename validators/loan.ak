@@ -1,11 +1,15 @@
 use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
+use aiken/option
+use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script, StakeCredential}
 use cardano/assets.{
   AssetName, PolicyId, Value, add, flatten, quantity_of, tokens,
 }
-use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
+use cardano/transaction.{
+  InlineDatum, Input, Output, Transaction, Withdraw, find_input,
+}
 use finance.{
   can_liquidate, get_collateral_value_in_principal_currency, get_remaining_debt,
   get_repayment_amount, is_recasting_permitted, is_repayment_late,
@@ -29,8 +33,7 @@ use utils.{
 validator loan(configAsset: Asset) {
   //Loan outputs are already checked by the pool validator, here we just ensure we don't mint additional undesired tokens
   //Burning is always allowed
-  //These are NOT NFTs, as in case of multiple loans from the same pool they have the same AssetName
-  //which is the poolId!
+  //Each output has a unique NFT
   mint(redeemer: LoanMintRedeemer, policy_id: PolicyId, self: Transaction) {
     let config =
       utils.get_config(
@@ -39,31 +42,47 @@ validator loan(configAsset: Asset) {
         configAsset.assetName,
       )
 
+    let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
+    //TODO this is not cip-113 compatible
+    let loanOutputs =
+      utils.get_outputs_to_sc(self.outputs, config.loanSpendScriptHash)
+    let isInputRefSpent =
+      option.is_some(find_input(self.inputs, redeemer.inputRef))
+    let mintedNFTs = dict.to_pairs(tokens(self.mint, policy_id))
+
     let poolWithdrawRedeemer =
       safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
     expect poolWithdrawRedeemer.1st == Withdraw(Script(config.poolPolicyId))
     expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
 
-    //Pool validator already ensures that the actions are in input order, same length and that every poolId is correct
-    let expectedNFTMinted =
-      list.foldl(
-        poolRedeemer.actionsForEachInput,
+    let expectedMintedNFTs =
+      list.indexed_foldr(
+        list.filter(
+          poolRedeemer.actionsForEachInput,
+          fn(action) {
+            when action is {
+              Borrow { .. } -> True
+              _ -> False
+            }
+          },
+        ),
         [],
-        fn(action, result) {
-          when action is {
-            Borrow { poolId, .. } -> list.push(result, Pair(poolId, 1))
-            _ -> result
-          }
+        fn(index, _action, result) {
+          let loanAssetName =
+            bytearray.push(bytearray.drop(inputRefHash, 1), index)
+          expect Some(output) = list.at(loanOutputs, index)
+          expect and {
+              dict.size(assets.tokens(output.value, policy_id)) == 1,
+              assets.quantity_of(output.value, policy_id, loanAssetName) == 1,
+            }
+          list.push(result, Pair(loanAssetName, 1))
         },
       )
 
-    //We check only minted tokens as burning is always allowed
-    let mintedTokens =
-      list.filter(
-        dict.to_pairs(tokens(self.mint, policy_id)),
-        fn(token) { token.2nd > 0 },
-      )
-    expectedNFTMinted == mintedTokens
+    and {
+      isInputRefSpent,
+      expectedMintedNFTs == mintedNFTs,
+    }
   }
 
   withdraw(
@@ -279,7 +298,7 @@ validator loan(configAsset: Asset) {
                   config.lenderBondPolicyId,
                   datum.lenderAssetName,
                   "installment_repayment",
-                  datum.repaidInstallments + 1,
+                  (loanId, datum.repaidInstallments + 1),
                   config.repaymentSpendScriptHash,
                   config.repaymentPolicyId,
                   loanId,
@@ -382,7 +401,7 @@ validator loan(configAsset: Asset) {
                   config.lenderBondPolicyId,
                   datum.lenderAssetName,
                   "recast",
-                  None,
+                  loanId,
                   config.repaymentSpendScriptHash,
                   config.repaymentPolicyId,
                   loanId,
@@ -525,6 +544,7 @@ fn validate_eventual_output_to_loan_for_repayment(
   let newDatum =
     LoanDatum {
       commonData: datum.commonData,
+      originAssetName: datum.originAssetName,
       borrowerAssetName: datum.borrowerAssetName,
       lenderAssetName: datum.lenderAssetName,
       collateral: datum.collateral,
@@ -621,6 +641,7 @@ fn validate_eventual_output_to_loan_for_recasting(
   let newDatum =
     LoanDatum {
       commonData: datum.commonData,
+      originAssetName: datum.originAssetName,
       borrowerAssetName: datum.borrowerAssetName,
       lenderAssetName: datum.lenderAssetName,
       collateral: datum.collateral,
