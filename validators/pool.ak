@@ -7,18 +7,19 @@ use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
 use cardano/assets.{PolicyId, Value, flatten, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Output, Transaction, find_input}
+use fluidtokens/authorizer.{authorize_action}
+use fluidtokens/finance.{token_b_needed_to_purchase_token_a}
+use fluidtokens/oracle.{retrieve_oracle_data, validate_oracle_ref_input}
 use fluidtokens/types/datum.{Liquidation, LoanDatum, LoanInfoDatum, PoolDatum}
 use fluidtokens/types/general.{Asset, CollateralAsset}
 use fluidtokens/types/redeemer.{
   Aggregated, Borrow, Cancel, Dedicated, OraclePriceFeed, PoolMintRedeemer,
   PoolWithdrawRedeemer, Pooled,
 }
-use fluidtokens/oracle.{retrieve_oracle_data,validate_oracle_ref_input,}
 use fluidtokens/utils.{
-  authorize_action, get_inputs_from_sc_or_delegated_to_sc,
-  get_outputs_to_sc_or_delegated_to_sc, is_output_to_sc, quantity_of_policy_id,
-  safe_list_at, token_b_needed_to_purchase_token_a,
-   validity_range_within_an_hour,
+  get_inputs_from_sc_or_delegated_to_sc, get_outputs_to_sc_or_delegated_to_sc,
+  is_output_to_sc, quantity_of_policy_id, safe_list_at,
+  validity_range_within_an_hour,
 }
 
 //TODO Should we limit the max number of minted tokens per tx?

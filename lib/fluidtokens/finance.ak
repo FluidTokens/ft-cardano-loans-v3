@@ -1,4 +1,4 @@
-use aiken/math/rational
+use aiken/math/rational.{Rational}
 use cardano/assets.{Value, quantity_of}
 use fluidtokens/types/datum.{
   InterestOnRemainingPrincipal, PrincipalAndInterestOnInstallments,
@@ -6,8 +6,7 @@ use fluidtokens/types/datum.{
 }
 use fluidtokens/types/general.{CollateralAsset}
 use fluidtokens/types/redeemer.{Aggregated, Dedicated, OraclePriceFeed, Pooled}
-use fluidtokens/utils.{quantity_of_policy_id,
-  token_b_needed_to_purchase_token_a}
+use fluidtokens/utils.{quantity_of_policy_id}
 
 fn rational_pow(r: rational.Rational, exponent: Int) {
   if exponent == 1 {
@@ -116,6 +115,21 @@ pub fn can_liquidate(
 
   expect Some(ltvAsRational) = rational.new(ltv, lTVDivider)
   rational.compare(ltvAsRational, ratioAsRational) == Greater
+}
+
+//Calculate the tokenB (the pool asset such as ADA or stablecoin) required to purchase buy_amount of tokenA
+//TODO This must be carefully checked!
+pub fn token_b_needed_to_purchase_token_a(
+  buy_amount: Rational,
+  token_a_amount: Int,
+  token_b_amount: Int,
+) -> Int {
+  let buy_amount_int = buy_amount |> rational.truncate()
+
+  let nominator = buy_amount_int * 1000 * token_b_amount
+  let denominator = ( token_a_amount - buy_amount_int ) * 997
+  let token_b_required = nominator / denominator
+  token_b_required
 }
 
 pub fn get_collateral_value_in_principal_currency(

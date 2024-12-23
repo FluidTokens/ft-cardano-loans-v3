@@ -9,6 +9,7 @@ use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, Transaction, Withdraw, find_input,
 }
+use fluidtokens/authorizer.{authorize_action}
 use fluidtokens/types/datum.{
   Liquidation, RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
 }
@@ -18,8 +19,8 @@ use fluidtokens/types/redeemer.{
   RepaymentWithdrawRedeemer, WithdrawWithHash, WithdrawWithToken,
 }
 use fluidtokens/utils.{
-  authorize_action, get_inputs_from_sc_or_delegated_to_sc, is_nft_spent,
-  quantity_of_policy_id, safe_list_at,
+  get_inputs_from_sc_or_delegated_to_sc, is_nft_spent, quantity_of_policy_id,
+  safe_list_at,
 }
 
 validator repayment(configAsset: Asset) {

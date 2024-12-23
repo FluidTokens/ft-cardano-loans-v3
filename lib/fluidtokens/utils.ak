@@ -1,21 +1,14 @@
-use aiken/builtin
-use aiken/collection/dict.{to_pairs}
+use aiken/collection/dict
 use aiken/collection/list
-use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
 use aiken/interval.{Finite}
-use aiken/math/rational.{Rational}
 use aiken/primitive/bytearray
-use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
+use cardano/address.{Address, Inline, Script, VerificationKey}
 use cardano/assets.{AssetName, PolicyId, Value, quantity_of, reduce, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use fluidtokens/types/datum.{ConfigDatum}
-use fluidtokens/types/general.{
-  Authorization, CardanoMintScript, CardanoSignature, CardanoSpendScript,
-  CardanoWithdrawScript,
-}
 
 pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
   crypto.sha2_256(
@@ -162,60 +155,4 @@ pub fn safe_list_at(list: List<a>, index: Int) {
 pub fn safe_expect(maybeElem: Option<a>) {
   expect Some(elem) = maybeElem
   elem
-}
-
-// Calculate the tokenB (the pool asset such as ADA or stablecoin) required to purchase buy_amount of tokenA
-pub fn token_b_needed_to_purchase_token_a(
-  buy_amount: Rational,
-  token_a_amount: Int,
-  token_b_amount: Int,
-) -> Int {
-  let buy_amount_int = buy_amount |> rational.truncate()
-
-  let nominator = buy_amount_int * 1000 * token_b_amount
-  let denominator = ( token_a_amount - buy_amount_int ) * 997
-  let token_b_required = nominator / denominator
-  token_b_required
-}
-
-pub fn authorize_action(
-  auth: Authorization,
-  transaction_inputs: List<Input>,
-  withdrawals: Pairs<Credential, Int>,
-  extra_signatories: List<VerificationKeyHash>,
-  transaction_mint: Value,
-) -> Bool {
-  when auth.method is {
-    // If the authorization method is PubKey, validate using the provided signature.
-    CardanoSignature -> list.has(extra_signatories, auth.hash)
-    // If the authorization method is SpendScript, ensure the Utxo is present in the transaction inputs.
-    CardanoSpendScript -> {
-      let auth_cred = Script(auth.hash)
-      list.any(
-        transaction_inputs,
-        fn(input) {
-          let Input { output, .. } = input
-          let Output { address: out_address, .. } = output
-          let Address { payment_credential: out_payment_credential, .. } =
-            out_address
-          out_payment_credential == auth_cred
-        },
-      )
-    }
-    // If the authorization method is WithdrawScript, validate the presence of a withdrawal in the transaction.
-    CardanoWithdrawScript -> {
-      let credential = Script(auth.hash)
-      pairs.has_key(withdrawals, credential)
-    }
-    // If the authorization method is MintScript, ensure the minted tokens meet the policy ID requirements and have a non-zero quantity.
-    CardanoMintScript -> {
-      let fst_token_quantity =
-        transaction_mint
-          |> tokens(auth.hash)
-          |> to_pairs
-          |> builtin.head_list
-          |> builtin.snd_pair
-      fst_token_quantity != 0
-    }
-  }
 }
