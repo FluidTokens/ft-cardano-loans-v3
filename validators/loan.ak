@@ -10,6 +10,7 @@ use cardano/assets.{
 use cardano/transaction.{
   InlineDatum, Input, Output, Transaction, Withdraw, find_input,
 }
+use constants
 use finance.{
   can_liquidate, get_collateral_value_in_principal_currency, get_remaining_debt,
   get_repayment_amount, is_recasting_permitted, is_repayment_late,
@@ -102,8 +103,6 @@ validator loan(configAsset: Asset) {
         self.inputs,
         config.loanSpendScriptHash,
       )
-    expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
-    expect Finite(validTo) = self.validity_range.upper_bound.bound_type
 
     and {
       //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
@@ -132,7 +131,12 @@ validator loan(configAsset: Asset) {
               equity,
               loanId,
             ) -> {
-              expect Some(bondInput) =
+              expect (Finite(validFrom), Finite(validTo)) =
+                (
+                  self.validity_range.lower_bound.bound_type,
+                  self.validity_range.upper_bound.bound_type,
+                )
+              expect Some(lenderBondInput) =
                 list.at(self.inputs, lenderBondInputIndex)
               let isRepaymentLate =
                 is_repayment_late(
@@ -150,7 +154,7 @@ validator loan(configAsset: Asset) {
                 is_nft_spent(
                   config.lenderBondPolicyId,
                   datum.lenderAssetName,
-                  bondInput,
+                  lenderBondInput,
                 ),
                 when datum.commonData.liquidationMode is {
                   NoLiquidationFullCollateralClaim -> isRepaymentLate
@@ -177,7 +181,7 @@ validator loan(configAsset: Asset) {
                       isRepaymentLate,
                       validate_output_to_dutch_auction(
                         input,
-                        bondInput,
+                        lenderBondInput,
                         dutchAuctionOutput,
                         validTo,
                         lenderAuthHash,
@@ -237,11 +241,13 @@ validator loan(configAsset: Asset) {
                         equity <= 0,
                         equity_sent_to_borrower(
                           equity: equity,
-                          borrowerBondPolicyId: config.borrowerBondPolicyId,
-                          borrowerAssetName: datum.borrowerAssetName,
+                          borrowerBondAsset: Asset {
+                            policyId: config.borrowerBondPolicyId,
+                            assetName: datum.borrowerAssetName,
+                          },
                           principalAssetPolicyId: datum.commonData.principalAsset.policyId,
                           principalAssetName: datum.commonData.principalAsset.assetName,
-                          differenceOutput: safe_list_at(self.outputs, index),
+                          equityOutput: safe_list_at(self.outputs, index),
                           repaymentSpendScriptHash: config.repaymentSpendScriptHash,
                           repaymentPolicyId: config.loanPolicyId,
                           repaymentId: loanId,
@@ -254,7 +260,9 @@ validator loan(configAsset: Asset) {
             }
 
             Repay(borrowerBondInputIndex, loanId) -> {
-              expect Some(bondInput) =
+              expect Finite(validFrom) =
+                self.validity_range.lower_bound.bound_type
+              expect Some(borrowerBondInput) =
                 list.at(self.inputs, borrowerBondInputIndex)
               expect Some(repaymentOutput) =
                 list.at(
@@ -289,7 +297,7 @@ validator loan(configAsset: Asset) {
                 is_nft_spent(
                   config.borrowerBondPolicyId,
                   datum.borrowerAssetName,
-                  bondInput,
+                  borrowerBondInput,
                 ),
                 validate_output_to_repayment(
                   repaymentOutput,
@@ -297,7 +305,7 @@ validator loan(configAsset: Asset) {
                   nextRepaymentAmount,
                   config.lenderBondPolicyId,
                   datum.lenderAssetName,
-                  "installment_repayment",
+                  constants.repayment_action_installment,
                   (loanId, datum.repaidInstallments + 1),
                   config.repaymentSpendScriptHash,
                   config.repaymentPolicyId,
@@ -330,7 +338,7 @@ validator loan(configAsset: Asset) {
               }
             }
             AddCollateral(borrowerBondInputIndex, addedCollateralAmount, loanId) -> {
-              expect Some(bondInput) =
+              expect Some(borrowerBondInput) =
                 list.at(self.inputs, borrowerBondInputIndex)
               expect Some(loanOutput) =
                 list.at(
@@ -347,7 +355,7 @@ validator loan(configAsset: Asset) {
                 is_nft_spent(
                   config.borrowerBondPolicyId,
                   datum.borrowerAssetName,
-                  bondInput,
+                  borrowerBondInput,
                 ),
                 validate_output_to_loan_for_adding_collateral(
                   loanOutput,
@@ -361,7 +369,7 @@ validator loan(configAsset: Asset) {
               }
             }
             Recast(borrowerBondInputIndex, principalPaid, loanId) -> {
-              expect Some(bondInput) =
+              expect Some(borrowerBondInput) =
                 list.at(self.inputs, borrowerBondInputIndex)
               expect Some(repaymentOutput) =
                 list.at(
@@ -372,23 +380,22 @@ validator loan(configAsset: Asset) {
                   ),
                   index,
                 )
-              //TODO is this the correct way to know how much debt you have after the recast?
               let debtAfterRecasting =
                 get_remaining_debt(
                   datum.commonData.repaymentMode,
-                  datum.principalAmount,
+                  datum.principalAmount - principalPaid,
                   datum.principalDivider,
                   datum.commonData.interestRate,
                   datum.commonData.totalInstallments,
                   datum.repaidInstallments,
-                ) - principalPaid
+                )
               and {
                 principalPaid > 0,
                 quantity_of(input.output.value, loanPolicyId, loanId) == 1,
                 is_nft_spent(
                   config.borrowerBondPolicyId,
                   datum.borrowerAssetName,
-                  bondInput,
+                  borrowerBondInput,
                 ),
                 is_recasting_permitted(
                   datum.commonData.repaymentMode,
@@ -400,7 +407,7 @@ validator loan(configAsset: Asset) {
                   principalPaid,
                   config.lenderBondPolicyId,
                   datum.lenderAssetName,
-                  "recast",
+                  constants.repayment_action_recast,
                   loanId,
                   config.repaymentSpendScriptHash,
                   config.repaymentPolicyId,
@@ -446,40 +453,32 @@ validator loan(configAsset: Asset) {
 
 fn equity_sent_to_borrower(
   equity: Int,
-  borrowerBondPolicyId: ByteArray,
-  borrowerAssetName: AssetName,
+  borrowerBondAsset: Asset,
   principalAssetPolicyId: ByteArray,
   principalAssetName: AssetName,
-  differenceOutput: Output,
+  equityOutput: Output,
   repaymentSpendScriptHash: ByteArray,
   repaymentPolicyId: ByteArray,
   repaymentId: ByteArray,
 ) {
-  expect InlineDatum(outputDatum) = differenceOutput.datum
+  expect InlineDatum(outputDatum) = equityOutput.datum
   expect parsedDatum: RepaymentDatum = outputDatum
-
-  let borrowerAsset =
-    Asset { policyId: borrowerBondPolicyId, assetName: borrowerAssetName }
   let newDatum =
     RepaymentDatumWithToken {
-      action: "partial_liquidation",
+      action: constants.repayment_action_partial_liquidation,
       data: None,
-      ownerAsset: borrowerAsset,
+      ownerAsset: borrowerBondAsset,
     }
 
   let containsCorrectAmount =
-    quantity_of(
-      differenceOutput.value,
-      principalAssetPolicyId,
-      principalAssetName,
-    ) == equity
+    quantity_of(equityOutput.value, principalAssetPolicyId, principalAssetName) == equity
 
   let isDatumCorrect = parsedDatum == newDatum
   let containsRepaymentNFT =
-    quantity_of(differenceOutput.value, repaymentPolicyId, repaymentId) == 1
-  let dosProtection = length(flatten(differenceOutput.value)) <= 21
+    quantity_of(equityOutput.value, repaymentPolicyId, repaymentId) == 1
+  let dosProtection = length(flatten(equityOutput.value)) <= 21
   and {
-    is_output_to_sc(differenceOutput, repaymentSpendScriptHash),
+    is_output_to_sc(equityOutput, repaymentSpendScriptHash),
     //TODO No staking check here, right?
     isDatumCorrect,
     containsRepaymentNFT,

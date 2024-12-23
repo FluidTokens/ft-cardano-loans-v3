@@ -47,8 +47,15 @@ pub fn get_repayment_amount(
   expect Some(principalAsRational) = rational.new(principal, principalDivider)
   expect Some(interestAsRational) =
     rational.div(rational.from_int(interestRate), rational.from_int(1000))
-  expect Some(penaltyFeeForLateRepaymentAsRational) =
-    rational.new(penaltyFeeForLateRepayment, principalDivider)
+  expect Some(penaltyFeeAsRational) =
+    rational.new(
+      if isLate {
+        penaltyFeeForLateRepayment
+      } else {
+        0
+      },
+      principalDivider,
+    )
   when repaymentMode is {
     InterestOnRemainingPrincipal(..) -> {
       let oneAsRational = rational.from_int(1)
@@ -72,13 +79,8 @@ pub fn get_repayment_amount(
           oneAsRational,
         )
       expect Some(result) = rational.div(numerator, denominator)
-      if isLate {
-        rational.ceil(
-          rational.add(result, penaltyFeeForLateRepaymentAsRational),
-        )
-      } else {
-        rational.ceil(result)
-      }
+
+      rational.ceil(rational.add(result, penaltyFeeAsRational))
     }
     PrincipalAndInterestOnInstallments -> {
       let totalInterest = rational.mul(principalAsRational, interestAsRational)
@@ -87,16 +89,9 @@ pub fn get_repayment_amount(
           rational.add(principalAsRational, totalInterest),
           rational.from_int(totalInstallments),
         )
-      if isLate {
-        rational.ceil(
-          rational.add(
-            singleInstallmentAmountAsRational,
-            penaltyFeeForLateRepaymentAsRational,
-          ),
-        )
-      } else {
-        rational.ceil(singleInstallmentAmountAsRational)
-      }
+      rational.ceil(
+        rational.add(singleInstallmentAmountAsRational, penaltyFeeAsRational),
+      )
     }
   }
 }

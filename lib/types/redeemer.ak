@@ -70,6 +70,7 @@ pub type LoanMintRedeemer {
 pub type LoanAction {
   //Lender action (or anyone who has the permission to spend the lender's bond)
   Claim {
+    //Must be the same value of the one contained in the datum, used by repayment validator
     liquidationMode: LiquidationMode,
     //This is the absolute input index that contains the lender bond
     lenderBondInputIndex: Int,

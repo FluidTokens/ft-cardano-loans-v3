@@ -1,9 +1,5 @@
-pub const pool_id_header: Int = 0
+pub const repayment_action_installment = "installment_repayment"
 
-pub const loan_id_header: Int = 0
+pub const repayment_action_recast = "recast"
 
-pub const lender_id_header: Int = 1
-
-pub const borrower_id_header: Int = 2
-
-pub const repayment_id_header: Int = 3
+pub const repayment_action_partial_liquidation = "partial_liquidation"
