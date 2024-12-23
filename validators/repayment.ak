@@ -1,4 +1,5 @@
-//All money to parties are sent here so they can withdraw them
+//All money to parties are sent here so they can withdraw them along with the repayment NFT.
+//Without the repayment NFT this can be used for depositing other stuff too.
 use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/option
@@ -119,7 +120,7 @@ validator repayment(configAsset: Asset) {
           let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
 
           let repaymentId = redeemerAction.2nd
-          //Either the utxo doesn't have a repayment nft OR it burns it
+          //Either the utxo doesn't have a repayment NFT OR it burns it
           let eventualRepaymentTokenBurnt = or {
               quantity_of_policy_id(input.output.value, policyId) == 0,
               and {
