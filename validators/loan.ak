@@ -240,6 +240,7 @@ validator loan(configAsset: Asset) {
                         partialLiquidation == False,
                         equity <= 0,
                         equity_sent_to_borrower(
+                          equityOutput: safe_list_at(self.outputs, index),
                           equity: equity,
                           borrowerBondAsset: Asset {
                             policyId: config.borrowerBondPolicyId,
@@ -247,7 +248,6 @@ validator loan(configAsset: Asset) {
                           },
                           principalAssetPolicyId: datum.commonData.principalAsset.policyId,
                           principalAssetName: datum.commonData.principalAsset.assetName,
-                          equityOutput: safe_list_at(self.outputs, index),
                           repaymentSpendScriptHash: config.repaymentSpendScriptHash,
                           repaymentPolicyId: config.loanPolicyId,
                           repaymentId: loanId,
@@ -300,16 +300,18 @@ validator loan(configAsset: Asset) {
                   borrowerBondInput,
                 ),
                 validate_output_to_repayment(
-                  repaymentOutput,
-                  datum.commonData.principalAsset,
-                  nextRepaymentAmount,
-                  config.lenderBondPolicyId,
-                  datum.lenderAssetName,
-                  constants.repayment_action_installment,
-                  (loanId, datum.repaidInstallments + 1),
-                  config.repaymentSpendScriptHash,
-                  config.repaymentPolicyId,
-                  loanId,
+                  repaymentOutput: repaymentOutput,
+                  loanAsset: datum.commonData.principalAsset,
+                  repaymentAmount: nextRepaymentAmount,
+                  lenderBondAsset: Asset {
+                    policyId: config.lenderBondPolicyId,
+                    assetName: datum.lenderAssetName,
+                  },
+                  action: constants.repayment_action_installment,
+                  extra_data: (loanId, datum.repaidInstallments + 1),
+                  repaymentSpendScriptHash: config.repaymentSpendScriptHash,
+                  repaymentPolicyId: config.repaymentPolicyId,
+                  repaymentId: loanId,
                 ),
                 or {
                   and {
@@ -402,16 +404,18 @@ validator loan(configAsset: Asset) {
                   datum.doneRecasts,
                 ),
                 validate_output_to_repayment(
-                  repaymentOutput,
-                  datum.commonData.principalAsset,
-                  principalPaid,
-                  config.lenderBondPolicyId,
-                  datum.lenderAssetName,
-                  constants.repayment_action_recast,
-                  loanId,
-                  config.repaymentSpendScriptHash,
-                  config.repaymentPolicyId,
-                  loanId,
+                  repaymentOutput: repaymentOutput,
+                  loanAsset: datum.commonData.principalAsset,
+                  repaymentAmount: principalPaid,
+                  lenderBondAsset: Asset {
+                    policyId: config.lenderBondPolicyId,
+                    assetName: datum.lenderAssetName,
+                  },
+                  action: constants.repayment_action_recast,
+                  extra_data: loanId,
+                  repaymentSpendScriptHash: config.repaymentSpendScriptHash,
+                  repaymentPolicyId: config.repaymentPolicyId,
+                  repaymentId: loanId,
                 ),
                 or {
                   and {
@@ -452,11 +456,11 @@ validator loan(configAsset: Asset) {
 }
 
 fn equity_sent_to_borrower(
+  equityOutput: Output,
   equity: Int,
   borrowerBondAsset: Asset,
   principalAssetPolicyId: ByteArray,
   principalAssetName: AssetName,
-  equityOutput: Output,
   repaymentSpendScriptHash: ByteArray,
   repaymentPolicyId: ByteArray,
   repaymentId: ByteArray,
@@ -491,8 +495,7 @@ fn validate_output_to_repayment(
   repaymentOutput: Output,
   loanAsset: Asset,
   repaymentAmount: Int,
-  lenderBondPolicyId: ByteArray,
-  lenderAssetName: AssetName,
+  lenderBondAsset: Asset,
   action: ByteArray,
   extra_data: Data,
   repaymentSpendScriptHash: ByteArray,
@@ -501,14 +504,11 @@ fn validate_output_to_repayment(
 ) {
   expect InlineDatum(outputDatum) = repaymentOutput.datum
   expect parsedDatum: RepaymentDatum = outputDatum
-
-  let lenderAsset =
-    Asset { policyId: lenderBondPolicyId, assetName: lenderAssetName }
   let newDatum =
     RepaymentDatumWithToken {
       action,
       data: extra_data,
-      ownerAsset: lenderAsset,
+      ownerAsset: lenderBondAsset,
     }
   let containsCorrectAmount =
     quantity_of(repaymentOutput.value, loanAsset.policyId, loanAsset.assetName) >= repaymentAmount
