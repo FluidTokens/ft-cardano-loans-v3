@@ -1,7 +1,7 @@
 use cardano/address.{Address}
 use cardano/transaction.{OutputReference}
-use types/datum.{LiquidationMode}
-use types/general.{Asset, Authorization}
+use fluidtokens/types/datum.{LiquidationMode}
+use fluidtokens/types/general.{Asset, Authorization}
 
 pub type CommonFeedData {
   valid_from: Int,

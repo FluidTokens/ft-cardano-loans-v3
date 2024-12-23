@@ -1,12 +1,12 @@
 use aiken/math/rational
 use cardano/assets.{Value, quantity_of}
-use types/datum.{
+use fluidtokens/types/datum.{
   InterestOnRemainingPrincipal, PrincipalAndInterestOnInstallments,
   RepaymentMode,
 }
-use types/general.{CollateralAsset}
-use types/redeemer.{Aggregated, Dedicated, OraclePriceFeed, Pooled}
-use utils.{quantity_of_policy_id, token_b_needed_to_purchase_token_a}
+use fluidtokens/types/general.{CollateralAsset}
+use fluidtokens/types/redeemer.{Aggregated, Dedicated, OraclePriceFeed, Pooled}
+use fluidtokens/utils.{quantity_of_policy_id, token_b_needed_to_purchase_token_a}
 
 fn rational_pow(r: rational.Rational, exponent: Int) {
   if exponent == 1 {

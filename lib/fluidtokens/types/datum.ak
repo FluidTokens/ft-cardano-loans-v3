@@ -7,7 +7,7 @@
 //Loan refinancing is done spending the new loan and the old loan in the same tx.
 use cardano/address.{Address}
 use cardano/assets.{AssetName}
-use types/general.{Asset, CollateralAsset}
+use fluidtokens/types/general.{Asset, CollateralAsset}
 
 pub type ConfigDatum {
   adminAddress: Address,

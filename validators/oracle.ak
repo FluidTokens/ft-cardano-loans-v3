@@ -2,9 +2,9 @@ use aiken/builtin
 use aiken/collection/list
 use cardano/address.{Credential}
 use cardano/transaction.{OutputReference, Transaction}
-use nft_pointers
-use types/general.{Asset}
-use types/redeemer.{OracleRedeemer}
+use fluidtokens/nft_pointers
+use fluidtokens/types/general.{Asset}
+use fluidtokens/types/redeemer.{OracleRedeemer}
 
 validator oracle(
   verification_keys: List<ByteArray>,

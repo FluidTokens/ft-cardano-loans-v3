@@ -9,15 +9,15 @@ use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, Transaction, Withdraw, find_input,
 }
-use types/datum.{
+use fluidtokens/types/datum.{
   Liquidation, RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
 }
-use types/general.{Asset}
-use types/redeemer.{
+use fluidtokens/types/general.{Asset}
+use fluidtokens/types/redeemer.{
   Claim, LoanWithdrawRedeemer, Recast, Repay, RepaymentMintRedeemer,
   RepaymentWithdrawRedeemer, WithdrawWithHash, WithdrawWithToken,
 }
-use utils.{
+use fluidtokens/utils.{
   authorize_action, get_inputs_from_sc_or_delegated_to_sc, is_nft_spent,
   quantity_of_policy_id, safe_list_at,
 }

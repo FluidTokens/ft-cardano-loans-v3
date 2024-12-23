@@ -1,8 +1,8 @@
 use aiken/collection/list
 use cardano/address.{Script}
 use cardano/transaction.{OutputReference, Transaction}
-use types/datum.{PoolDatum}
-use utils.{address_in_signatures, get_config, safe_list_at}
+use fluidtokens/types/datum.{PoolDatum}
+use fluidtokens/utils.{address_in_signatures, get_config, safe_list_at}
 
 validator general_spend(
   withdrawScriptHash: ByteArray,

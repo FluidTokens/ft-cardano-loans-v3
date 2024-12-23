@@ -1,30 +1,20 @@
 use aiken/builtin
 use aiken/collection/dict.{to_pairs}
-use aiken/collection/list.{length}
+use aiken/collection/list
 use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
 use aiken/interval.{Finite}
 use aiken/math/rational.{Rational}
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
-use cardano/assets.{
-  AssetName, PolicyId, Value, quantity_of, reduce, to_dict, tokens,
-}
+use cardano/assets.{AssetName, PolicyId, Value, quantity_of, reduce, tokens}
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose,
-  Transaction, Withdraw,
+  InlineDatum, Input, Output, OutputReference, Transaction,
 }
-use types/datum.{ConfigDatum}
-use types/general.{
-  Asset, Authorization, CardanoMintScript, CardanoSignature, CardanoSpendScript,
-  CardanoWithdrawScript, CollateralAsset,
-}
-use types/redeemer.{
-  Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
-}
-
-pub fn token_name_has_header(tokenName: ByteArray, header: Int) -> Bool {
-  bytearray.at(tokenName, 0) == header
+use fluidtokens/types/datum.{ConfigDatum}
+use fluidtokens/types/general.{
+  Authorization, CardanoMintScript, CardanoSignature, CardanoSpendScript,
+  CardanoWithdrawScript,
 }
 
 pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
@@ -101,26 +91,6 @@ pub fn get_inputs_from_sc(inputs: List<Input>, scHash: ByteArray) -> List<Input>
   list.filter(inputs, fn(input) { is_output_to_sc(input.output, scHash) })
 }
 
-pub fn is_output_to_sc_or_cip_113(output: Output, scHash: ByteArray) {
-  let is_output_to_sc = is_output_to_sc(output, scHash)
-  let is_stake =
-    when output.address.stake_credential is {
-      Some(stake_cred) -> {
-        expect Inline(a) = stake_cred
-        when a is {
-          VerificationKey(hash) -> hash == scHash
-          Script(hash) -> hash == scHash
-        }
-      }
-      None -> False
-    }
-
-  or {
-    is_output_to_sc,
-    is_stake,
-  }
-}
-
 pub fn is_output_delegated_to_sc(output: Output, scHash: ByteArray) {
   when output.address.stake_credential is {
     Some(stake_cred) -> {
@@ -172,38 +142,12 @@ pub fn get_outputs_to_sc_or_delegated_to_sc(
   }
 }
 
-pub fn is_script_output(output: Output) -> Bool {
-  when output.address.payment_credential is {
-    Script(_) -> True
-    _ -> False
-  }
-}
-
-pub fn only_one_sc_used(inputs: List<Input>, scHash: ByteArray) {
-  let inputsWithDatum =
-    list.filter(inputs, fn(input) { is_script_output(input.output) })
-  length(get_inputs_from_sc(inputs, scHash)) == length(inputsWithDatum)
-}
-
-pub fn must_be_signed_by(transaction: Transaction, address: Address) {
-  expect VerificationKey(hash) = address.payment_credential
-  list.has(transaction.extra_signatories, hash)
-}
-
 pub fn address_in_signatures(
   extra_signatories: List<VerificationKeyHash>,
   address: Address,
 ) {
   expect VerificationKey(hash) = address.payment_credential
   list.has(extra_signatories, hash)
-}
-
-pub fn get_own_hash(output_reference: OutputReference, txInputs: List<Input>) {
-  expect Some(input) =
-    list.find(txInputs, fn(x) { x.output_reference == output_reference })
-
-  expect Script(hash) = input.output.address.payment_credential
-  hash
 }
 
 /// Returns the quantity of all tokens with the policyId
@@ -218,67 +162,6 @@ pub fn safe_list_at(list: List<a>, index: Int) {
 pub fn safe_expect(maybeElem: Option<a>) {
   expect Some(elem) = maybeElem
   elem
-}
-
-pub fn value_to_pairs(value: Value) -> Pairs<PolicyId, Pairs<AssetName, Int>> {
-  //This gives us Dict<PolicyId, Dict<ByteArray, Int>>
-  let valueAsDict = to_dict(value)
-  //This gives us Dict<PolicyId, Pairs<ByteArray, Int>>
-  let dictOfPairs =
-    dict.map(valueAsDict, fn(_k, innerDict) { dict.to_pairs(innerDict) })
-  dict.to_pairs(dictOfPairs)
-}
-
-//pub fn value_to_pairs(value: Data) -> Pairs<PolicyId, Pairs<AssetName, Int>> {
-//  let vAsData: Data = value
-//  expect vAsPairList: List<Pair<PolicyId, Pairs<AssetName, Int>>> =
-//    builtin.un_map_data(vAsData)
-//  expect vAsPairs: Pairs<PolicyId, Pairs<AssetName, Int>> = vAsPairList
-//  vAsPairs
-//}
-
-pub fn is_feed_token_correct(
-  expectedCollateral: CollateralAsset,
-  feedToken: Asset,
-) {
-  when expectedCollateral.maybeAssetName is {
-    Some(assetName) -> and {
-        feedToken.policyId == expectedCollateral.policyId,
-        feedToken.assetName == assetName,
-      }
-    None -> feedToken.policyId == expectedCollateral.policyId
-  }
-}
-
-pub fn retrieve_oracle_data(
-  oracleInput: Input,
-  redeemers: Pairs<ScriptPurpose, Redeemer>,
-  transaction_valid_to: Int,
-  expectedCollateral: CollateralAsset,
-) -> Option<OraclePriceFeed> {
-  expect Some(loan_oracle_redeemer) =
-    pairs.get_first(
-      redeemers,
-      Withdraw(oracleInput.output.address.payment_credential),
-    )
-  expect loan_tokens_price: OracleRedeemer = loan_oracle_redeemer
-
-  let commonFeedData =
-    when loan_tokens_price.data is {
-      Pooled { common, .. } -> common
-      Aggregated { common, .. } -> common
-      Dedicated { common, .. } -> common
-    }
-  if and {
-    commonFeedData.valid_to - commonFeedData.valid_from <= 3600000,
-    commonFeedData.valid_to >= transaction_valid_to,
-    is_feed_token_correct(expectedCollateral, commonFeedData.token),
-  } {
-    Some(loan_tokens_price.data)
-  } else {
-    trace @"oracle is expired, has wrong token or wrong interval"
-    None
-  }
 }
 
 // Calculate the tokenB (the pool asset such as ADA or stablecoin) required to purchase buy_amount of tokenA
@@ -335,12 +218,4 @@ pub fn authorize_action(
       fst_token_quantity != 0
     }
   }
-}
-
-pub fn validate_oracle_ref_input(
-  oracleInputValue: Value,
-  chosenCollateral: CollateralAsset,
-) {
-  expect Some(oracleToken) = chosenCollateral.maybeOracleTokenAsset
-  quantity_of(oracleInputValue, oracleToken.policyId, oracleToken.assetName) > 0
 }

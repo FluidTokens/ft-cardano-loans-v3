@@ -3,10 +3,10 @@ use aiken/interval.{Finite, Interval}
 use cardano/address.{Address, Credential, PaymentCredential, Script}
 use cardano/assets.{flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
-use types/datum.{DutchAuctionDatum}
-use types/general.{Asset}
-use types/redeemer.{DA_Buy, DA_Cancel, DutchAuctionRedeemer}
-use utils.{get_inputs_from_sc_or_delegated_to_sc, safe_list_at}
+use fluidtokens/types/datum.{DutchAuctionDatum}
+use fluidtokens/types/general.{Asset}
+use fluidtokens/types/redeemer.{DA_Buy, DA_Cancel, DutchAuctionRedeemer}
+use fluidtokens/utils.{get_inputs_from_sc_or_delegated_to_sc, safe_list_at}
 
 validator dutch_auction {
   withdraw(
