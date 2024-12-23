@@ -7,15 +7,16 @@ use cardano/address.{Address, Credential, Script, StakeCredential}
 use cardano/assets.{
   AssetName, PolicyId, Value, add, flatten, quantity_of, tokens,
 }
-use fluidtokens/oracle.{retrieve_oracle_data,validate_oracle_ref_input,}
 use cardano/transaction.{
   InlineDatum, Input, Output, Transaction, Withdraw, find_input,
 }
 use fluidtokens/constants
 use fluidtokens/finance.{
-  can_liquidate, get_collateral_value_in_principal_currency, get_remaining_debt,
-  get_repayment_amount, is_recasting_permitted, is_repayment_late,
+  can_liquidate, get_collateral_value_in_principal_currency,
+  get_installment_amount, get_remaining_debt, is_recasting_permitted,
+  is_repayment_late,
 }
+use fluidtokens/oracle.{retrieve_oracle_data, validate_oracle_ref_input}
 use fluidtokens/types/datum.{
   ConfigDatum, DutchAuctionDatum, Liquidation, LoanDatum,
   NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
@@ -28,8 +29,8 @@ use fluidtokens/types/redeemer.{
 }
 use fluidtokens/utils.{
   get_inputs_from_sc_or_delegated_to_sc, get_outputs_to_sc_or_delegated_to_sc,
-  is_nft_spent, is_output_to_sc, quantity_of_policy_id, 
-  safe_list_at,  value_without_policy_id_as_list,
+  is_nft_spent, is_output_to_sc, quantity_of_policy_id, safe_list_at,
+  value_without_policy_id_as_list,
 }
 
 validator loan(configAsset: Asset) {
@@ -285,7 +286,7 @@ validator loan(configAsset: Asset) {
                   datum.commonData.repaymentTimeWindow,
                 )
               let nextRepaymentAmount =
-                get_repayment_amount(
+                get_installment_amount(
                   datum.commonData.repaymentMode,
                   datum.principalAmount,
                   datum.principalDivider,

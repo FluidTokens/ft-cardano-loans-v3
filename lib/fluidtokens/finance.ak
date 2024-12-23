@@ -6,7 +6,8 @@ use fluidtokens/types/datum.{
 }
 use fluidtokens/types/general.{CollateralAsset}
 use fluidtokens/types/redeemer.{Aggregated, Dedicated, OraclePriceFeed, Pooled}
-use fluidtokens/utils.{quantity_of_policy_id, token_b_needed_to_purchase_token_a}
+use fluidtokens/utils.{quantity_of_policy_id,
+  token_b_needed_to_purchase_token_a}
 
 fn rational_pow(r: rational.Rational, exponent: Int) {
   if exponent == 1 {
@@ -24,7 +25,7 @@ pub fn get_remaining_debt(
   totalInstallments: Int,
   repaidInstallments: Int,
 ) {
-  ( totalInstallments - repaidInstallments ) * get_repayment_amount(
+  ( totalInstallments - repaidInstallments ) * get_installment_amount(
     repaymentMode,
     principal,
     principalDivider,
@@ -35,7 +36,7 @@ pub fn get_remaining_debt(
   )
 }
 
-pub fn get_repayment_amount(
+pub fn get_installment_amount(
   repaymentMode: RepaymentMode,
   principal: Int,
   principalDivider: Int,
