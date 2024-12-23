@@ -229,9 +229,9 @@ validator pool(configAsset: Asset) {
                       datum,
                       remainingAmount,
                       poolPolicyId,
+                      poolId,
                       config.poolSpendScriptHash,
                       isCIP113,
-                      poolId,
                     ),
                   },
                 },
@@ -259,13 +259,13 @@ fn bonds_sent_to_both_parties(
   lenderBondOutputDatum: LoanInfoDatum,
 ) {
   and {
-    quantity_of(mintedValue, borrowerBondPolicyId, bondId) == 1,
     outputWithLenderToken.address == lenderAddress,
-    quantity_of(outputWithLenderToken.value, lenderBondPolicyId, bondId) == 1,
     or {
       lenderTokenOutputMustHaveLoanInfoDatum == False,
       outputWithLenderToken.datum == InlineDatum(lenderBondOutputDatum),
     },
+    quantity_of(mintedValue, borrowerBondPolicyId, bondId) == 1,
+    quantity_of(outputWithLenderToken.value, lenderBondPolicyId, bondId) == 1,
     length(flatten(outputWithLenderToken.value)) <= 5,
   }
 }
@@ -398,9 +398,9 @@ fn validate_eventual_output_to_pool(
   datum: PoolDatum,
   remainingAmount: Int,
   poolPolicyId: ByteArray,
+  poolId: ByteArray,
   poolSpendScriptHash: ByteArray,
   isCIP113: Bool,
-  poolId: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = output.datum
   expect parsedDatum: PoolDatum = outputDatum
