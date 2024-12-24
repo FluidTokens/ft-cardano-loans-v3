@@ -112,13 +112,7 @@ validator pool(configAsset: Asset) {
                 quantity_of(input.output.value, poolPolicyId, poolId) == 1,
                 quantity_of(self.mint, poolPolicyId, poolId) == -1,
                 datum.lenderAuthHash == auth.hash,
-                authorize_action(
-                  auth,
-                  self.inputs,
-                  self.withdrawals,
-                  self.extra_signatories,
-                  self.mint,
-                ),
+                authorize_action(auth),
               }
             Borrow(
               borrowerAddress,

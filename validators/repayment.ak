@@ -13,7 +13,7 @@ use fluidtokens/authorizer.{authorize_action}
 use fluidtokens/types/datum.{
   Liquidation, RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
 }
-use fluidtokens/types/general.{Asset}
+use fluidtokens/types/general.{Asset, Authorization}
 use fluidtokens/types/redeemer.{
   Claim, LoanWithdrawRedeemer, Recast, Repay, RepaymentMintRedeemer,
   RepaymentWithdrawRedeemer, WithdrawWithHash, WithdrawWithToken,
@@ -146,13 +146,7 @@ validator repayment(configAsset: Asset) {
                 expect RepaymentDatumWithHash { ownerAuthHash, .. } = datum
                 and {
                   ownerAuthHash == auth.hash,
-                  authorize_action(
-                    auth,
-                    self.inputs,
-                    self.withdrawals,
-                    self.extra_signatories,
-                    self.mint,
-                  ),
+                  authorize_action(auth),
                 }
               }
             },

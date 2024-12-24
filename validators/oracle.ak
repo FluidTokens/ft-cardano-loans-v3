@@ -2,7 +2,7 @@ use aiken/builtin
 use aiken/collection/list
 use cardano/address.{Credential}
 use cardano/transaction.{OutputReference, Transaction}
-use fluidtokens/nft_pointers
+use fluidtokens/authorizer
 use fluidtokens/types/general.{Asset}
 use fluidtokens/types/redeemer.{OracleRedeemer}
 
@@ -20,7 +20,7 @@ validator oracle(
     self: Transaction,
   ) {
     // Governance approval (transaction signed by governance NFT holder)
-    nft_pointers.nft_validator(
+    authorizer.authorize_via_nft_ownership(
       governance_token.policyId,
       governance_token.assetName,
       self.reference_inputs,
