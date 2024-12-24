@@ -5,12 +5,12 @@
 //Forgiveness in case of default is accomplished by sending the collateral back to the borrower in case of Full Collateral Claim.
 //If the penalty fee should be sent to an address different from the lender, then the lender nft must be locked in a dedicated contract that says so.
 //Loan refinancing is done spending the new loan and the old loan in the same tx.
-use cardano/address.{Address}
+use cardano/address.{Address, Credential}
 use cardano/assets.{AssetName}
 use fluidtokens/types/general.{Asset, CollateralAsset}
 
 pub type ConfigDatum {
-  adminAddress: Address,
+  adminCredential: Credential,
   poolPolicyId: ByteArray,
   loanRequestPolicyId: ByteArray,
   borrowerBondPolicyId: ByteArray,

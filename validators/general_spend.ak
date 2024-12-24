@@ -1,8 +1,9 @@
 use aiken/collection/list
 use cardano/address.{Script}
 use cardano/transaction.{OutputReference, Transaction}
+use fluidtokens/authorizer
 use fluidtokens/types/datum.{PoolDatum}
-use fluidtokens/utils.{address_in_signatures, get_config, safe_list_at}
+use fluidtokens/utils.{get_config, safe_list_at}
 
 validator general_spend(
   withdrawScriptHash: ByteArray,
@@ -16,13 +17,14 @@ validator general_spend(
     self: Transaction,
   ) {
     if datumOpt == None {
-      address_in_signatures(
-        self.extra_signatories,
+      authorizer.authorize_via_credential(
         get_config(
           safe_list_at(self.reference_inputs, 0),
           configNFTPolicyId,
           configNFTAssetName,
-        ).adminAddress,
+        ).adminCredential,
+        self.withdrawals,
+        self.extra_signatories,
       )
     } else {
       list.any(

@@ -49,7 +49,7 @@ pub fn authorize_action(auth: Authorization) -> Bool {
   }
 }
 
-fn authorize_via_credential(
+pub fn authorize_via_credential(
   validating_credential: Credential,
   withdrawals: Pairs<Credential, Lovelace>,
   extra_signatories: List<VerificationKeyHash>,

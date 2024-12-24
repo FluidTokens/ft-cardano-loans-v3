@@ -1,3 +1,5 @@
+pub const config_asset_name = "parameters"
+
 pub const repayment_action_installment = "installment_repayment"
 
 pub const repayment_action_recast = "recast"
