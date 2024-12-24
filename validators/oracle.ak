@@ -12,14 +12,14 @@ validator oracle(
   _oracle_asset: Asset,
   governance_token: Asset,
 ) {
-  // Allow to move Oracle NFT if governance have signed off.
+  //Allow to move Oracle NFT if governance have signed off.
   spend(
     _datum_opt: Option<Data>,
     _redeemer: Data,
     _input: OutputReference,
     self: Transaction,
   ) {
-    // Governance approval (transaction signed by governance NFT holder)
+    //Governance approval (transaction signed by governance NFT holder)
     authorizer.authorize_via_nft_ownership(
       governance_token.policyId,
       governance_token.assetName,
@@ -29,7 +29,7 @@ validator oracle(
     )
   }
 
-  // Validate that n/m oracles have signed on this TX
+  //Validate that n/m oracles have signed on this TX
   withdraw(
     redeemer: OracleRedeemer,
     _credential: Credential,
@@ -43,13 +43,11 @@ validator oracle(
         fn(redem, valid_signatures) -> Int {
           expect Some(verification_key) =
             list.at(verification_keys, redem.key_position)
-          if
-          builtin.verify_ed25519_signature(
+          if builtin.verify_ed25519_signature(
             verification_key,
             builtin.serialise_data(redeemer.data),
             redem.signature,
-          ){
-          
+          ) {
             valid_signatures + 1
           } else {
             valid_signatures

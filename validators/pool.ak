@@ -9,7 +9,7 @@ use cardano/assets.{PolicyId, Value, flatten, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Output, Transaction, find_input}
 use fluidtokens/authorizer.{authorize_action}
 use fluidtokens/finance.{token_b_needed_to_purchase_token_a}
-use fluidtokens/oracle.{retrieve_oracle_data, validate_oracle_ref_input}
+use fluidtokens/oracle.{retrieve_oracle_data, validate_oracle_ref_input_value}
 use fluidtokens/types/datum.{Liquidation, LoanDatum, LoanInfoDatum, PoolDatum}
 use fluidtokens/types/general.{Asset, CollateralAsset}
 use fluidtokens/types/redeemer.{
@@ -154,13 +154,13 @@ validator pool(configAsset: Asset) {
                       chosenCollateralOracleInputIndex,
                     )
                   expect
-                    validate_oracle_ref_input(
+                    validate_oracle_ref_input_value(
                       oracleRefInput.output.value,
                       chosenCollateral,
                     )
                   expect Some(oraclePriceFeed) =
                     retrieve_oracle_data(
-                      oracleRefInput,
+                      oracleRefInput.output.address.payment_credential,
                       self.redeemers,
                       validTo,
                       chosenCollateral,

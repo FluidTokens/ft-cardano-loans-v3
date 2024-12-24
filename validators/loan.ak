@@ -16,7 +16,7 @@ use fluidtokens/finance.{
   get_installment_amount, get_remaining_debt, is_recasting_permitted,
   is_repayment_late,
 }
-use fluidtokens/oracle.{retrieve_oracle_data, validate_oracle_ref_input}
+use fluidtokens/oracle.{retrieve_oracle_data, validate_oracle_ref_input_value}
 use fluidtokens/types/datum.{
   ConfigDatum, DutchAuctionDatum, Liquidation, LoanDatum,
   NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
@@ -203,7 +203,7 @@ validator loan(configAsset: Asset) {
                       )
                     expect Some(oraclePriceFeed) =
                       retrieve_oracle_data(
-                        oracleRefInput,
+                        oracleRefInput.output.address.payment_credential,
                         self.redeemers,
                         validTo,
                         datum.collateral,
@@ -225,7 +225,7 @@ validator loan(configAsset: Asset) {
                       )
                     and {
                       equity == collateralValueInPrincipalCurrency - remainingDebt,
-                      validate_oracle_ref_input(
+                      validate_oracle_ref_input_value(
                         oracleRefInput.output.value,
                         datum.collateral,
                       ),
