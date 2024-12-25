@@ -5,7 +5,7 @@ use aiken/math/rational
 use aiken/option
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{PolicyId, Value, flatten, quantity_of, tokens}
+use cardano/assets.{PolicyId, Value, flatten, quantity_of, reduce, tokens}
 use cardano/transaction.{InlineDatum, Output, Transaction, find_input}
 use fluidtokens/authorizer.{authorize_action}
 use fluidtokens/finance.{token_b_needed_to_purchase_token_a}
@@ -17,12 +17,10 @@ use fluidtokens/types/redeemer.{
   PoolWithdrawRedeemer, Pooled,
 }
 use fluidtokens/utils.{
-  get_inputs_from_sc_or_delegated_to_sc, get_outputs_to_sc_or_delegated_to_sc,
-  is_output_to_sc, quantity_of_policy_id, safe_list_at,
-  validity_range_within_an_hour,
+  get_inputs_from_sc, get_outputs_to_sc, is_output_to_spend_validator,
+  quantity_of_policy_id, safe_list_at, validity_range_within_an_hour,
 }
 
-//TODO Should we limit the max number of minted tokens per tx?
 validator pool(configAsset: Asset) {
   mint(redeemer: PoolMintRedeemer, policy_id: PolicyId, self: Transaction) {
     let config =
@@ -32,9 +30,12 @@ validator pool(configAsset: Asset) {
         configAsset.assetName,
       )
     let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
-    //TODO this is not cip-113 compatible
     let poolOutputs =
-      utils.get_outputs_to_sc(self.outputs, config.poolSpendScriptHash)
+      utils.get_outputs_to_sc(
+        self.outputs,
+        config.poolSpendScriptHash,
+        config.smartTokensSpendScriptHash,
+      )
     let isInputRefSpent =
       option.is_some(find_input(self.inputs, redeemer.inputRef))
 
@@ -67,9 +68,23 @@ validator pool(configAsset: Asset) {
           }
         },
       )
+
+    let mintedTokensQuantity =
+      reduce(
+        self.mint,
+        0,
+        fn(policyId, _assetName, amount, result) {
+          if policyId == policy_id {
+            result + amount
+          } else {
+            result
+          }
+        },
+      )
     and {
       isInputRefSpent,
       isEachMintedTokenAccountedFor,
+      mintedTokensQuantity <= 255,
     }
   }
 
@@ -86,9 +101,10 @@ validator pool(configAsset: Asset) {
         configAsset.assetName,
       )
     let poolInputs =
-      get_inputs_from_sc_or_delegated_to_sc(
+      get_inputs_from_sc(
         self.inputs,
         config.poolSpendScriptHash,
+        config.smartTokensSpendScriptHash,
       )
 
     and {
@@ -97,12 +113,11 @@ validator pool(configAsset: Asset) {
       list.indexed_foldr(
         poolInputs,
         True,
-        fn(index, inputAndCIP113Control, result) {
+        fn(index, input, result) {
           //As all inputs must return True, if any of previous input returned False, then fail
           //The last input is not checked but will return its value at the end, so if False withdraw will fail
           expect result
 
-          let input = inputAndCIP113Control.1st
           expect InlineDatum(inputDatum) = input.output.datum
           expect datum: PoolDatum = inputDatum
           let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
@@ -122,16 +137,15 @@ validator pool(configAsset: Asset) {
               wantedPrincipal,
               poolId,
             ) -> {
-              let isCIP113 = inputAndCIP113Control.2nd
               expect Finite(validTo) =
                 self.validity_range.upper_bound.bound_type
               let inputUtxoId = utils.hash_output_ref(input.output_reference)
               let loanOutput =
                 safe_list_at(
-                  get_outputs_to_sc_or_delegated_to_sc(
+                  get_outputs_to_sc(
                     self.outputs,
                     config.loanSpendScriptHash,
-                    isCIP113,
+                    config.smartTokensSpendScriptHash,
                   ),
                   index,
                 )
@@ -177,7 +191,6 @@ validator pool(configAsset: Asset) {
                     inputUtxoId,
                     validTo,
                     borrowerAddress,
-                    isCIP113,
                     poolId,
                   )
                 } else {
@@ -193,7 +206,6 @@ validator pool(configAsset: Asset) {
                     inputUtxoId,
                     validTo,
                     borrowerAddress,
-                    isCIP113,
                     poolId,
                   )
                 }
@@ -227,7 +239,6 @@ validator pool(configAsset: Asset) {
                       poolPolicyId,
                       poolId,
                       config.poolSpendScriptHash,
-                      isCIP113,
                     ),
                   },
                 },
@@ -278,7 +289,6 @@ fn validate_output_to_loan(
   loanId: ByteArray,
   end: Int,
   borrowerAddress: Address,
-  isCIP113: Bool,
   poolId: ByteArray,
 ) -> (Bool, LoanInfoDatum) {
   expect Some(principalDivider) =
@@ -373,14 +383,16 @@ fn validate_output_to_loan(
     }
   let isDatumCorrect = parsedDatum == newDatum && isLiquidationCorrectlySet
 
-  let toCorrectStaking = or {
-      isCIP113 == True,
-      output.address.stake_credential == borrowerAddress.stake_credential,
+  let correctDestination =
+    if is_output_to_spend_validator(output, loanSpendScriptHash) {
+      output.address.stake_credential == borrowerAddress.stake_credential
+    } else {
+      //outputs have been already filtered at the beginning
+      True
     }
   let dosProtection = length(flatten(output.value)) <= 21
   (and {
-      is_output_to_sc(output, loanSpendScriptHash),
-      toCorrectStaking,
+      correctDestination,
       isDatumCorrect,
       containsLoanNFT,
       containsEnoughCollateral,
@@ -396,7 +408,6 @@ fn validate_eventual_output_to_pool(
   poolPolicyId: ByteArray,
   poolId: ByteArray,
   poolSpendScriptHash: ByteArray,
-  isCIP113: Bool,
 ) {
   expect InlineDatum(outputDatum) = output.datum
   expect parsedDatum: PoolDatum = outputDatum
@@ -414,14 +425,16 @@ fn validate_eventual_output_to_pool(
 
   let dosProtection = length(flatten(output.value)) <= 5
 
-  let toCorrectStaking = or {
-      isCIP113 == True,
-      output.address.stake_credential == datum.lenderAddress.stake_credential,
+  let correctDestination =
+    if is_output_to_spend_validator(output, poolSpendScriptHash) {
+      output.address.stake_credential == datum.lenderAddress.stake_credential
+    } else {
+      //outputs have been already filtered at the beginning
+      True
     }
 
   and {
-    is_output_to_sc(output, poolSpendScriptHash),
-    toCorrectStaking,
+    correctDestination,
     isDatumCorrect,
     containsPoolNFT,
     containsCorrectAmount,

@@ -19,8 +19,7 @@ use fluidtokens/types/redeemer.{
   RepaymentWithdrawRedeemer, WithdrawWithHash, WithdrawWithToken,
 }
 use fluidtokens/utils.{
-  get_inputs_from_sc_or_delegated_to_sc, is_nft_spent, quantity_of_policy_id,
-  safe_list_at,
+  get_inputs_from_sc, is_nft_spent, quantity_of_policy_id, safe_list_at,
 }
 
 validator repayment(configAsset: Asset) {
@@ -36,9 +35,12 @@ validator repayment(configAsset: Asset) {
       )
 
     let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
-    //TODO this is not cip-113 compatible
     let repaymentOutputs =
-      utils.get_outputs_to_sc(self.outputs, config.repaymentSpendScriptHash)
+      utils.get_outputs_to_sc(
+        self.outputs,
+        config.repaymentSpendScriptHash,
+        config.smartTokensSpendScriptHash,
+      )
     let isInputRefSpent =
       option.is_some(find_input(self.inputs, redeemer.inputRef))
     let mintedNFTs = dict.to_pairs(tokens(self.mint, policy_id))
@@ -100,9 +102,10 @@ validator repayment(configAsset: Asset) {
         configAsset.assetName,
       )
     let repaymentInputs =
-      get_inputs_from_sc_or_delegated_to_sc(
+      get_inputs_from_sc(
         self.inputs,
         config.repaymentSpendScriptHash,
+        config.smartTokensSpendScriptHash,
       )
     and {
       //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
@@ -110,12 +113,11 @@ validator repayment(configAsset: Asset) {
       list.indexed_foldr(
         repaymentInputs,
         True,
-        fn(index, inputAndCIP113Control, result) {
+        fn(index, input, result) {
           //As all inputs must return True, if any of previous input returned False, then fail
           //The last input is not checked but will return its value at the end, so if False withdraw will fail
           expect result
 
-          let input = inputAndCIP113Control.1st
           expect InlineDatum(inputDatum) = input.output.datum
           expect datum: RepaymentDatum = inputDatum
           let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)

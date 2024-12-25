@@ -66,24 +66,6 @@ pub fn validity_range_within_an_hour(tx: Transaction) {
   end - start <= 3600000
 }
 
-pub fn is_output_to_sc(output: Output, scHash: ByteArray) -> Bool {
-  when output.address.payment_credential is {
-    Script(hash) -> hash == scHash
-    _ -> False
-  }
-}
-
-pub fn get_outputs_to_sc(
-  outputs: List<Output>,
-  scHash: ByteArray,
-) -> List<Output> {
-  list.filter(outputs, fn(output) { is_output_to_sc(output, scHash) })
-}
-
-pub fn get_inputs_from_sc(inputs: List<Input>, scHash: ByteArray) -> List<Input> {
-  list.filter(inputs, fn(input) { is_output_to_sc(input.output, scHash) })
-}
-
 pub fn is_output_delegated_to_sc(output: Output, scHash: ByteArray) {
   when output.address.stake_credential is {
     Some(stake_cred) -> {
@@ -97,42 +79,68 @@ pub fn is_output_delegated_to_sc(output: Output, scHash: ByteArray) {
   }
 }
 
-//Returns a list of couples (INPUT, IS_CIP_113), removing all the other inputs
-pub fn get_inputs_from_sc_or_delegated_to_sc(
-  inputs: List<Input>,
-  scHash: ByteArray,
-) -> List<(Input, Bool)> {
-  list.foldr(
-    inputs,
-    [],
-    fn(input, result) {
-      let output = input.output
-      if is_output_to_sc(output, scHash) {
-        list.push(result, (input, False))
-      } else {
-        if is_output_delegated_to_sc(output, scHash) {
-          list.push(result, (input, True))
-        } else {
-          result
-        }
+pub fn is_output_to_spend_validator(
+  output: Output,
+  spendValidatorScriptHash: ByteArray,
+) -> Bool {
+  when output.address.payment_credential is {
+    Script(hash) -> hash == spendValidatorScriptHash
+    _ -> False
+  }
+}
+
+pub fn get_outputs_to_sc(
+  outputs: List<Output>,
+  spendValidatorScriptHash: ByteArray,
+  smartTokensSpendScriptHash: ByteArray,
+) {
+  list.filter(
+    outputs,
+    fn(output) {
+      or {
+        //Native tokens
+        output.address.payment_credential == VerificationKey(
+          spendValidatorScriptHash,
+        ),
+        //Smart tokens or native tokens accidentally sent to the smart account
+        and {
+          output.address.payment_credential == VerificationKey(
+            smartTokensSpendScriptHash,
+          ),
+          output.address.stake_credential == Some(
+            Inline(VerificationKey(spendValidatorScriptHash)),
+          ),
+        },
       }
     },
   )
 }
 
-pub fn get_outputs_to_sc_or_delegated_to_sc(
-  outputs: List<Output>,
-  scHash: ByteArray,
-  isCIP113: Bool,
-) {
-  if isCIP113 {
-    list.filter(outputs, fn(output) { is_output_to_sc(output, scHash) })
-  } else {
-    list.filter(
-      outputs,
-      fn(output) { is_output_delegated_to_sc(output, scHash) },
-    )
-  }
+pub fn get_inputs_from_sc(
+  inputs: List<Input>,
+  spendValidatorScriptHash: ByteArray,
+  smartTokensSpendScriptHash: ByteArray,
+) -> List<Input> {
+  list.filter(
+    inputs,
+    fn(input) {
+      or {
+        //Native tokens
+        input.output.address.payment_credential == VerificationKey(
+          spendValidatorScriptHash,
+        ),
+        //Smart tokens or native tokens accidentally sent to the smart account
+        and {
+          input.output.address.payment_credential == VerificationKey(
+            smartTokensSpendScriptHash,
+          ),
+          input.output.address.stake_credential == Some(
+            Inline(VerificationKey(spendValidatorScriptHash)),
+          ),
+        },
+      }
+    },
+  )
 }
 
 pub fn address_in_signatures(
