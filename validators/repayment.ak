@@ -18,9 +18,8 @@ use fluidtokens/types/redeemer.{
   Claim, LoanWithdrawRedeemer, Recast, Repay, RepaymentMintRedeemer,
   RepaymentWithdrawRedeemer, WithdrawWithHash, WithdrawWithToken,
 }
-use fluidtokens/utils.{
-  get_inputs_from_sc, is_nft_spent, quantity_of_policy_id, safe_list_at,
-}
+use fluidtokens/utils.{is_nft_spent, quantity_of_policy_id, safe_list_at}
+use smart_tokens/utils.{get_inputs_from_sc} as st_utils
 
 validator repayment(configAsset: Asset) {
   //Repayment outputs are already checked by the loan validator, here we just ensure we don't mint additional undesired tokens
@@ -36,7 +35,7 @@ validator repayment(configAsset: Asset) {
 
     let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
     let repaymentOutputs =
-      utils.get_outputs_to_sc(
+      st_utils.get_outputs_to_sc(
         self.outputs,
         config.repaymentSpendScriptHash,
         config.smartTokensSpendScriptHash,

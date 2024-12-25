@@ -28,10 +28,10 @@ use fluidtokens/types/redeemer.{
   PoolWithdrawRedeemer, Recast, Repay,
 }
 use fluidtokens/utils.{
-  get_inputs_from_sc, get_outputs_to_sc, is_nft_spent,
-  is_output_to_spend_validator, quantity_of_policy_id, safe_list_at,
-  value_without_policy_id_as_list,
+  is_nft_spent, is_output_to_spend_validator, quantity_of_policy_id,
+  safe_list_at, value_without_policy_id_as_list,
 }
+use smart_tokens/utils.{get_inputs_from_sc, get_outputs_to_sc} as st_utils
 
 validator loan(configAsset: Asset) {
   //Loan outputs are already checked by the pool validator, here we just ensure we don't mint additional undesired tokens
@@ -47,7 +47,7 @@ validator loan(configAsset: Asset) {
 
     let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
     let loanOutputs =
-      utils.get_outputs_to_sc(
+      st_utils.get_outputs_to_sc(
         self.outputs,
         config.loanSpendScriptHash,
         config.smartTokensSpendScriptHash,

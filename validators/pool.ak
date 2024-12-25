@@ -17,9 +17,10 @@ use fluidtokens/types/redeemer.{
   PoolWithdrawRedeemer, Pooled,
 }
 use fluidtokens/utils.{
-  get_inputs_from_sc, get_outputs_to_sc, is_output_to_spend_validator,
-  quantity_of_policy_id, safe_list_at, validity_range_within_an_hour,
+  is_output_to_spend_validator, quantity_of_policy_id, safe_list_at,
+  validity_range_within_an_hour,
 }
+use smart_tokens/utils.{get_inputs_from_sc, get_outputs_to_sc} as st_utils
 
 validator pool(configAsset: Asset) {
   mint(redeemer: PoolMintRedeemer, policy_id: PolicyId, self: Transaction) {
@@ -31,7 +32,7 @@ validator pool(configAsset: Asset) {
       )
     let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
     let poolOutputs =
-      utils.get_outputs_to_sc(
+      st_utils.get_outputs_to_sc(
         self.outputs,
         config.poolSpendScriptHash,
         config.smartTokensSpendScriptHash,

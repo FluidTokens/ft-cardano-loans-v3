@@ -5,7 +5,8 @@ use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/types/datum.{DutchAuctionDatum}
 use fluidtokens/types/general.{Asset}
 use fluidtokens/types/redeemer.{DA_Buy, DA_Cancel, DutchAuctionRedeemer}
-use fluidtokens/utils.{get_inputs_from_sc, safe_list_at}
+use fluidtokens/utils.{safe_list_at}
+use smart_tokens/utils.{get_inputs_from_sc} as st_utils
 
 validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
   withdraw(
