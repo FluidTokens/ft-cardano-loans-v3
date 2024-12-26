@@ -122,7 +122,7 @@ pub type RepaymentWithdrawRedeemer {
 }
 
 pub type DutchAuctionAction {
-  DA_Cancel
+  DA_Cancel { auth: Authorization }
   DA_Buy
 }
 

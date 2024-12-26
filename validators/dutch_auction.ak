@@ -1,12 +1,15 @@
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
-use cardano/address.{Address, Credential, PaymentCredential, Script}
+use cardano/address.{Address, Credential, Script}
+use cardano/assets.{flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use fluidtokens/authorizer
 use fluidtokens/types/datum.{DutchAuctionDatum}
 use fluidtokens/types/general.{Asset}
 use fluidtokens/types/redeemer.{DA_Buy, DA_Cancel, DutchAuctionRedeemer}
 use fluidtokens/utils.{safe_list_at}
-use smart_tokens/utils.{get_inputs_from_sc} as st_utils
+use smart_tokens/utils.{get_inputs_from_sc,
+  is_output_to_smart_credential} as st_utils
 
 validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
   withdraw(
@@ -19,6 +22,7 @@ validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
       get_inputs_from_sc(self.inputs, ownScriptHash, smartTokensSpendScriptHash)
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
     expect length(scInputs) == length(redeemer.actionsForEachInput)
+    expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
     expect Finite(validTo) = self.validity_range.upper_bound.bound_type
 
     list.indexed_foldr(
@@ -38,13 +42,17 @@ validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
             datum.loweringAmount,
             datum.loweringFrequency,
             datum.startDate,
-            validTo,
+            validFrom,
           )
 
         when redeemerAction is {
-          DA_Cancel -> or {
-              validTo < datum.startDate,
-              currentPrice <= datum.minPriceToCancel,
+          DA_Cancel(auth) -> and {
+              auth.hash == datum.ownerAuthHash,
+              authorizer.authorize_action(auth),
+              or {
+                validTo < datum.startDate,
+                currentPrice <= datum.minPriceToCancel,
+              },
             }
           DA_Buy -> {
             expect Some(ownerOutput) = list.at(self.outputs, index)
@@ -58,14 +66,14 @@ validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
                   datum.debtAmount,
                   datum.ownerAddress,
                   ownerOutput,
-                  input.output.address.payment_credential,
+                  smartTokensSpendScriptHash,
                 ),
                 correctAmountSentToUser(
                   datum.currency,
                   currentPrice - datum.debtAmount,
                   borrowerAddress,
                   borrowerOutput,
-                  input.output.address.payment_credential,
+                  smartTokensSpendScriptHash,
                 ),
               }
             } else {
@@ -74,7 +82,7 @@ validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
                 currentPrice,
                 datum.ownerAddress,
                 ownerOutput,
-                input.output.address.payment_credential,
+                smartTokensSpendScriptHash,
               )
             }
           }
@@ -103,25 +111,23 @@ fn correctAmountSentToUser(
   amount: Int,
   userAddress: Address,
   userOutput: Output,
-  prevPaymentCredential: PaymentCredential,
+  smartTokensSpendScriptHash: ByteArray,
 ) {
-  False
-  // let toCorrectPaymentCredential =
-  //   if isCIP113 {
-  //     userOutput.address.payment_credential == prevPaymentCredential
-  //   } else {
-  //     userOutput.address.payment_credential == userAddress.payment_credential
-  //   }
-  // let toCorrectStaking =
-  //   userOutput.address.stake_credential == userAddress.stake_credential
+  let correctDestination =
+    is_output_to_smart_credential(
+      userOutput,
+      userAddress.payment_credential,
+      userAddress.stake_credential,
+      smartTokensSpendScriptHash,
+    )
 
-  // let correctValue = and {
-  //     quantity_of(userOutput.value, currency.policyId, currency.assetName) >= amount,
-  //     length(flatten(userOutput.value)) <= 21,
-  //   }
-  // and {
-  //   toCorrectPaymentCredential,
-  //   toCorrectStaking,
-  //   correctValue,
-  // }
+  let correctValue = and {
+      quantity_of(userOutput.value, currency.policyId, currency.assetName) >= amount,
+      length(flatten(userOutput.value)) <= 21,
+    }
+  and {
+    correctDestination,
+    //TODO Datum check?
+    correctValue,
+  }
 }
