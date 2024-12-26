@@ -8,6 +8,7 @@ use cardano/address.{Address, Credential, Script}
 use cardano/assets.{PolicyId, Value, flatten, quantity_of, reduce, tokens}
 use cardano/transaction.{InlineDatum, Output, Transaction, find_input}
 use fluidtokens/authorizer.{authorize_action}
+use fluidtokens/constants
 use fluidtokens/finance.{token_b_needed_to_purchase_token_a}
 use fluidtokens/oracle.{retrieve_oracle_data, validate_oracle_ref_input_value}
 use fluidtokens/types/datum.{Liquidation, LoanDatum, LoanInfoDatum, PoolDatum}
@@ -139,6 +140,7 @@ validator pool(configAsset: Asset) {
               chosenCollateralOracleInputIndex,
               wantedPrincipal,
               poolId,
+              permissionedConditionWithdrawIndex,
             ) -> {
               expect Finite(validTo) =
                 self.validity_range.upper_bound.bound_type
@@ -215,6 +217,18 @@ validator pool(configAsset: Asset) {
 
               and {
                 wantedPrincipal > 0,
+                or {
+                  datum.permissionedConditionScriptHash == constants.no_permissioned_condition,
+                  {
+                    expect Pair(Script(scriptHash), _amnt) =
+                      safe_list_at(
+                        self.withdrawals,
+                        permissionedConditionWithdrawIndex,
+                      )
+
+                    datum.permissionedConditionScriptHash == scriptHash
+                  },
+                },
                 quantity_of(input.output.value, poolPolicyId, poolId) == 1,
                 validity_range_within_an_hour(self),
                 loanOutputValidationResults.1st,

@@ -1,4 +1,3 @@
-//TODO KYC/KYB with Sundae
 //NOT DONE: Deferment (with and without interest accruement)
 //NOT DONE: Variable interest rate with oracle, eventual with min and max caps, eventual with first N installments at a fixed rate
 //Margin calls are done off-chain as soon as the oracle signals a too-low LTV.
@@ -94,6 +93,9 @@ pub type PoolDatum {
   dynamicCollateralPrice: Bool,
   //If true, the output of lender's bond contains LoanInfoDatum, useful if the lender is a SC to do onchain validation.
   lenderTokenOutputMustHaveLoanInfoDatum: Bool,
+  //Permissioned pools use this field to specify an extra Withdraw validator to force the conditions of the Borrow action.
+  //Put "NONE" if it's a permissionless pool
+  permissionedConditionScriptHash: ByteArray,
 }
 
 //Optional datum of the lender's bond output 

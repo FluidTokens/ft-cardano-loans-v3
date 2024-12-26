@@ -53,6 +53,7 @@ pub type PoolAction {
     chosenCollateralOracleInputIndex: Int,
     wantedPrincipal: Int,
     poolId: ByteArray,
+    permissionedConditionWithdrawIndex: Int,
   }
 }
 
