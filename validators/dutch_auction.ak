@@ -1,6 +1,6 @@
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
-use cardano/address.{Address, Credential, Script}
+use cardano/address.{Address, Credential}
 use cardano/assets.{flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/authorizer
@@ -8,8 +8,9 @@ use fluidtokens/types/datum.{DutchAuctionDatum}
 use fluidtokens/types/general.{Asset}
 use fluidtokens/types/redeemer.{DA_Buy, DA_Cancel, DutchAuctionRedeemer}
 use fluidtokens/utils.{safe_list_at}
-use smart_tokens/utils.{get_inputs_from_sc,
-  is_output_to_smart_credential} as st_utils
+use smart_tokens/utils.{
+  get_inputs_from_smart_credential, is_output_to_smart_credential,
+} as st_utils
 
 validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
   withdraw(
@@ -17,9 +18,12 @@ validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
     credential: Credential,
     self: Transaction,
   ) {
-    expect Script(ownScriptHash) = credential
     let scInputs =
-      get_inputs_from_sc(self.inputs, ownScriptHash, smartTokensSpendScriptHash)
+      get_inputs_from_smart_credential(
+        self.inputs,
+        credential,
+        smartTokensSpendScriptHash,
+      )
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
     expect length(scInputs) == length(redeemer.actionsForEachInput)
     expect Finite(validFrom) = self.validity_range.lower_bound.bound_type

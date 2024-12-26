@@ -31,7 +31,9 @@ use fluidtokens/utils.{
   is_nft_spent, is_output_to_spend_validator, quantity_of_policy_id,
   safe_list_at, value_without_policy_id_as_list,
 }
-use smart_tokens/utils.{get_inputs_from_sc, get_outputs_to_sc} as st_utils
+use smart_tokens/utils.{
+  get_inputs_from_smart_credential, get_outputs_to_smart_credential,
+} as st_utils
 
 validator loan(configAsset: Asset) {
   //Loan outputs are already checked by the pool validator, here we just ensure we don't mint additional undesired tokens
@@ -47,9 +49,9 @@ validator loan(configAsset: Asset) {
 
     let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
     let loanOutputs =
-      st_utils.get_outputs_to_sc(
+      st_utils.get_outputs_to_smart_credential(
         self.outputs,
-        config.loanSpendScriptHash,
+        Script(config.loanSpendScriptHash),
         config.smartTokensSpendScriptHash,
       )
     let isInputRefSpent =
@@ -104,9 +106,9 @@ validator loan(configAsset: Asset) {
         configAsset.assetName,
       )
     let loanInputs =
-      get_inputs_from_sc(
+      get_inputs_from_smart_credential(
         self.inputs,
-        config.loanSpendScriptHash,
+        Script(config.loanSpendScriptHash),
         config.smartTokensSpendScriptHash,
       )
 
@@ -165,9 +167,9 @@ validator loan(configAsset: Asset) {
                   NoLiquidationDutchAuctionClaim -> {
                     expect Some(dutchAuctionOutput) =
                       list.at(
-                        get_outputs_to_sc(
+                        get_outputs_to_smart_credential(
                           self.outputs,
-                          config.ducthAuctionSpendScriptHash,
+                          Script(config.ducthAuctionSpendScriptHash),
                           config.smartTokensSpendScriptHash,
                         ),
                         index,
@@ -227,9 +229,9 @@ validator loan(configAsset: Asset) {
                       )
                     expect Some(repaymentOutput) =
                       list.at(
-                        get_outputs_to_sc(
+                        get_outputs_to_smart_credential(
                           self.outputs,
-                          config.repaymentSpendScriptHash,
+                          Script(config.repaymentSpendScriptHash),
                           config.smartTokensSpendScriptHash,
                         ),
                         index,
@@ -279,9 +281,9 @@ validator loan(configAsset: Asset) {
                 list.at(self.inputs, borrowerBondInputIndex)
               expect Some(repaymentOutput) =
                 list.at(
-                  get_outputs_to_sc(
+                  get_outputs_to_smart_credential(
                     self.outputs,
-                    config.repaymentSpendScriptHash,
+                    Script(config.repaymentSpendScriptHash),
                     config.smartTokensSpendScriptHash,
                   ),
                   index,
@@ -333,9 +335,9 @@ validator loan(configAsset: Asset) {
                   {
                     let loanOutput =
                       safe_list_at(
-                        get_outputs_to_sc(
+                        get_outputs_to_smart_credential(
                           self.outputs,
-                          config.loanSpendScriptHash,
+                          Script(config.loanSpendScriptHash),
                           config.smartTokensSpendScriptHash,
                         ),
                         index,
@@ -357,9 +359,9 @@ validator loan(configAsset: Asset) {
                 list.at(self.inputs, borrowerBondInputIndex)
               expect Some(loanOutput) =
                 list.at(
-                  get_outputs_to_sc(
+                  get_outputs_to_smart_credential(
                     self.outputs,
-                    config.loanSpendScriptHash,
+                    Script(config.loanSpendScriptHash),
                     config.smartTokensSpendScriptHash,
                   ),
                   index,
@@ -387,9 +389,9 @@ validator loan(configAsset: Asset) {
                 list.at(self.inputs, borrowerBondInputIndex)
               expect Some(repaymentOutput) =
                 list.at(
-                  get_outputs_to_sc(
+                  get_outputs_to_smart_credential(
                     self.outputs,
-                    config.repaymentSpendScriptHash,
+                    Script(config.repaymentSpendScriptHash),
                     config.smartTokensSpendScriptHash,
                   ),
                   index,
@@ -438,9 +440,9 @@ validator loan(configAsset: Asset) {
                     {
                       let loanOutput =
                         safe_list_at(
-                          get_outputs_to_sc(
+                          get_outputs_to_smart_credential(
                             self.outputs,
-                            config.loanSpendScriptHash,
+                            Script(config.loanSpendScriptHash),
                             config.smartTokensSpendScriptHash,
                           ),
                           index,

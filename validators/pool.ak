@@ -20,7 +20,9 @@ use fluidtokens/utils.{
   is_output_to_spend_validator, quantity_of_policy_id, safe_list_at,
   validity_range_within_an_hour,
 }
-use smart_tokens/utils.{get_inputs_from_sc, get_outputs_to_sc} as st_utils
+use smart_tokens/utils.{
+  get_inputs_from_smart_credential, get_outputs_to_smart_credential,
+} as st_utils
 
 validator pool(configAsset: Asset) {
   mint(redeemer: PoolMintRedeemer, policy_id: PolicyId, self: Transaction) {
@@ -32,9 +34,9 @@ validator pool(configAsset: Asset) {
       )
     let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
     let poolOutputs =
-      st_utils.get_outputs_to_sc(
+      st_utils.get_outputs_to_smart_credential(
         self.outputs,
-        config.poolSpendScriptHash,
+        Script(config.poolSpendScriptHash),
         config.smartTokensSpendScriptHash,
       )
     let isInputRefSpent =
@@ -102,9 +104,9 @@ validator pool(configAsset: Asset) {
         configAsset.assetName,
       )
     let poolInputs =
-      get_inputs_from_sc(
+      get_inputs_from_smart_credential(
         self.inputs,
-        config.poolSpendScriptHash,
+        Script(config.poolSpendScriptHash),
         config.smartTokensSpendScriptHash,
       )
 
@@ -143,9 +145,9 @@ validator pool(configAsset: Asset) {
               let inputUtxoId = utils.hash_output_ref(input.output_reference)
               let loanOutput =
                 safe_list_at(
-                  get_outputs_to_sc(
+                  get_outputs_to_smart_credential(
                     self.outputs,
-                    config.loanSpendScriptHash,
+                    Script(config.loanSpendScriptHash),
                     config.smartTokensSpendScriptHash,
                   ),
                   index,
