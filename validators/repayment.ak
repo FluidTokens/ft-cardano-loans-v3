@@ -1,7 +1,7 @@
 //All money to parties are sent here so they can withdraw them along with the repayment NFT.
 //Without the repayment NFT this can be used for depositing other stuff too.
 use aiken/collection/dict
-use aiken/collection/list.{length}
+use aiken/collection/list
 use aiken/option
 use aiken/primitive/bytearray
 use cardano/address.{Credential, Script}
@@ -106,55 +106,52 @@ validator repayment(configAsset: Asset) {
         Script(config.repaymentSpendScriptHash),
         config.smartTokensSpendScriptHash,
       )
-    and {
-      //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
-      length(repaymentInputs) == length(redeemer.actionsForEachInput),
-      list.indexed_foldr(
-        repaymentInputs,
-        True,
-        fn(index, input, result) {
-          //As all inputs must return True, if any of previous input returned False, then fail
-          //The last input is not checked but will return its value at the end, so if False withdraw will fail
-          expect result
+    //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
+    list.indexed_foldr(
+      repaymentInputs,
+      True,
+      fn(index, input, result) {
+        //As all inputs must return True, if any of previous input returned False, then fail
+        //The last input is not checked but will return its value at the end, so if False withdraw will fail
+        expect result
 
-          expect InlineDatum(inputDatum) = input.output.datum
-          expect datum: RepaymentDatum = inputDatum
-          let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
+        expect InlineDatum(inputDatum) = input.output.datum
+        expect datum: RepaymentDatum = inputDatum
+        let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
 
-          let repaymentId = redeemerAction.2nd
-          //Either the utxo doesn't have a repayment NFT OR it burns it
-          let eventualRepaymentTokenBurnt = or {
-              quantity_of_policy_id(input.output.value, policyId) == 0,
-              and {
-                quantity_of(input.output.value, policyId, repaymentId) == 1,
-                quantity_of(self.mint, policyId, repaymentId) == -1,
-              },
-            }
-
-          and {
-            eventualRepaymentTokenBurnt,
-            when redeemerAction.1st is {
-              WithdrawWithToken(tokenInputIndex) -> {
-                expect RepaymentDatumWithToken { ownerAsset, .. } = datum
-                expect Some(tokenInput) = list.at(self.inputs, tokenInputIndex)
-                is_nft_spent(
-                  ownerAsset.policyId,
-                  ownerAsset.assetName,
-                  tokenInput,
-                )
-              }
-              WithdrawWithHash(auth) -> {
-                expect RepaymentDatumWithHash { ownerAuthHash, .. } = datum
-                and {
-                  ownerAuthHash == auth.hash,
-                  authorize_action(auth),
-                }
-              }
+        let repaymentId = redeemerAction.2nd
+        //Either the utxo doesn't have a repayment NFT OR it burns it
+        let eventualRepaymentTokenBurnt = or {
+            quantity_of_policy_id(input.output.value, policyId) == 0,
+            and {
+              quantity_of(input.output.value, policyId, repaymentId) == 1,
+              quantity_of(self.mint, policyId, repaymentId) == -1,
             },
           }
-        },
-      ),
-    }
+
+        and {
+          eventualRepaymentTokenBurnt,
+          when redeemerAction.1st is {
+            WithdrawWithToken(tokenInputIndex) -> {
+              expect RepaymentDatumWithToken { ownerAsset, .. } = datum
+              expect Some(tokenInput) = list.at(self.inputs, tokenInputIndex)
+              is_nft_spent(
+                ownerAsset.policyId,
+                ownerAsset.assetName,
+                tokenInput,
+              )
+            }
+            WithdrawWithHash(auth) -> {
+              expect RepaymentDatumWithHash { ownerAuthHash, .. } = datum
+              and {
+                ownerAuthHash == auth.hash,
+                authorize_action(auth),
+              }
+            }
+          },
+        }
+      },
+    )
   }
 
   else(_) {
