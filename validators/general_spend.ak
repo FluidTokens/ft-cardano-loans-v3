@@ -2,7 +2,6 @@ use aiken/collection/list
 use cardano/address.{Script}
 use cardano/transaction.{OutputReference, Transaction}
 use fluidtokens/authorizer
-use fluidtokens/types/datum.{PoolDatum}
 use fluidtokens/utils.{get_config, safe_list_at}
 
 validator general_spend(
@@ -11,7 +10,7 @@ validator general_spend(
   configNFTAssetName: ByteArray,
 ) {
   spend(
-    datumOpt: Option<PoolDatum>,
+    datumOpt: Option<Data>,
     _redeemer: Data,
     _input: OutputReference,
     self: Transaction,
