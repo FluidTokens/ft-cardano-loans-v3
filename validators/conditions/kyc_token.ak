@@ -2,7 +2,7 @@ use aiken/cbor.{serialise}
 use aiken/collection/list
 use aiken/crypto.{
   Blake2b_256, Hash, Signature, VerificationKey, VerificationKeyHash,
-  verify_ed25519_signature,
+  blake2b_256, verify_ed25519_signature,
 }
 use aiken/interval.{Finite, Interval, IntervalBound}
 use cardano/address.{Credential, Script}
@@ -14,10 +14,8 @@ use fluidtokens/types/redeemer.{Borrow, PoolWithdrawRedeemer}
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 
-pub type ComplianceToken {
-  token: TokenData,
-  //A signature from the compliance oracle for serialized TokenData
-  oracle_signature: Signature,
+pub type PermissionedDatum {
+  whitelisted_oracles: List<VerificationKeyHash>,
 }
 
 pub type TokenData {
@@ -25,17 +23,23 @@ pub type TokenData {
   did: ByteArray,
   //The users public key
   user_key: VerificationKeyHash,
-  //Blake2b-256 hash of the cbor serialized details from the order
-  order_hash: Hash<Blake2b_256, Data>,
+  //Blake2b-256 hash of the cbor serialized borrow action
+  borrow_action_hash: Hash<Blake2b_256, Data>,
   //A valid range
   validity_range: ValidityRange,
   //The public key of the oracle
   oracle_key: VerificationKey,
 }
 
+pub type ComplianceToken {
+  token: TokenData,
+  //A signature from the compliance oracle for serialized TokenData
+  oracle_signature: Signature,
+}
+
 pub type KycTokenWithdrawRedeemer {
   poolWithdrawRedeemerIndex: Int,
-  complianceTokenForEachInput: List<ComplianceToken>,
+  complianceForEachInput: List<ComplianceToken>,
 }
 
 validator kyc_token(
@@ -88,8 +92,7 @@ validator kyc_token(
 
         expect InlineDatum(inputDatum) = inputAndAction.1st.output.datum
         expect datum: PoolDatum = inputDatum
-        let inputComplianceToken =
-          safe_list_at(redeemer.complianceTokenForEachInput, index)
+        let compliance = safe_list_at(redeemer.complianceForEachInput, index)
 
         expect Borrow { borrowerAddress, .. } = inputAndAction.2nd
 
@@ -101,24 +104,25 @@ validator kyc_token(
         expect Interval {
           lower_bound: IntervalBound { bound_type: Finite(token_from), .. },
           upper_bound: IntervalBound { bound_type: Finite(token_to), .. },
-        } = inputComplianceToken.token.validity_range
+        } = compliance.token.validity_range
 
-        //TODO Should we have a check like this?
-        //let oracle_key_hash = blake2b_256(inputComplianceToken.token.oracle_key)
-        // The oracle public key is one of those listed in the approved oracles
-        //expect Some(..) = list.find(oracles, fn(o) { o == oracle_key_hash })
+        expect PermissionedDatum { whitelisted_oracles } = datum.extraData
+        let oracle_key_hash = blake2b_256(compliance.token.oracle_key)
+        //The oracle public key is one of those listed in the approved oracles
+        expect Some(..) =
+          list.find(whitelisted_oracles, fn(o) { o == oracle_key_hash })
         and {
-          address.VerificationKey(inputComplianceToken.token.user_key) == borrowerAddress.payment_credential,
-          //TODO How to use this in our case?
-          //blake2b_256(serialise(order.details)) == compliance.token.order_hash,
-          // The valid range of the token entirely contains the valid range of the transaction
+          address.VerificationKey(compliance.token.user_key) == borrowerAddress.payment_credential,
+          //The hash of the Borrow action must be the one in the compliance token
+          blake2b_256(serialise(inputAndAction.2nd)) == compliance.token.borrow_action_hash,
+          //The valid range of the token entirely contains the valid range of the transaction
           token_from < tx_from,
           token_to > tx_to,
           //The signature is valid
           verify_ed25519_signature(
-            inputComplianceToken.token.oracle_key,
-            serialise(inputComplianceToken.token),
-            inputComplianceToken.oracle_signature,
+            compliance.token.oracle_key,
+            serialise(compliance.token),
+            compliance.oracle_signature,
           ),
         }
       },

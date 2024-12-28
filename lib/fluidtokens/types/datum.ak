@@ -96,6 +96,8 @@ pub type PoolDatum {
   //Permissioned pools use this field to specify an extra Withdraw validator to force the conditions of the Borrow action.
   //Put "NONE" if it's a permissionless pool
   permissionedConditionScriptHash: ByteArray,
+  //Extend the pool datum for cases like permissioned pools. It will be parsed properly depending on specific use case.
+  extraData: Data,
 }
 
 //Optional datum of the lender's bond output 
