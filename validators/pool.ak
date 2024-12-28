@@ -9,7 +9,7 @@ use cardano/assets.{PolicyId, Value, flatten, quantity_of, reduce, tokens}
 use cardano/transaction.{InlineDatum, Output, Transaction, find_input}
 use fluidtokens/authorizer.{authorize_action}
 use fluidtokens/constants
-use fluidtokens/finance.{token_b_needed_to_purchase_token_a}
+use fluidtokens/finance.{token_b_needed_to_purchase_token_a_in_AMM_pool}
 use fluidtokens/oracle.{retrieve_oracle_data, validate_oracle_ref_input_value}
 use fluidtokens/types/datum.{Liquidation, LoanDatum, LoanInfoDatum, PoolDatum}
 use fluidtokens/types/general.{Asset, CollateralAsset}
@@ -327,11 +327,11 @@ fn validate_output_to_loan(
               rational.div(minNeededCollateralInPrincipalCurrency, tokenPrice)
             rational.ceil(minNeededCollateralAmountAsRational)
           }
-          Pooled { token_a_amount, token_b_amount, .. } ->
-            token_b_needed_to_purchase_token_a(
+          Pooled { token_a_amount_in_pool, token_b_amount_in_pool, .. } ->
+            token_b_needed_to_purchase_token_a_in_AMM_pool(
               minNeededCollateralInPrincipalCurrency,
-              token_a_amount,
-              token_b_amount,
+              token_a_amount_in_pool,
+              token_b_amount_in_pool,
             )
           Dedicated { token_price, denominator, .. } -> {
             expect Some(tokenPrice) = rational.new(token_price, denominator)

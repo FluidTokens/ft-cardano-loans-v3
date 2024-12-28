@@ -117,17 +117,18 @@ pub fn can_liquidate(
   rational.compare(ltvAsRational, ratioAsRational) == Greater
 }
 
-//Calculate the tokenB (the pool asset such as ADA or stablecoin) required to purchase buy_amount of tokenA
-//TODO This must be carefully checked!
-pub fn token_b_needed_to_purchase_token_a(
-  buy_amount: Rational,
-  token_a_amount: Int,
-  token_b_amount: Int,
+//Calculate the token_b required to purchase wanted_token_a_amount of token_a
+//TODO Is this formula accepted for any AMM?
+pub fn token_b_needed_to_purchase_token_a_in_AMM_pool(
+  wanted_token_a_amount: Rational,
+  token_a_amount_in_pool: Int,
+  token_b_amount_in_pool: Int,
 ) -> Int {
-  let buy_amount_int = buy_amount |> rational.truncate()
+  let token_b_amount_in_pool_int = wanted_token_a_amount |> rational.truncate()
 
-  let nominator = buy_amount_int * 1000 * token_b_amount
-  let denominator = ( token_a_amount - buy_amount_int ) * 997
+  let nominator = token_b_amount_in_pool_int * 1000 * token_b_amount_in_pool
+  let denominator =
+    ( token_a_amount_in_pool - token_b_amount_in_pool_int ) * 997
   let token_b_required = nominator / denominator
   token_b_required
 }
@@ -152,11 +153,11 @@ pub fn get_collateral_value_in_principal_currency(
         rational.new(token_price_in_lovelaces, denominator)
       rational.ceil(rational.mul(collateralAmount, tokenPrice))
     }
-    Pooled { token_b_amount, token_a_amount, .. } ->
-      token_b_needed_to_purchase_token_a(
+    Pooled { token_a_amount_in_pool, token_b_amount_in_pool, .. } ->
+      token_b_needed_to_purchase_token_a_in_AMM_pool(
         collateralAmount,
-        token_b_amount,
-        token_a_amount,
+        token_a_amount_in_pool,
+        token_b_amount_in_pool,
       )
     Dedicated { token_price, denominator, .. } -> {
       expect Some(tokenPrice) = rational.new(token_price, denominator)

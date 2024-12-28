@@ -17,7 +17,11 @@ pub type OraclePriceFeed {
     denominator: Int,
   }
   //Tokens that have lower liquidity, AMM pool data is used to calculate the price
-  Pooled { common: CommonFeedData, token_a_amount: Int, token_b_amount: Int }
+  Pooled {
+    common: CommonFeedData,
+    token_a_amount_in_pool: Int,
+    token_b_amount_in_pool: Int,
+  }
   //Complex vaults can have a dedicated oracle that calculates the value of all collateral assets in a custom currency
   Dedicated {
     common: CommonFeedData,
