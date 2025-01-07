@@ -22,7 +22,7 @@ use fluidtokens/types/datum.{
   NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
   RepaymentDatum, RepaymentDatumWithToken,
 }
-use fluidtokens/types/general.{Asset, CollateralAsset}
+use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
 use fluidtokens/types/redeemer.{
   AddCollateral, Borrow, Claim, LoanMintRedeemer, LoanWithdrawRedeemer,
   PoolWithdrawRedeemer, Recast, Repay,
@@ -494,7 +494,7 @@ fn equity_sent_to_borrower(
     quantity_of(equityOutput.value, repaymentPolicyId, repaymentId) == 1
   let dosProtection = length(flatten(equityOutput.value)) <= 21
   and {
-    //TODO No staking check here, right?
+    //No staking check here
     isDatumCorrect,
     containsRepaymentNFT,
     containsCorrectAmount,
@@ -527,7 +527,7 @@ fn validate_output_to_repayment(
   let isDatumCorrect = parsedDatum == newDatum
   let dosProtection = length(flatten(repaymentOutput.value)) <= 3
   and {
-    //TODO No staking check here, right?
+    //No staking check here
     isDatumCorrect,
     containsRepaymentNFT,
     containsCorrectAmount,
@@ -680,7 +680,7 @@ fn validate_output_to_dutch_auction(
   borrowerBondInput: Input,
   validTo: Int,
   collateral: CollateralAsset,
-  lenderAuthHash: ByteArray,
+  lenderAuthHash: AuthorizationMethod,
   lenderAddress: Address,
   principalAsset: Asset,
   remainingDebt: Int,
@@ -726,7 +726,7 @@ fn validate_output_to_dutch_auction(
       dutchAuctionOutput,
       config.ducthAuctionSpendScriptHash,
     ),
-    //TODO No staking check here, right?
+    //No staking check here
     isDatumCorrect,
     correctValue,
     dosProtection,

@@ -4,22 +4,40 @@ use aiken/collection/list
 use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
 use cardano/address.{Address, Credential, Script, VerificationKey}
-use cardano/assets.{Lovelace, quantity_of, tokens}
+use cardano/assets.{Lovelace, Value, quantity_of, tokens}
 use cardano/transaction.{Input, Output}
 use fluidtokens/types/general.{
-  Authorization, CardanoMintScript, CardanoSignature, CardanoSpendScript,
-  CardanoWithdrawScript,
+  Authorization, AuthorizationMethod, CardanoMintScript, CardanoMintScriptAuth,
+  CardanoSignature, CardanoSignatureAuth, CardanoSpendScript,
+  CardanoSpendScriptAuth, CardanoWithdrawScript, CardanoWithdrawScriptAuth,
+}
+
+pub fn create_auth(
+  method: AuthorizationMethod,
+  transaction_inputs: List<Input>,
+  withdrawals: Pairs<Credential, Lovelace>,
+  extra_signatories: List<VerificationKeyHash>,
+  transaction_mint: Value,
+) {
+  when method is {
+    CardanoSignature(hash) -> CardanoSignatureAuth { hash, extra_signatories }
+    CardanoSpendScript(hash) ->
+      CardanoSpendScriptAuth { hash, transaction_inputs }
+    CardanoWithdrawScript(hash) ->
+      CardanoWithdrawScriptAuth { hash, withdrawals }
+    CardanoMintScript(hash) -> CardanoMintScriptAuth { hash, transaction_mint }
+  }
 }
 
 //TODO Letting the redeemers decide the auth.method, what are the chances that a script and a wallet have the same hash?
 pub fn authorize_action(auth: Authorization) -> Bool {
-  when auth.method is {
+  when auth is {
     // If the authorization method is PubKey, validate using the provided signature.
-    CardanoSignature(extra_signatories) ->
-      list.has(extra_signatories, auth.hash)
+    CardanoSignatureAuth(hash, extra_signatories) ->
+      list.has(extra_signatories, hash)
     // If the authorization method is SpendScript, ensure the Utxo is present in the transaction inputs.
-    CardanoSpendScript(transaction_inputs) -> {
-      let auth_cred = Script(auth.hash)
+    CardanoSpendScriptAuth(hash, transaction_inputs) -> {
+      let auth_cred = Script(hash)
       list.any(
         transaction_inputs,
         fn(input) {
@@ -32,15 +50,15 @@ pub fn authorize_action(auth: Authorization) -> Bool {
       )
     }
     // If the authorization method is WithdrawScript, validate the presence of a withdrawal in the transaction.
-    CardanoWithdrawScript(withdrawals) -> {
-      let credential = Script(auth.hash)
+    CardanoWithdrawScriptAuth(hash, withdrawals) -> {
+      let credential = Script(hash)
       pairs.has_key(withdrawals, credential)
     }
     // If the authorization method is MintScript, ensure the minted tokens meet the policy ID requirements and have a non-zero quantity.
-    CardanoMintScript(transaction_mint) -> {
+    CardanoMintScriptAuth(hash, transaction_mint) -> {
       let fst_token_quantity =
         transaction_mint
-          |> tokens(auth.hash)
+          |> tokens(hash)
           |> to_pairs
           |> builtin.head_list
           |> builtin.snd_pair
@@ -56,13 +74,9 @@ pub fn authorize_via_credential(
 ) -> Bool {
   when validating_credential is {
     VerificationKey(pubkey_hash) ->
-      authorize_action(
-        Authorization(CardanoSignature(extra_signatories), pubkey_hash),
-      )
+      authorize_action(CardanoSignatureAuth(pubkey_hash, extra_signatories))
     Script(script_hash) ->
-      authorize_action(
-        Authorization(CardanoWithdrawScript(withdrawals), script_hash),
-      )
+      authorize_action(CardanoWithdrawScriptAuth(script_hash, withdrawals))
   }
 }
 

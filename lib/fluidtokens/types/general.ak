@@ -15,13 +15,21 @@ pub type CollateralAsset {
 }
 
 pub type AuthorizationMethod {
-  CardanoSignature { extra_signatories: List<VerificationKeyHash> }
-  CardanoSpendScript { transaction_inputs: List<Input> }
-  CardanoWithdrawScript { withdrawals: Pairs<Credential, Int> }
-  CardanoMintScript { transaction_mint: Value }
+  CardanoSignature { hash: ByteArray }
+  CardanoSpendScript { hash: ByteArray }
+  CardanoWithdrawScript { hash: ByteArray }
+  CardanoMintScript { hash: ByteArray }
 }
 
 pub type Authorization {
-  method: AuthorizationMethod,
-  hash: ByteArray,
+  CardanoSignatureAuth {
+    hash: ByteArray,
+    extra_signatories: List<VerificationKeyHash>,
+  }
+  CardanoSpendScriptAuth { hash: ByteArray, transaction_inputs: List<Input> }
+  CardanoWithdrawScriptAuth {
+    hash: ByteArray,
+    withdrawals: Pairs<Credential, Int>,
+  }
+  CardanoMintScriptAuth { hash: ByteArray, transaction_mint: Value }
 }

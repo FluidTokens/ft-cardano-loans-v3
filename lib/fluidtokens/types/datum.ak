@@ -6,7 +6,7 @@
 //Loan refinancing is done spending the new loan and the old loan in the same tx.
 use cardano/address.{Address, Credential}
 use cardano/assets.{AssetName}
-use fluidtokens/types/general.{Asset, CollateralAsset}
+use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
 
 pub type ConfigDatum {
   adminCredential: Credential,
@@ -67,7 +67,7 @@ pub type CommonData {
 
 pub type RequestDatum {
   commonData: CommonData,
-  borrowerAuthHash: ByteArray,
+  borrowerAuthHash: AuthorizationMethod,
   borrowerAddress: Address,
   //This pool can cover multiple collections/tokens, but only one of them can be chosen for each loan (ie. no mixed bundle loans).
   //Important requirement: if liquidation is enabled, ALL the collateralOptions must have an oracle NFT
@@ -81,7 +81,7 @@ pub type RequestDatum {
 
 pub type PoolDatum {
   commonData: CommonData,
-  lenderAuthHash: ByteArray,
+  lenderAuthHash: AuthorizationMethod,
   lenderAddress: Address,
   //This pool can cover multiple collections/token, but only one of them can be chosen for each loan (ie. no mixed bundle loans).
   //Important requirement: if Liquidation is enabled, ALL the collateralOptions must have an oracle NFT
@@ -122,12 +122,12 @@ pub type RepaymentDatum {
   RepaymentDatumWithHash {
     action: ByteArray,
     data: Data,
-    ownerAuthHash: ByteArray,
+    ownerAuthHash: AuthorizationMethod,
   }
 }
 
 pub type DutchAuctionDatum {
-  ownerAuthHash: ByteArray,
+  ownerAuthHash: AuthorizationMethod,
   ownerAddress: Address,
   currency: Asset,
   startingPrice: Int,

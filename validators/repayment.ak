@@ -9,11 +9,11 @@ use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, Transaction, Withdraw, find_input,
 }
-use fluidtokens/authorizer.{authorize_action}
+use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/types/datum.{
   Liquidation, RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
 }
-use fluidtokens/types/general.{Asset, Authorization}
+use fluidtokens/types/general.{Asset}
 use fluidtokens/types/redeemer.{
   Claim, LoanWithdrawRedeemer, Recast, Repay, RepaymentMintRedeemer,
   RepaymentWithdrawRedeemer, WithdrawWithHash, WithdrawWithToken,
@@ -141,12 +141,17 @@ validator repayment(configAsset: Asset) {
                 tokenInput,
               )
             }
-            WithdrawWithHash(auth) -> {
+            WithdrawWithHash -> {
               expect RepaymentDatumWithHash { ownerAuthHash, .. } = datum
-              and {
-                ownerAuthHash == auth.hash,
-                authorize_action(auth),
-              }
+              authorize_action(
+                create_auth(
+                  ownerAuthHash,
+                  self.inputs,
+                  self.withdrawals,
+                  self.extra_signatories,
+                  self.mint,
+                ),
+              )
             }
           },
         }

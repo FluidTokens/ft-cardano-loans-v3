@@ -1,7 +1,7 @@
 use cardano/address.{Address}
 use cardano/transaction.{OutputReference}
 use fluidtokens/types/datum.{LiquidationMode}
-use fluidtokens/types/general.{Asset, Authorization}
+use fluidtokens/types/general.{Asset, AuthorizationMethod}
 
 pub type CommonFeedData {
   valid_from: Int,
@@ -47,7 +47,7 @@ pub type PoolMintRedeemer {
 }
 
 pub type PoolAction {
-  Cancel { auth: Authorization, poolId: ByteArray }
+  Cancel { poolId: ByteArray }
   Borrow {
     borrowerAddress: Address,
     outputWithLenderTokenIndex: Int,
@@ -82,7 +82,7 @@ pub type LoanAction {
     //If loan doesn't use oracle, this is not used
     collateralOracleInputIndex: Int,
     //Used only when an auction must start as part of liquidation
-    lenderAuthHash: ByteArray,
+    lenderAuthHash: AuthorizationMethod,
     //Used only when an auction must start as part of liquidation
     lenderAddress: Address,
     //Only for partialLiquidation, it's collateralValue - remainingDebt
@@ -118,7 +118,7 @@ pub type RepaymentMintRedeemer {
 
 pub type RepaymentAction {
   WithdrawWithToken { tokenInputIndex: Int }
-  WithdrawWithHash { auth: Authorization }
+  WithdrawWithHash
 }
 
 pub type RepaymentWithdrawRedeemer {
@@ -127,7 +127,7 @@ pub type RepaymentWithdrawRedeemer {
 }
 
 pub type DutchAuctionAction {
-  DA_Cancel { auth: Authorization }
+  DA_Cancel
   DA_Buy
 }
 

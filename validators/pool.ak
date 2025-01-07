@@ -7,7 +7,7 @@ use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
 use cardano/assets.{PolicyId, Value, flatten, quantity_of, reduce, tokens}
 use cardano/transaction.{InlineDatum, Output, Transaction, find_input}
-use fluidtokens/authorizer.{authorize_action}
+use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/constants
 use fluidtokens/finance.{token_b_needed_to_purchase_token_a_in_AMM_pool}
 use fluidtokens/oracle.{retrieve_oracle_data, validate_oracle_ref_input_value}
@@ -125,11 +125,18 @@ validator pool(configAsset: Asset) {
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
 
         when redeemerAction is {
-          Cancel(auth, poolId) -> and {
+          Cancel(poolId) -> and {
               quantity_of(input.output.value, poolPolicyId, poolId) == 1,
               quantity_of(self.mint, poolPolicyId, poolId) == -1,
-              datum.lenderAuthHash == auth.hash,
-              authorize_action(auth),
+              authorize_action(
+                create_auth(
+                  datum.lenderAuthHash,
+                  self.inputs,
+                  self.withdrawals,
+                  self.extra_signatories,
+                  self.mint,
+                ),
+              ),
             }
           Borrow(
             borrowerAddress,

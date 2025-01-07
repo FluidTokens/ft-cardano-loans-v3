@@ -2,7 +2,7 @@ use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use cardano/address.{Address, Credential}
 use cardano/assets.{flatten, quantity_of}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use cardano/transaction.{InlineDatum, Input, NoDatum, Output, Transaction}
 use fluidtokens/authorizer
 use fluidtokens/types/datum.{DutchAuctionDatum}
 use fluidtokens/types/general.{Asset}
@@ -50,9 +50,16 @@ validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
           )
 
         when redeemerAction is {
-          DA_Cancel(auth) -> and {
-              auth.hash == datum.ownerAuthHash,
-              authorizer.authorize_action(auth),
+          DA_Cancel -> and {
+              authorizer.authorize_action(
+                authorizer.create_auth(
+                  datum.ownerAuthHash,
+                  self.inputs,
+                  self.withdrawals,
+                  self.extra_signatories,
+                  self.mint,
+                ),
+              ),
               or {
                 validTo < datum.startDate,
                 currentPrice <= datum.minPriceToCancel,
@@ -62,7 +69,6 @@ validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
             expect Some(ownerOutput) = list.at(self.outputs, index)
             if datum.borrowerAddress != None && currentPrice > datum.debtAmount {
               expect Some(borrowerAddress) = datum.borrowerAddress
-              //TODO Is the index correct?
               expect Some(borrowerOutput) = list.at(self.outputs, index + 1)
               and {
                 correctAmountSentToUser(
@@ -125,13 +131,15 @@ fn correctAmountSentToUser(
       smartTokensSpendScriptHash,
     )
 
+  let noDatum = userOutput.datum == NoDatum
+
   let correctValue = and {
       quantity_of(userOutput.value, currency.policyId, currency.assetName) >= amount,
       length(flatten(userOutput.value)) <= 21,
     }
   and {
     correctDestination,
-    //TODO Datum check?
+    noDatum,
     correctValue,
   }
 }
