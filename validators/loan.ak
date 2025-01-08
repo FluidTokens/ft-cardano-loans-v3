@@ -167,7 +167,7 @@ validator loan(configAsset: Asset) {
                     list.at(
                       get_outputs_to_smart_credential(
                         self.outputs,
-                        Script(config.ducthAuctionSpendScriptHash),
+                        Script(config.dutchAuctionSpendScriptHash),
                         config.smartTokensSpendScriptHash,
                       ),
                       index,
@@ -724,7 +724,7 @@ fn validate_output_to_dutch_auction(
   and {
     is_output_to_spend_validator(
       dutchAuctionOutput,
-      config.ducthAuctionSpendScriptHash,
+      config.dutchAuctionSpendScriptHash,
     ),
     //No staking check here
     isDatumCorrect,
