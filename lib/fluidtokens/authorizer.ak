@@ -29,7 +29,6 @@ pub fn create_auth(
   }
 }
 
-//TODO Letting the redeemers decide the auth.method, what are the chances that a script and a wallet have the same hash?
 pub fn authorize_action(auth: Authorization) -> Bool {
   when auth is {
     // If the authorization method is PubKey, validate using the provided signature.

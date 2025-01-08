@@ -21,7 +21,7 @@ pub type ConfigDatum {
   loanRequestSpendScriptHash: ByteArray,
   loanSpendScriptHash: ByteArray,
   repaymentSpendScriptHash: ByteArray,
-  ducthAuctionSpendScriptHash: ByteArray,
+  dutchAuctionSpendScriptHash: ByteArray,
   dutchAuctionStartingIncreasePerMille: Int,
   dutchAuctionLoweringAmount: Int,
   dutchAuctionLoweringFrequency: Int,
