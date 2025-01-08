@@ -38,7 +38,6 @@ validator repayment(configAsset: Asset) {
       st_utils.get_outputs_to_smart_credential(
         self.outputs,
         Script(config.repaymentSpendScriptHash),
-        config.smartTokensSpendScriptHash,
       )
     let isInputRefSpent =
       option.is_some(find_input(self.inputs, redeemer.inputRef))
@@ -104,7 +103,6 @@ validator repayment(configAsset: Asset) {
       get_inputs_from_smart_credential(
         self.inputs,
         Script(config.repaymentSpendScriptHash),
-        config.smartTokensSpendScriptHash,
       )
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
     list.indexed_foldr(

@@ -12,18 +12,13 @@ use smart_tokens/utils.{
   get_inputs_from_smart_credential, is_output_to_smart_credential,
 } as st_utils
 
-validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
+validator dutch_auction {
   withdraw(
     redeemer: DutchAuctionRedeemer,
     credential: Credential,
     self: Transaction,
   ) {
-    let scInputs =
-      get_inputs_from_smart_credential(
-        self.inputs,
-        credential,
-        smartTokensSpendScriptHash,
-      )
+    let scInputs = get_inputs_from_smart_credential(self.inputs, credential)
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
     expect length(scInputs) == length(redeemer.actionsForEachInput)
     expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
@@ -76,14 +71,12 @@ validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
                   datum.debtAmount,
                   datum.ownerAddress,
                   ownerOutput,
-                  smartTokensSpendScriptHash,
                 ),
                 correctAmountSentToUser(
                   datum.currency,
                   currentPrice - datum.debtAmount,
                   borrowerAddress,
                   borrowerOutput,
-                  smartTokensSpendScriptHash,
                 ),
               }
             } else {
@@ -92,7 +85,6 @@ validator dutch_auction(smartTokensSpendScriptHash: ByteArray) {
                 currentPrice,
                 datum.ownerAddress,
                 ownerOutput,
-                smartTokensSpendScriptHash,
               )
             }
           }
@@ -121,14 +113,12 @@ fn correctAmountSentToUser(
   amount: Int,
   userAddress: Address,
   userOutput: Output,
-  smartTokensSpendScriptHash: ByteArray,
 ) {
   let correctDestination =
     is_output_to_smart_credential(
       userOutput,
       userAddress.payment_credential,
       userAddress.stake_credential,
-      smartTokensSpendScriptHash,
     )
 
   let noDatum = userOutput.datum == NoDatum

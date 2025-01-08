@@ -10,7 +10,6 @@ use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
 
 pub type ConfigDatum {
   adminCredential: Credential,
-  smartTokensSpendScriptHash: ByteArray,
   poolPolicyId: ByteArray,
   loanRequestPolicyId: ByteArray,
   borrowerBondPolicyId: ByteArray,

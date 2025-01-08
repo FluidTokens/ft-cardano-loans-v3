@@ -42,11 +42,7 @@ pub type KycTokenWithdrawRedeemer {
   complianceForEachInput: List<ComplianceToken>,
 }
 
-validator kyc_token(
-  poolPolicyId: ByteArray,
-  poolSpendScriptHash: ByteArray,
-  smartTokensSpendScriptHash: ByteArray,
-) {
+validator kyc_token(poolPolicyId: ByteArray, poolSpendScriptHash: ByteArray) {
   withdraw(
     redeemer: KycTokenWithdrawRedeemer,
     credential: Credential,
@@ -63,7 +59,6 @@ validator kyc_token(
         get_inputs_from_smart_credential(
           self.inputs,
           Script(poolSpendScriptHash),
-          smartTokensSpendScriptHash,
         ),
         poolRedeemer.actionsForEachInput,
       )
