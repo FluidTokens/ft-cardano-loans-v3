@@ -33,6 +33,7 @@ use fluidtokens/utils.{
 }
 use smart_tokens/utils.{
   get_inputs_from_smart_credential, get_outputs_to_smart_credential,
+  is_output_to_smart_credential,
 } as st_utils
 
 validator loan(configAsset: Asset) {
@@ -508,6 +509,7 @@ fn equity_sent_to_borrower(
     quantity_of(equityOutput.value, repaymentPolicyId, repaymentId) == 1
   let dosProtection = length(flatten(equityOutput.value)) <= 21
   and {
+    //TODO ARE WE SURE WE SHOULDN'T CHECK THE DESTINATION?
     //No staking check here
     isDatumCorrect,
     containsRepaymentNFT,
@@ -541,6 +543,7 @@ fn validate_output_to_repayment(
   let isDatumCorrect = parsedDatum == newDatum
   let dosProtection = length(flatten(repaymentOutput.value)) <= 3
   and {
+    //TODO ARE WE SURE WE SHOULDN'T CHECK THE DESTINATION?
     //No staking check here
     isDatumCorrect,
     containsRepaymentNFT,
@@ -733,11 +736,11 @@ fn validate_output_to_dutch_auction(
 
   let dosProtection = length(flatten(dutchAuctionOutput.value)) <= 21
   and {
-    is_output_to_spend_validator(
+    is_output_to_smart_credential(
       dutchAuctionOutput,
-      config.dutchAuctionSpendScriptHash,
+      Script(config.dutchAuctionSpendScriptHash),
+      None,
     ),
-    //No staking check here
     isDatumCorrect,
     correctValue,
     dosProtection,
