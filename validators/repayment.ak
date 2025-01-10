@@ -140,10 +140,10 @@ validator repayment(configAsset: Asset) {
               )
             }
             WithdrawWithHash -> {
-              expect RepaymentDatumWithHash { ownerAuthHash, .. } = datum
+              expect RepaymentDatumWithHash { ownerAuth, .. } = datum
               authorize_action(
                 create_auth(
-                  ownerAuthHash,
+                  ownerAuth,
                   self.inputs,
                   self.withdrawals,
                   self.extra_signatories,

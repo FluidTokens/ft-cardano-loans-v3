@@ -8,7 +8,7 @@ use fluidtokens/types/general.{CollateralAsset}
 use fluidtokens/types/redeemer.{Aggregated, Dedicated, OraclePriceFeed, Pooled}
 use fluidtokens/utils.{quantity_of_policy_id}
 
-fn rational_pow(r: rational.Rational, exponent: Int) {
+fn rational_pow(r: rational.Rational, exponent: Int) -> Rational {
   if exponent == 1 {
     r
   } else {
@@ -16,18 +16,175 @@ fn rational_pow(r: rational.Rational, exponent: Int) {
   }
 }
 
+//Calculate the token_b required to purchase wanted_token_a_amount of token_a
+//TODO Is this formula accepted for any AMM?
+fn token_b_needed_to_purchase_token_a_in_AMM_pool(
+  wanted_token_a_amount: Rational,
+  token_a_amount_in_pool: Int,
+  token_b_amount_in_pool: Int,
+) -> Int {
+  let buy_amount_int = wanted_token_a_amount |> rational.truncate()
+
+  let nominator = buy_amount_int * 1000 * token_b_amount_in_pool
+  let denominator = ( token_a_amount_in_pool - buy_amount_int ) * 997
+  let token_b_required = nominator / denominator
+  token_b_required
+}
+
+//Calculate the token_b received when selling selling_token_a_amount of token_a
+//TODO Is this formula accepted for any AMM?
+fn token_b_received_from_selling_token_a_in_AMM_pool(
+  selling_token_a_amount: Rational,
+  token_a_amount: Int,
+  token_b_amount: Int,
+) -> Int {
+  let sell_amount_int = selling_token_a_amount |> rational.truncate()
+
+  let nominator = sell_amount_int * 997 * token_b_amount
+  let denominator = token_a_amount * 1000 + 997 * sell_amount_int
+  let asset_return = nominator / denominator
+  asset_return
+}
+
+fn get_token_amount_in_lovelace(
+  tokenAmount: Rational,
+  oraclePriceFeed: OraclePriceFeed,
+) -> Rational {
+  when oraclePriceFeed is {
+    Aggregated { token_price_in_lovelaces, token_price_denominator, .. } -> {
+      expect Some(tokenPrice) =
+        rational.new(token_price_in_lovelaces, token_price_denominator)
+      rational.mul(tokenPrice, tokenAmount)
+    }
+    Pooled { token_a_amount_in_pool, token_b_amount_in_pool, .. } ->
+      rational.from_int(
+        token_b_received_from_selling_token_a_in_AMM_pool(
+          tokenAmount,
+          token_a_amount_in_pool,
+          token_b_amount_in_pool,
+        ),
+      )
+    Dedicated { price_in_lovelaces, price_denominator, .. } -> {
+      expect Some(tokenPrice) =
+        rational.new(price_in_lovelaces, price_denominator)
+      rational.mul(tokenPrice, tokenAmount)
+    }
+  }
+}
+
+fn get_lovelace_amount_in_token_currency(
+  lovelaces: Rational,
+  tokenOraclePriceFeed: OraclePriceFeed,
+) -> Rational {
+  when tokenOraclePriceFeed is {
+    Aggregated { token_price_in_lovelaces, token_price_denominator, .. } -> {
+      expect Some(tokenPrice) =
+        rational.new(token_price_in_lovelaces, token_price_denominator)
+      expect Some(tokensAmount) = rational.div(lovelaces, tokenPrice)
+      tokensAmount
+    }
+    Pooled { token_a_amount_in_pool, token_b_amount_in_pool, .. } ->
+      rational.from_int(
+        token_b_needed_to_purchase_token_a_in_AMM_pool(
+          lovelaces,
+          token_a_amount_in_pool,
+          token_b_amount_in_pool,
+        ),
+      )
+    Dedicated { price_in_lovelaces, price_denominator, .. } -> {
+      expect Some(tokenPrice) =
+        rational.new(price_in_lovelaces, price_denominator)
+      expect Some(tokensAmount) = rational.div(lovelaces, tokenPrice)
+      tokensAmount
+    }
+  }
+}
+
+pub fn get_collateral_amount(
+  value: Value,
+  collateral: CollateralAsset,
+) -> Rational {
+  rational.from_int(
+    if collateral.maybeAssetName == None {
+      quantity_of_policy_id(value, collateral.policyId)
+    } else {
+      expect Some(assetName) = collateral.maybeAssetName
+      quantity_of(value, collateral.policyId, assetName)
+    },
+  )
+}
+
+//Formula is: principal * collateralNeededPerPrincipalUnit
+//Result is expressed in collateral currency
+pub fn get_needed_collateral_without_oracles(
+  wantedPrincipalAmount: Int,
+  collateralPerSinglePrincipalUnit: Rational,
+) {
+  let wantedPrincipalAmountAsRational = rational.from_int(wantedPrincipalAmount)
+  rational.ceil(
+    rational.mul(
+      wantedPrincipalAmountAsRational,
+      collateralPerSinglePrincipalUnit,
+    ),
+  )
+}
+
+//Formula is: collateral = principal / LTV
+//Result is expressed in collateral currency
+pub fn get_needed_collateral_with_oracles(
+  wantedPrincipalAmount: Int,
+  ltv: Rational,
+  principalOraclePriceFeed: OraclePriceFeed,
+  collateralOraclePriceFeed: OraclePriceFeed,
+) -> Int {
+  let wantedPrincipalInLovelace =
+    get_token_amount_in_lovelace(
+      rational.from_int(wantedPrincipalAmount),
+      principalOraclePriceFeed,
+    )
+
+  expect Some(collateralInLovelace) =
+    rational.div(wantedPrincipalInLovelace, ltv)
+
+  rational.ceil(
+    get_lovelace_amount_in_token_currency(
+      collateralInLovelace,
+      collateralOraclePriceFeed,
+    ),
+  )
+}
+
+//Liquidate when current LTV is smaller or equal to the decided one
+//Principal and collateral are expressed in their respective units
+pub fn can_liquidate(
+  principal: Rational,
+  collateral: Rational,
+  liquidationLtv: Rational,
+  principalOraclePriceFeed: OraclePriceFeed,
+  collateralOraclePriceFeed: OraclePriceFeed,
+) {
+  let principalInLovelace =
+    get_token_amount_in_lovelace(principal, principalOraclePriceFeed)
+  let collateralInLovelace =
+    get_token_amount_in_lovelace(collateral, collateralOraclePriceFeed)
+
+  expect Some(currentLtv) =
+    rational.div(principalInLovelace, collateralInLovelace)
+
+  rational.compare(liquidationLtv, currentLtv) == Greater
+}
+
+//Remaining debt expressed in principal currency
 pub fn get_remaining_debt(
   repaymentMode: RepaymentMode,
-  principal: Int,
-  principalDivider: Int,
-  interestRate: Int,
+  principal: Rational,
+  interestRate: Rational,
   totalInstallments: Int,
   repaidInstallments: Int,
 ) {
   ( totalInstallments - repaidInstallments ) * get_installment_amount(
     repaymentMode,
     principal,
-    principalDivider,
     interestRate,
     totalInstallments,
     False,
@@ -35,37 +192,34 @@ pub fn get_remaining_debt(
   )
 }
 
+//Installment expressed in principal currency
+//TODO Should we do the subtraction if it's the last installment?
 pub fn get_installment_amount(
   repaymentMode: RepaymentMode,
-  principal: Int,
-  principalDivider: Int,
-  interestRate: Int,
+  principal: Rational,
+  interestRate: Rational,
   totalInstallments: Int,
   isLate: Bool,
   penaltyFeeForLateRepayment: Int,
 ) {
-  expect Some(principalAsRational) = rational.new(principal, principalDivider)
-  expect Some(interestAsRational) =
-    rational.div(rational.from_int(interestRate), rational.from_int(1000))
-  expect Some(penaltyFeeAsRational) =
-    rational.new(
+  let penaltyFeeAsRational =
+    rational.from_int(
       if isLate {
         penaltyFeeForLateRepayment
       } else {
         0
       },
-      principalDivider,
     )
   when repaymentMode is {
     InterestOnRemainingPrincipal(..) -> {
       let oneAsRational = rational.from_int(1)
       //Amortization formula
       expect Some(interestPerInstallmentAsRational) =
-        rational.div(interestAsRational, rational.from_int(totalInstallments))
+        rational.div(interestRate, rational.from_int(totalInstallments))
       let numerator =
         rational_pow(
           rational.mul(
-            rational.mul(principalAsRational, interestPerInstallmentAsRational),
+            rational.mul(principal, interestPerInstallmentAsRational),
             rational.add(oneAsRational, interestPerInstallmentAsRational),
           ),
           totalInstallments,
@@ -83,10 +237,10 @@ pub fn get_installment_amount(
       rational.ceil(rational.add(result, penaltyFeeAsRational))
     }
     PrincipalAndInterestOnInstallments -> {
-      let totalInterest = rational.mul(principalAsRational, interestAsRational)
+      let totalInterest = rational.mul(principal, interestRate)
       expect Some(singleInstallmentAmountAsRational) =
         rational.div(
-          rational.add(principalAsRational, totalInterest),
+          rational.add(principal, totalInterest),
           rational.from_int(totalInstallments),
         )
       rational.ceil(
@@ -96,75 +250,29 @@ pub fn get_installment_amount(
   }
 }
 
-pub fn can_liquidate(
-  collateralValueInPrincipalCurrency: Int,
-  principalAmount: Int,
-  principalDivider: Int,
-  ltv: Int,
-  lTVDivider: Int,
+//Equity is the value of collateral that should go back to borrower during liquidation, 
+//expressed in principal currency
+pub fn get_equity(
+  collateralAmount: Rational,
+  remainingDebt: Rational,
+  principalOraclePriceFeed: OraclePriceFeed,
+  collateralOraclePriceFeed: OraclePriceFeed,
 ) {
-  expect Some(principalAsRational) =
-    rational.new(principalAmount, principalDivider)
-  expect Some(collateralValueInPrincipalCurrencyAsRational) =
-    rational.new(collateralValueInPrincipalCurrency, principalDivider)
-  expect Some(ratioAsRational) =
-    rational.div(
-      collateralValueInPrincipalCurrencyAsRational,
-      principalAsRational,
+  let remainingDebtInLovelace =
+    get_token_amount_in_lovelace(remainingDebt, principalOraclePriceFeed)
+  let collateralInLovelace =
+    get_token_amount_in_lovelace(collateralAmount, collateralOraclePriceFeed)
+
+  let equityInLovelace =
+    rational.sub(collateralInLovelace, remainingDebtInLovelace)
+
+  let equity =
+    get_lovelace_amount_in_token_currency(
+      equityInLovelace,
+      principalOraclePriceFeed,
     )
 
-  expect Some(ltvAsRational) = rational.new(ltv, lTVDivider)
-  rational.compare(ltvAsRational, ratioAsRational) == Greater
-}
-
-//Calculate the token_b required to purchase wanted_token_a_amount of token_a
-//TODO Is this formula accepted for any AMM?
-pub fn token_b_needed_to_purchase_token_a_in_AMM_pool(
-  wanted_token_a_amount: Rational,
-  token_a_amount_in_pool: Int,
-  token_b_amount_in_pool: Int,
-) -> Int {
-  let token_b_amount_in_pool_int = wanted_token_a_amount |> rational.truncate()
-
-  let nominator = token_b_amount_in_pool_int * 1000 * token_b_amount_in_pool
-  let denominator =
-    ( token_a_amount_in_pool - token_b_amount_in_pool_int ) * 997
-  let token_b_required = nominator / denominator
-  token_b_required
-}
-
-pub fn get_collateral_value_in_principal_currency(
-  oraclePriceFeed: OraclePriceFeed,
-  collateral: CollateralAsset,
-  loanValue: Value,
-) {
-  let collateralAmount =
-    rational.from_int(
-      if collateral.maybeAssetName == None {
-        quantity_of_policy_id(loanValue, collateral.policyId)
-      } else {
-        expect Some(assetName) = collateral.maybeAssetName
-        quantity_of(loanValue, collateral.policyId, assetName)
-      },
-    )
-  when oraclePriceFeed is {
-    Aggregated { token_price_in_lovelaces, denominator, .. } -> {
-      expect Some(tokenPrice) =
-        rational.new(token_price_in_lovelaces, denominator)
-      rational.ceil(rational.mul(collateralAmount, tokenPrice))
-    }
-    Pooled { token_a_amount_in_pool, token_b_amount_in_pool, .. } ->
-      token_b_needed_to_purchase_token_a_in_AMM_pool(
-        collateralAmount,
-        token_a_amount_in_pool,
-        token_b_amount_in_pool,
-      )
-    Dedicated { token_price, denominator, .. } -> {
-      expect Some(tokenPrice) = rational.new(token_price, denominator)
-
-      rational.ceil(rational.mul(collateralAmount, tokenPrice))
-    }
-  }
+  rational.round(equity)
 }
 
 pub fn is_repayment_late(

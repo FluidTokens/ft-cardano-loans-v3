@@ -1,6 +1,7 @@
 use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
+use aiken/math/rational
 use aiken/option
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script, StakeCredential}
@@ -12,11 +13,10 @@ use cardano/transaction.{
 }
 use fluidtokens/constants
 use fluidtokens/finance.{
-  can_liquidate, get_collateral_value_in_principal_currency,
-  get_installment_amount, get_remaining_debt, is_recasting_permitted,
-  is_repayment_late,
+  can_liquidate, get_collateral_amount, get_equity, get_installment_amount,
+  get_remaining_debt, is_recasting_permitted, is_repayment_late,
 }
-use fluidtokens/oracle.{retrieve_oracle_data, validate_oracle_ref_input_value}
+use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/datum.{
   ConfigDatum, DutchAuctionDatum, Liquidation, LoanDatum,
   NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
@@ -123,12 +123,16 @@ validator loan(configAsset: Asset) {
         expect datum: LoanDatum = inputDatum
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
 
+        expect Some(interestRateAsRational) =
+          rational.new(datum.commonData.interestRate, 1000)
+
         when redeemerAction is {
           Claim(
             liquidationMode,
             lenderBondInputIndex,
             collateralOracleRefInputIndex,
-            lenderAuthHash,
+            principalOracleRefInputIndex,
+            lenderAuth,
             lenderAddress,
             equity,
             loanId,
@@ -172,9 +176,8 @@ validator loan(configAsset: Asset) {
                   let remainingDebt =
                     get_remaining_debt(
                       datum.commonData.repaymentMode,
-                      datum.principalAmount,
-                      datum.principalDivider,
-                      datum.commonData.interestRate,
+                      rational.from_int(datum.principalAmount),
+                      interestRateAsRational,
                       datum.commonData.totalInstallments,
                       datum.repaidInstallments,
                     )
@@ -186,7 +189,7 @@ validator loan(configAsset: Asset) {
                       lenderBondInput,
                       validTo,
                       datum.collateral,
-                      lenderAuthHash,
+                      lenderAuth,
                       lenderAddress,
                       datum.commonData.principalAsset,
                       remainingDebt,
@@ -195,72 +198,95 @@ validator loan(configAsset: Asset) {
                   }
                 }
                 Liquidation(lTV, lTVDivider, partialLiquidation) -> {
-                  let oracleRefInput =
+                  let principalAmountAsRational =
+                    rational.from_int(datum.principalAmount)
+                  expect Some(collateralOracleToken) =
+                    datum.collateral.maybeOracleTokenAsset
+                  let collateralOracleRefInput =
                     safe_list_at(
                       self.reference_inputs,
                       collateralOracleRefInputIndex,
                     )
-                  expect Some(oraclePriceFeed) =
+                  expect Some(collateralOraclePriceFeed) =
                     retrieve_oracle_data(
-                      oracleRefInput.output.address.payment_credential,
+                      collateralOracleRefInput.output.address.payment_credential,
+                      collateralOracleRefInput.output.value,
                       self.redeemers,
                       validTo,
-                      datum.collateral,
+                      collateralOracleToken.policyId,
+                      collateralOracleToken.assetName,
+                      datum.collateral.policyId,
+                      datum.collateral.maybeAssetName,
                     )
-                  let collateralValueInPrincipalCurrency =
-                    get_collateral_value_in_principal_currency(
-                      oraclePriceFeed,
-                      datum.collateral,
-                      input.output.value,
+                  let principalOracleRefInput =
+                    safe_list_at(
+                      self.reference_inputs,
+                      principalOracleRefInputIndex,
+                    )
+                  expect Some(principalOraclePriceFeed) =
+                    retrieve_oracle_data(
+                      principalOracleRefInput.output.address.payment_credential,
+                      principalOracleRefInput.output.value,
+                      self.redeemers,
+                      validTo,
+                      datum.commonData.principalOracleAsset.policyId,
+                      datum.commonData.principalOracleAsset.assetName,
+                      datum.commonData.principalAsset.policyId,
+                      Some(datum.commonData.principalAsset.assetName),
                     )
                   let remainingDebt =
                     get_remaining_debt(
                       datum.commonData.repaymentMode,
-                      datum.principalAmount,
-                      datum.principalDivider,
-                      datum.commonData.interestRate,
+                      principalAmountAsRational,
+                      interestRateAsRational,
                       datum.commonData.totalInstallments,
                       datum.repaidInstallments,
                     )
-                  expect Some(repaymentOutput) =
-                    list.at(
-                      get_outputs_to_smart_credential(
-                        self.outputs,
-                        Script(config.repaymentSpendScriptHash),
-                      ),
-                      index,
-                    )
+                  let collateralAmount =
+                    get_collateral_amount(input.output.value, datum.collateral)
+                  expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
                   and {
-                    equity == collateralValueInPrincipalCurrency - remainingDebt,
-                    validate_oracle_ref_input_value(
-                      oracleRefInput.output.value,
-                      datum.collateral,
+                    equity == get_equity(
+                      collateralAmount,
+                      rational.from_int(remainingDebt),
+                      principalOraclePriceFeed,
+                      collateralOraclePriceFeed,
                     ),
                     or {
                       isRepaymentLate,
                       can_liquidate(
-                        collateralValueInPrincipalCurrency,
-                        datum.principalAmount,
-                        datum.principalDivider,
-                        lTV,
-                        lTVDivider,
+                        principalAmountAsRational,
+                        collateralAmount,
+                        ltvAsRational,
+                        principalOraclePriceFeed,
+                        collateralOraclePriceFeed,
                       ),
                     },
                     or {
                       partialLiquidation == False,
                       equity <= 0,
-                      equity_sent_to_borrower(
-                        equityOutput: repaymentOutput,
-                        equity: equity,
-                        borrowerBondAsset: Asset {
-                          policyId: config.borrowerBondPolicyId,
-                          assetName: datum.borrowerAssetName,
-                        },
-                        principalAssetPolicyId: datum.commonData.principalAsset.policyId,
-                        principalAssetName: datum.commonData.principalAsset.assetName,
-                        repaymentPolicyId: config.repaymentPolicyId,
-                        repaymentId: loanId,
-                      ),
+                      {
+                        expect Some(borrowerCompensationOutput) =
+                          list.at(
+                            get_outputs_to_smart_credential(
+                              self.outputs,
+                              Script(config.repaymentSpendScriptHash),
+                            ),
+                            index,
+                          )
+                        equity_sent_to_borrower(
+                          equityOutput: borrowerCompensationOutput,
+                          equity: equity,
+                          borrowerBondAsset: Asset {
+                            policyId: config.borrowerBondPolicyId,
+                            assetName: datum.borrowerAssetName,
+                          },
+                          principalAssetPolicyId: datum.commonData.principalAsset.policyId,
+                          principalAssetName: datum.commonData.principalAsset.assetName,
+                          repaymentPolicyId: config.repaymentPolicyId,
+                          repaymentId: loanId,
+                        )
+                      },
                     },
                   }
                 }
@@ -293,9 +319,8 @@ validator loan(configAsset: Asset) {
             let nextRepaymentAmount =
               get_installment_amount(
                 datum.commonData.repaymentMode,
-                datum.principalAmount,
-                datum.principalDivider,
-                datum.commonData.interestRate,
+                rational.from_int(datum.principalAmount),
+                interestRateAsRational,
                 datum.commonData.totalInstallments,
                 isRepaymentLate,
                 datum.commonData.penaltyFeeForLateRepayment,
@@ -337,7 +362,6 @@ validator loan(configAsset: Asset) {
                   validate_eventual_output_to_loan_for_repayment(
                     loanOutput,
                     datum,
-                    datum.repaidInstallments + 1,
                     input.output.value == loanOutput.value,
                     input.output.address.stake_credential,
                     config.loanSpendScriptHash,
@@ -389,9 +413,8 @@ validator loan(configAsset: Asset) {
             let debtAfterRecasting =
               get_remaining_debt(
                 datum.commonData.repaymentMode,
-                datum.principalAmount - principalPaid,
-                datum.principalDivider,
-                datum.commonData.interestRate,
+                rational.from_int(datum.principalAmount - principalPaid),
+                interestRateAsRational,
                 datum.commonData.totalInstallments,
                 datum.repaidInstallments,
               )
@@ -529,7 +552,6 @@ fn validate_output_to_repayment(
 fn validate_eventual_output_to_loan_for_repayment(
   loanOutput: Output,
   datum: LoanDatum,
-  newRepaidInstallments: Int,
   outputValueSameOfInputValue: Bool,
   prevStakeCredential: Option<StakeCredential>,
   loanSpendScriptHash: ByteArray,
@@ -545,9 +567,8 @@ fn validate_eventual_output_to_loan_for_repayment(
       lenderAssetName: datum.lenderAssetName,
       collateral: datum.collateral,
       principalAmount: datum.principalAmount,
-      principalDivider: datum.principalDivider,
       lendDate: datum.lendDate,
-      repaidInstallments: newRepaidInstallments,
+      repaidInstallments: datum.repaidInstallments + 1,
       doneRecasts: datum.doneRecasts,
     }
   let isDatumCorrect = parsedDatum == newDatum
@@ -643,7 +664,6 @@ fn validate_eventual_output_to_loan_for_recasting(
       lenderAssetName: datum.lenderAssetName,
       collateral: datum.collateral,
       principalAmount: datum.principalAmount - principalPaid,
-      principalDivider: datum.principalDivider,
       lendDate: datum.lendDate,
       repaidInstallments: datum.repaidInstallments,
       doneRecasts: datum.doneRecasts + 1,
@@ -671,7 +691,7 @@ fn validate_output_to_dutch_auction(
   borrowerBondInput: Input,
   validTo: Int,
   collateral: CollateralAsset,
-  lenderAuthHash: AuthorizationMethod,
+  lenderAuth: AuthorizationMethod,
   lenderAddress: Address,
   principalAsset: Asset,
   remainingDebt: Int,
@@ -683,7 +703,7 @@ fn validate_output_to_dutch_auction(
 
   let newDatum =
     DutchAuctionDatum {
-      ownerAuthHash: lenderAuthHash,
+      ownerAuth: lenderAuth,
       ownerAddress: lenderAddress,
       currency: principalAsset,
       startingPrice: remainingDebt * config.dutchAuctionStartingIncreasePerMille / 1000,

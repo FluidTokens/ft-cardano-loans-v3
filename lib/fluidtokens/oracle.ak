@@ -3,37 +3,36 @@ use cardano/address.{PaymentCredential}
 use cardano/assets.{Value, quantity_of}
 use cardano/transaction.{Redeemer, ScriptPurpose, Withdraw}
 use fluidtokens/constants
-use fluidtokens/types/general.{Asset, CollateralAsset}
+use fluidtokens/types/general.{Asset}
 use fluidtokens/types/redeemer.{
   Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
 }
 
-//Ensure that the input value has the oracle token defined by the collateral
-pub fn validate_oracle_ref_input_value(
-  oracleInputValue: Value,
-  collateral: CollateralAsset,
+//Ensure that the oracle is showing the data of the token
+fn is_feed_token_correct(
+  expectedTokenPolicyId: ByteArray,
+  expectedTokenMaybeAssetName: Option<ByteArray>,
+  feedToken: Asset,
 ) {
-  expect Some(oracleToken) = collateral.maybeOracleTokenAsset
-  quantity_of(oracleInputValue, oracleToken.policyId, oracleToken.assetName) > 0
-}
-
-//Ensure that the oracle is showing the data of the collateral token
-fn is_feed_token_correct(expectedCollateral: CollateralAsset, feedToken: Asset) {
-  when expectedCollateral.maybeAssetName is {
+  when expectedTokenMaybeAssetName is {
     Some(assetName) -> and {
-        feedToken.policyId == expectedCollateral.policyId,
+        feedToken.policyId == expectedTokenPolicyId,
         feedToken.assetName == assetName,
       }
-    None -> feedToken.policyId == expectedCollateral.policyId
+    None -> feedToken.policyId == expectedTokenPolicyId
   }
 }
 
-//Find the oracle redeemer containing the collateral token data
+//Find the oracle redeemer containing the token data
 pub fn retrieve_oracle_data(
   oraclePaymentCredential: PaymentCredential,
+  oracleInputValue: Value,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   transactionValidTo: Int,
-  expectedCollateral: CollateralAsset,
+  oracleTokenPolicyId: ByteArray,
+  oracleTokenAssetName: ByteArray,
+  expectedTokenPolicyId: ByteArray,
+  expectedTokenMaybeAssetName: Option<ByteArray>,
 ) -> Option<OraclePriceFeed> {
   expect Some(oracleRedeemer) =
     pairs.get_first(redeemers, Withdraw(oraclePaymentCredential))
@@ -45,14 +44,21 @@ pub fn retrieve_oracle_data(
       Aggregated { common, .. } -> common
       Dedicated { common, .. } -> common
     }
+
   if and {
     commonFeedData.valid_to - commonFeedData.valid_from <= constants.max_oracle_validity_range,
     commonFeedData.valid_to >= transactionValidTo,
-    is_feed_token_correct(expectedCollateral, commonFeedData.token),
+    is_feed_token_correct(
+      expectedTokenPolicyId,
+      expectedTokenMaybeAssetName,
+      commonFeedData.token,
+    ),
+    //Oracle ref input contains expected oracle nft
+    quantity_of(oracleInputValue, oracleTokenPolicyId, oracleTokenAssetName) > 0,
   } {
     Some(parsedOracleRedeemer.data)
   } else {
-    trace @"oracle is expired, has wrong token or wrong interval"
+    trace @"oracle is expired, has wrong token or wrong interval or oracle doesn't contain oracle nft"
     None
   }
 }

@@ -9,25 +9,32 @@ pub type CommonFeedData {
   token: Asset,
 }
 
+//Each oracle returns info about a pair customTokenSmallestUnit/lovelace.
+//There are NO pairs tokenASmallestUnit/tokenBSmallestUnit.
+//If the loan and the collateral are two custom tokens, we use 2 oracles: 
+//tokenASmallestUnit/lovelace and tokenBSmallestUnit/lovelace.
+//We always convert into lovelace to do calculations and eventually we convert it back
 pub type OraclePriceFeed {
   //Tokens that have a lot of liquidity are in CEX. The price is in lovelace
   Aggregated {
     common: CommonFeedData,
+    //How much 1 token is worth in lovelace. If 1 token = 0,00043 lovelace then the value here is 43
     token_price_in_lovelaces: Int,
-    denominator: Int,
+    //If 1 token = 0,00043 lovelace then the value here is 100000
+    token_price_denominator: Int,
   }
-  //Tokens that have lower liquidity, AMM pool data is used to calculate the price
+  //For tokens that have lower liquidity, AMM pool data is used to calculate the price. token_b is always lovelace
   Pooled {
     common: CommonFeedData,
     token_a_amount_in_pool: Int,
     token_b_amount_in_pool: Int,
   }
-  //Complex vaults can have a dedicated oracle that calculates the value of all collateral assets in a custom currency
+  //When used as collateral, complex vaults (represented by a key token) and NFTs can have a dedicated oracle 
+  //that calculates the total value in lovelace.
   Dedicated {
     common: CommonFeedData,
-    token_price_currency: Asset,
-    token_price: Int,
-    denominator: Int,
+    price_in_lovelaces: Int,
+    price_denominator: Int,
   }
 }
 
@@ -51,11 +58,16 @@ pub type PoolAction {
   Borrow {
     borrowerAddress: Address,
     outputWithLenderTokenIndex: Int,
-    //Asset that the borrower is providing, must be accepted by the pool
+    //Ref input index of the principal oracle, if principal is ADA this must be -1
+    principalOracleRefInputIndex: Int,
+    //Index of the Asset that the borrower is providing, must be accepted by the pool
     chosenCollateralIndex: Int,
-    //If collateral doesn't use oracle, this must be -1
-    chosenCollateralOracleInputIndex: Int,
-    wantedPrincipal: Int,
+    //If collateral doesn't use oracle or is ADA, this must be -1
+    chosenCollateralOracleRefInputIndex: Int,
+    //How much principal the borrower wants in units. 
+    //For example if borrower wants 123 FLDT he must write 123000000 .
+    //It cannot be completely arbitrary as pools allow only certain amounts.
+    wantedPrincipalAmount: Int,
     poolId: ByteArray,
     permissionedConditionWithdrawIndex: Int,
   }
@@ -81,11 +93,13 @@ pub type LoanAction {
     lenderBondInputIndex: Int,
     //If loan doesn't use oracle, this is not used
     collateralOracleInputIndex: Int,
+    //If loan doesn't use oracle, this is not used
+    principalOracleRefInputIndex: Int,
     //Used only when an auction must start as part of liquidation
-    lenderAuthHash: AuthorizationMethod,
+    lenderAuth: AuthorizationMethod,
     //Used only when an auction must start as part of liquidation
     lenderAddress: Address,
-    //Only for partialLiquidation, it's collateralValue - remainingDebt
+    //Only for partialLiquidation, it's collateralValue - remainingDebt expressed in principal currency
     equity: Int,
     loanId: ByteArray,
   }
@@ -98,11 +112,17 @@ pub type LoanAction {
   //Borrower action
   AddCollateral {
     bondInputIndex: Int,
+    //Units of collateral added to improve the health of the loan
     addedCollateralAmount: Int,
     loanId: ByteArray,
   }
   //Borrower action
-  Recast { bondInputIndex: Int, principalPaid: Int, loanId: ByteArray }
+  Recast {
+    bondInputIndex: Int,
+    //In principal units
+    principalPaid: Int,
+    loanId: ByteArray,
+  }
 }
 
 pub type LoanWithdrawRedeemer {

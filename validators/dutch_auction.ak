@@ -48,7 +48,7 @@ validator dutch_auction {
           DA_Cancel -> and {
               authorizer.authorize_action(
                 authorizer.create_auth(
-                  datum.ownerAuthHash,
+                  datum.ownerAuth,
                   self.inputs,
                   self.withdrawals,
                   self.extra_signatories,

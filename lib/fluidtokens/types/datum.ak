@@ -48,6 +48,8 @@ pub type LiquidationMode {
 
 pub type CommonData {
   principalAsset: Asset,
+  //Used in dynamicPriced pools and in partial liquidations, it indicates the oracle NFT for the principal
+  principalOracleAsset: Asset,
   //Per mille of the loan to repay to lender
   interestRate: Int,
   //How much time between 2 consecutive installments
@@ -64,34 +66,26 @@ pub type CommonData {
   penaltyFeeForLateRepayment: Int,
 }
 
-pub type RequestDatum {
-  commonData: CommonData,
-  borrowerAuthHash: AuthorizationMethod,
-  borrowerAddress: Address,
-  //This pool can cover multiple collections/tokens, but only one of them can be chosen for each loan (ie. no mixed bundle loans).
-  //Important requirement: if liquidation is enabled, ALL the collateralOptions must have an oracle NFT
-  collateralOptions: List<CollateralAsset>,
-  //LTV for each collateral option (borrower can ask more using a multiple). If no oracle then this is the principal amount
-  principalLTV: List<Int>,
-  principalLTVDivider: List<Int>,
-  //True if borrowable amount of the collateralOptions must be updated through oracles
-  dynamicCollateralPrice: Bool,
-}
-
 pub type PoolDatum {
   commonData: CommonData,
-  lenderAuthHash: AuthorizationMethod,
+  lenderAuth: AuthorizationMethod,
   lenderAddress: Address,
   //This pool can cover multiple collections/token, but only one of them can be chosen for each loan (ie. no mixed bundle loans).
   //Important requirement: if Liquidation is enabled, ALL the collateralOptions must have an oracle NFT
   collateralOptions: List<CollateralAsset>,
-  //LTV for each collateral option (borrower can ask more using a multiple). If no oracle then this is the principal amount
+  //When oracle is used, this is the LTV for each collateral option (borrower can ask more using an exact multiple). 
+  //This is the ration between principal and collateral when their value is expressed in lovelace.
+  //For example, a LTV of 0.123 mean that principalInLovelace / collateralInLovelace = 0.123.
+  //In this case, principalLTV = 123 and principalLTVDivider = 1000 .
+  //If no oracle is used, then this is the collateral amount expressed in units of the token for each unit of principal.
+  //For example, if the principal is lovelace and the collateral unitFLDT and lender wants 0.123 unitFLDT for each lovelace lent: 
+  //principalLTV = 123 and principalLTVDivider = 1000 .
   principalLTV: List<Int>,
   principalLTVDivider: List<Int>,
   //True if borrowable amount of the collateralOptions must be updated through oracles
   dynamicCollateralPrice: Bool,
-  //If true, the output of lender's bond contains LoanInfoDatum, useful if the lender is a SC to do onchain validation.
-  lenderTokenOutputMustHaveLoanInfoDatum: Bool,
+  //If true, the output of lender's bond contains LoanDatum, useful if the lender is a SC to do onchain validation.
+  lenderTokenOutputMustHaveLoanDatum: Bool,
   //Permissioned pools use this field to specify an extra Withdraw validator to force the conditions of the Borrow action.
   //Put "NONE" if it's a permissionless pool
   permissionedConditionScriptHash: ByteArray,
@@ -99,18 +93,28 @@ pub type PoolDatum {
   extraData: Data,
 }
 
-//Optional datum of the lender's bond output 
-pub type LoanInfoDatum =
-  LoanDatum
+pub type RequestDatum {
+  commonData: CommonData,
+  borrowerAuth: AuthorizationMethod,
+  borrowerAddress: Address,
+  //Same considerations of PoolDatum
+  collateralOptions: List<CollateralAsset>,
+  //Same considerations of PoolDatum
+  principalLTV: List<Int>,
+  principalLTVDivider: List<Int>,
+  //Same considerations of PoolDatum
+  dynamicCollateralPrice: Bool,
+}
 
 pub type LoanDatum {
   commonData: CommonData,
+  //Either the poolId or the requestId
   originAssetName: AssetName,
   borrowerAssetName: AssetName,
   lenderAssetName: AssetName,
   collateral: CollateralAsset,
+  //Principal taken with the loan expressed in units, for example 100ADA -> 100000000
   principalAmount: Int,
-  principalDivider: Int,
   lendDate: Int,
   repaidInstallments: Int,
   doneRecasts: Int,
@@ -121,17 +125,20 @@ pub type RepaymentDatum {
   RepaymentDatumWithHash {
     action: ByteArray,
     data: Data,
-    ownerAuthHash: AuthorizationMethod,
+    ownerAuth: AuthorizationMethod,
   }
 }
 
 pub type DutchAuctionDatum {
-  ownerAuthHash: AuthorizationMethod,
+  ownerAuth: AuthorizationMethod,
   ownerAddress: Address,
   currency: Asset,
+  //Expressed in units
   startingPrice: Int,
+  //Expressed in units
   loweringAmount: Int,
   loweringFrequency: Int,
+  //Expressed in units
   minPriceToCancel: Int,
   startDate: Int,
   //If present it means it's a ducth auction from a liquidated asset:
