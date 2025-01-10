@@ -509,7 +509,6 @@ fn equity_sent_to_borrower(
     quantity_of(equityOutput.value, repaymentPolicyId, repaymentId) == 1
   let dosProtection = length(flatten(equityOutput.value)) <= 21
   and {
-    //TODO ARE WE SURE WE SHOULDN'T CHECK THE DESTINATION?
     //No staking check here
     isDatumCorrect,
     containsRepaymentNFT,
@@ -543,7 +542,6 @@ fn validate_output_to_repayment(
   let isDatumCorrect = parsedDatum == newDatum
   let dosProtection = length(flatten(repaymentOutput.value)) <= 3
   and {
-    //TODO ARE WE SURE WE SHOULDN'T CHECK THE DESTINATION?
     //No staking check here
     isDatumCorrect,
     containsRepaymentNFT,
