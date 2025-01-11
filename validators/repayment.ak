@@ -2,13 +2,9 @@
 //Without the repayment NFT this can be used for depositing other stuff too.
 use aiken/collection/dict
 use aiken/collection/list
-use aiken/option
-use aiken/primitive/bytearray
 use cardano/address.{Credential, Script}
 use cardano/assets.{PolicyId, quantity_of, tokens}
-use cardano/transaction.{
-  InlineDatum, Input, Output, Transaction, Withdraw, find_input,
-}
+use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/types/datum.{
   Liquidation, RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
@@ -33,14 +29,16 @@ validator repayment(configAsset: Asset) {
         configAsset.assetName,
       )
 
-    let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
+    let loanInputs =
+      st_utils.get_inputs_from_smart_credential(
+        self.inputs,
+        Script(config.loanSpendScriptHash),
+      )
     let repaymentOutputs =
       st_utils.get_outputs_to_smart_credential(
         self.outputs,
         Script(config.repaymentSpendScriptHash),
       )
-    let isInputRefSpent =
-      option.is_some(find_input(self.inputs, redeemer.inputRef))
     let mintedNFTs = dict.to_pairs(tokens(self.mint, policy_id))
 
     let loanWithdrawRedeemer =
@@ -50,41 +48,43 @@ validator repayment(configAsset: Asset) {
 
     let expectedMintedNFTs =
       list.indexed_foldr(
-        list.filter(
-          loanRedeemer.actionsForEachInput,
-          fn(action) {
-            when action is {
+        loanInputs,
+        [],
+        fn(index, input, result) {
+          let loanRedeemerAction =
+            safe_list_at(loanRedeemer.actionsForEachInput, index)
+
+          let shouldBeConsidered =
+            when loanRedeemerAction is {
               Claim { liquidationMode, equity, .. } -> {
                 expect Liquidation { partialLiquidation, .. } = liquidationMode
-                if partialLiquidation && equity > 0 {
-                  True
-                } else {
-                  False
-                }
+                partialLiquidation && equity > 0
               }
               Repay { .. } -> True
               Recast { .. } -> True
               _ -> False
             }
-          },
-        ),
-        [],
-        fn(index, _action, result) {
-          let repaymentAssetName =
-            bytearray.push(bytearray.drop(inputRefHash, 1), index)
-          expect Some(output) = list.at(repaymentOutputs, index)
-          expect and {
-              dict.size(assets.tokens(output.value, policy_id)) == 1,
-              assets.quantity_of(output.value, policy_id, repaymentAssetName) == 1,
-            }
-          list.push(result, Pair(repaymentAssetName, 1))
+
+          if shouldBeConsidered {
+            let repaymentAssetName =
+              utils.hash_output_ref(input.output_reference)
+            let repaymentOutput = safe_list_at(repaymentOutputs, index)
+            expect and {
+                dict.size(assets.tokens(repaymentOutput.value, policy_id)) == 1,
+                assets.quantity_of(
+                  repaymentOutput.value,
+                  policy_id,
+                  repaymentAssetName,
+                ) == 1,
+              }
+            list.push(result, Pair(repaymentAssetName, 1))
+          } else {
+            result
+          }
         },
       )
 
-    and {
-      isInputRefSpent,
-      expectedMintedNFTs == mintedNFTs,
-    }
+    expectedMintedNFTs == mintedNFTs
   }
 
   withdraw(
