@@ -80,7 +80,6 @@ pub type PoolWithdrawRedeemer {
 
 pub type LoanMintRedeemer {
   configRefInputIndex: Int,
-  inputRef: OutputReference,
   poolWithdrawRedeemerIndex: Int,
 }
 

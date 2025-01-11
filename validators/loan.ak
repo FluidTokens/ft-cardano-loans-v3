@@ -2,15 +2,11 @@ use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
-use aiken/option
-use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script, StakeCredential}
 use cardano/assets.{
   AssetName, PolicyId, Value, add, flatten, quantity_of, tokens,
 }
-use cardano/transaction.{
-  InlineDatum, Input, Output, Transaction, Withdraw, find_input,
-}
+use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/constants
 use fluidtokens/finance.{
   can_liquidate, get_collateral_amount, get_equity, get_installment_amount,
@@ -48,14 +44,16 @@ validator loan(configAsset: Asset) {
         configAsset.assetName,
       )
 
-    let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
+    let poolInputs =
+      st_utils.get_inputs_from_smart_credential(
+        self.inputs,
+        Script(config.poolSpendScriptHash),
+      )
     let loanOutputs =
       st_utils.get_outputs_to_smart_credential(
         self.outputs,
         Script(config.loanSpendScriptHash),
       )
-    let isInputRefSpent =
-      option.is_some(find_input(self.inputs, redeemer.inputRef))
     let mintedNFTs = dict.to_pairs(tokens(self.mint, policy_id))
 
     let poolWithdrawRedeemer =
@@ -65,32 +63,28 @@ validator loan(configAsset: Asset) {
 
     let expectedMintedNFTs =
       list.indexed_foldr(
-        list.filter(
-          poolRedeemer.actionsForEachInput,
-          fn(action) {
-            when action is {
-              Borrow { .. } -> True
-              _ -> False
-            }
-          },
-        ),
+        poolInputs,
         [],
-        fn(index, _action, result) {
-          let loanAssetName =
-            bytearray.push(bytearray.drop(inputRefHash, 1), index)
-          expect Some(output) = list.at(loanOutputs, index)
-          expect and {
-              dict.size(assets.tokens(output.value, policy_id)) == 1,
-              assets.quantity_of(output.value, policy_id, loanAssetName) == 1,
+        fn(index, input, result) {
+          let poolRedeemerAction =
+            safe_list_at(poolRedeemer.actionsForEachInput, index)
+
+          when poolRedeemerAction is {
+            Borrow { .. } -> {
+              let loanAssetName = utils.hash_output_ref(input.output_reference)
+              let loanOutput = safe_list_at(loanOutputs, index)
+              expect and {
+                  dict.size(assets.tokens(loanOutput.value, policy_id)) == 1,
+                  assets.quantity_of(loanOutput.value, policy_id, loanAssetName) == 1,
+                }
+              list.push(result, Pair(loanAssetName, 1))
             }
-          list.push(result, Pair(loanAssetName, 1))
+            _ -> result
+          }
         },
       )
 
-    and {
-      isInputRefSpent,
-      expectedMintedNFTs == mintedNFTs,
-    }
+    expectedMintedNFTs == mintedNFTs
   }
 
   withdraw(
