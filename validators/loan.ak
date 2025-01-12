@@ -279,7 +279,9 @@ validator loan(configAsset: Asset) {
                           principalAssetPolicyId: datum.commonData.principalAsset.policyId,
                           principalAssetName: datum.commonData.principalAsset.assetName,
                           repaymentPolicyId: config.repaymentPolicyId,
-                          repaymentId: loanId,
+                          repaymentId: utils.hash_output_ref(
+                            input.output_reference,
+                          ),
                         )
                       },
                     },
@@ -338,7 +340,7 @@ validator loan(configAsset: Asset) {
                 action: constants.repayment_action_installment,
                 extra_data: (loanId, datum.repaidInstallments + 1),
                 repaymentPolicyId: config.repaymentPolicyId,
-                repaymentId: loanId,
+                repaymentId: utils.hash_output_ref(input.output_reference),
               ),
               or {
                 and {
@@ -436,7 +438,7 @@ validator loan(configAsset: Asset) {
                 action: constants.repayment_action_recast,
                 extra_data: loanId,
                 repaymentPolicyId: config.repaymentPolicyId,
-                repaymentId: loanId,
+                repaymentId: utils.hash_output_ref(input.output_reference),
               ),
               or {
                 and {
