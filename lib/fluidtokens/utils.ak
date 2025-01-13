@@ -8,7 +8,7 @@ use cardano/assets.{AssetName, PolicyId, Value, quantity_of, reduce, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
-use fluidtokens/types/datum.{ConfigDatum}
+use fluidtokens/types/config.{ConfigDatum}
 
 pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
   crypto.sha2_256(

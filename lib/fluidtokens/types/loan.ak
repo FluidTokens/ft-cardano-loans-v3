@@ -1,0 +1,69 @@
+use cardano/address.{Address}
+use cardano/assets.{AssetName}
+use fluidtokens/types/general.{AuthorizationMethod, CollateralAsset}
+use fluidtokens/types/pool.{CommonData, LiquidationMode}
+
+pub type LoanDatum {
+  commonData: CommonData,
+  //Either the poolId or the requestId
+  originAssetName: AssetName,
+  borrowerAssetName: AssetName,
+  lenderAssetName: AssetName,
+  collateral: CollateralAsset,
+  //Principal taken with the loan expressed in units, for example 100ADA -> 100000000
+  principalAmount: Int,
+  lendDate: Int,
+  repaidInstallments: Int,
+  doneRecasts: Int,
+}
+
+pub type LoanMintRedeemer {
+  configRefInputIndex: Int,
+  poolWithdrawRedeemerIndex: Int,
+}
+
+pub type LoanAction {
+  //Lender action (or anyone who has the permission to spend the lender's bond)
+  Claim {
+    //Must be the same value of the one contained in the datum, used by repayment validator
+    liquidationMode: LiquidationMode,
+    //This is the absolute input index that contains the lender bond
+    lenderBondInputIndex: Int,
+    //If loan doesn't use oracle, this is not used
+    collateralOracleInputIndex: Int,
+    //If loan doesn't use oracle, this is not used
+    principalOracleRefInputIndex: Int,
+    //Used only when an auction must start as part of liquidation
+    lenderAuth: AuthorizationMethod,
+    //Used only when an auction must start as part of liquidation
+    lenderAddress: Address,
+    //Only for partialLiquidation, it's collateralValue - remainingDebt expressed in principal currency
+    equity: Int,
+    loanId: ByteArray,
+  }
+  //Borrower action
+  Repay {
+    //This is the absolute input index that contains the borrower bond
+    bondInputIndex: Int,
+    loanId: ByteArray,
+  }
+  //Borrower action
+  AddCollateral {
+    bondInputIndex: Int,
+    //Units of collateral added to improve the health of the loan
+    addedCollateralAmount: Int,
+    loanId: ByteArray,
+  }
+  //Borrower action
+  Recast {
+    bondInputIndex: Int,
+    //In principal units
+    principalPaid: Int,
+    loanId: ByteArray,
+  }
+}
+
+pub type LoanWithdrawRedeemer {
+  configRefInputIndex: Int,
+  actionsForEachInput: List<LoanAction>,
+}

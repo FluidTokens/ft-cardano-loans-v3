@@ -6,14 +6,14 @@ use cardano/address.{Credential, Script}
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/authorizer.{authorize_action, create_auth}
-use fluidtokens/types/datum.{
-  Liquidation, RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
-}
 use fluidtokens/types/general.{Asset}
-use fluidtokens/types/redeemer.{
-  Claim, LoanWithdrawRedeemer, Recast, Repay, RepaymentMintRedeemer,
-  RepaymentWithdrawRedeemer, WithdrawWithHash, WithdrawWithToken,
-}
+use fluidtokens/types/loan.{Claim, LoanWithdrawRedeemer, Recast, Repay}
+use fluidtokens/types/pool.{Liquidation}
+use fluidtokens/types/repayment.{
+  RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
+  RepaymentMintRedeemer, RepaymentWithdrawRedeemer, WithdrawWithHash,
+  WithdrawWithToken,
+} as r
 use fluidtokens/utils.{is_nft_spent, quantity_of_policy_id, safe_list_at}
 use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 

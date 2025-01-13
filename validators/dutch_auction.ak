@@ -4,9 +4,10 @@ use cardano/address.{Address, Credential}
 use cardano/assets.{flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, Transaction}
 use fluidtokens/authorizer
-use fluidtokens/types/datum.{DutchAuctionDatum}
+use fluidtokens/types/dutch_auction.{
+  Buy, Cancel, DutchAuctionDatum, DutchAuctionRedeemer,
+} as da
 use fluidtokens/types/general.{Asset}
-use fluidtokens/types/redeemer.{DA_Buy, DA_Cancel, DutchAuctionRedeemer}
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{
   get_inputs_from_smart_credential, is_output_to_smart_credential,
@@ -45,7 +46,7 @@ validator dutch_auction {
           )
 
         when redeemerAction is {
-          DA_Cancel -> and {
+          Cancel -> and {
               authorizer.authorize_action(
                 authorizer.create_auth(
                   datum.ownerAuth,
@@ -60,7 +61,7 @@ validator dutch_auction {
                 currentPrice <= datum.minPriceToCancel,
               },
             }
-          DA_Buy -> {
+          Buy -> {
             expect Some(ownerOutput) = list.at(self.outputs, index)
             if datum.borrowerAddress != None && currentPrice > datum.debtAmount {
               expect Some(borrowerAddress) = datum.borrowerAddress

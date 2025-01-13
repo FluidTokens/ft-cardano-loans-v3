@@ -7,7 +7,7 @@ use cardano/transaction.{
 }
 use fluidtokens/authorizer
 use fluidtokens/constants
-use fluidtokens/types/datum.{ConfigDatum}
+use fluidtokens/types/config.{ConfigDatum} as configType
 use fluidtokens/types/general.{Asset, CollateralAsset}
 use fluidtokens/utils.{quantity_of_policy_id}
 

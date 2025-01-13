@@ -4,28 +4,9 @@
 //Forgiveness in case of default is accomplished by sending the collateral back to the borrower in case of Full Collateral Claim.
 //If the penalty fee should be sent to an address different from the lender, then the lender nft must be locked in a dedicated contract that says so.
 //Loan refinancing is done spending the new loan and the old loan in the same tx.
-use cardano/address.{Address, Credential}
-use cardano/assets.{AssetName}
+use cardano/address.{Address}
+use cardano/transaction.{OutputReference}
 use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
-
-pub type ConfigDatum {
-  adminCredential: Credential,
-  poolPolicyId: ByteArray,
-  loanRequestPolicyId: ByteArray,
-  borrowerBondPolicyId: ByteArray,
-  lenderBondPolicyId: ByteArray,
-  loanPolicyId: ByteArray,
-  repaymentPolicyId: ByteArray,
-  poolSpendScriptHash: ByteArray,
-  loanRequestSpendScriptHash: ByteArray,
-  loanSpendScriptHash: ByteArray,
-  repaymentSpendScriptHash: ByteArray,
-  dutchAuctionSpendScriptHash: ByteArray,
-  dutchAuctionStartingIncreasePerMille: Int,
-  dutchAuctionLoweringAmount: Int,
-  dutchAuctionLoweringFrequency: Int,
-  dutchAuctionMinPriceToCancel: Int,
-}
 
 pub type RepaymentMode {
   //Amortization. Express number of possible recasts: 0 means no recasting, negative means unlimited
@@ -93,58 +74,32 @@ pub type PoolDatum {
   extraData: Data,
 }
 
-pub type RequestDatum {
-  commonData: CommonData,
-  borrowerAuth: AuthorizationMethod,
-  borrowerAddress: Address,
-  //Same considerations of PoolDatum
-  collateralOptions: List<CollateralAsset>,
-  //Same considerations of PoolDatum
-  principalLTV: List<Int>,
-  principalLTVDivider: List<Int>,
-  //Same considerations of PoolDatum
-  dynamicCollateralPrice: Bool,
+pub type PoolMintRedeemer {
+  configRefInputIndex: Int,
+  inputRef: OutputReference,
 }
 
-pub type LoanDatum {
-  commonData: CommonData,
-  //Either the poolId or the requestId
-  originAssetName: AssetName,
-  borrowerAssetName: AssetName,
-  lenderAssetName: AssetName,
-  collateral: CollateralAsset,
-  //Principal taken with the loan expressed in units, for example 100ADA -> 100000000
-  principalAmount: Int,
-  lendDate: Int,
-  repaidInstallments: Int,
-  doneRecasts: Int,
-}
-
-pub type RepaymentDatum {
-  RepaymentDatumWithToken { action: ByteArray, data: Data, ownerAsset: Asset }
-  RepaymentDatumWithHash {
-    action: ByteArray,
-    data: Data,
-    ownerAuth: AuthorizationMethod,
+pub type PoolAction {
+  Cancel { poolId: ByteArray }
+  Borrow {
+    borrowerAddress: Address,
+    outputWithLenderTokenIndex: Int,
+    //Ref input index of the principal oracle, if principal is ADA this must be -1
+    principalOracleRefInputIndex: Int,
+    //Index of the Asset that the borrower is providing, must be accepted by the pool
+    chosenCollateralIndex: Int,
+    //If collateral doesn't use oracle or is ADA, this must be -1
+    chosenCollateralOracleRefInputIndex: Int,
+    //How much principal the borrower wants in units. 
+    //For example if borrower wants 123 FLDT he must write 123000000 .
+    //It cannot be completely arbitrary as pools allow only certain amounts.
+    wantedPrincipalAmount: Int,
+    poolId: ByteArray,
+    permissionedConditionWithdrawIndex: Int,
   }
 }
 
-pub type DutchAuctionDatum {
-  ownerAuth: AuthorizationMethod,
-  ownerAddress: Address,
-  currency: Asset,
-  //Expressed in units
-  startingPrice: Int,
-  //Expressed in units
-  loweringAmount: Int,
-  loweringFrequency: Int,
-  //Expressed in units
-  minPriceToCancel: Int,
-  startDate: Int,
-  //If present it means it's a ducth auction from a liquidated asset:
-  //The lender must get max principal+interest
-  //The borrower gets the difference if the earning from the auction are > what lender should get
-  borrowerAddress: Option<Address>,
-  //Used only if liquidatedBorrowerAddress is not None, it's how much the lender should get
-  debtAmount: Int,
+pub type PoolWithdrawRedeemer {
+  configRefInputIndex: Int,
+  actionsForEachInput: List<PoolAction>,
 }

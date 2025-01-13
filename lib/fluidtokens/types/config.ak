@@ -1,0 +1,20 @@
+use cardano/address.{Credential}
+
+pub type ConfigDatum {
+  adminCredential: Credential,
+  poolPolicyId: ByteArray,
+  requestPolicyId: ByteArray,
+  borrowerBondPolicyId: ByteArray,
+  lenderBondPolicyId: ByteArray,
+  loanPolicyId: ByteArray,
+  repaymentPolicyId: ByteArray,
+  poolSpendScriptHash: ByteArray,
+  requestSpendScriptHash: ByteArray,
+  loanSpendScriptHash: ByteArray,
+  repaymentSpendScriptHash: ByteArray,
+  dutchAuctionSpendScriptHash: ByteArray,
+  dutchAuctionStartingIncreasePerMille: Int,
+  dutchAuctionLoweringAmount: Int,
+  dutchAuctionLoweringFrequency: Int,
+  dutchAuctionMinPriceToCancel: Int,
+}

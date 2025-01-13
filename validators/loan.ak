@@ -13,16 +13,18 @@ use fluidtokens/finance.{
   get_remaining_debt, is_recasting_permitted, is_repayment_late,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
-use fluidtokens/types/datum.{
-  ConfigDatum, DutchAuctionDatum, Liquidation, LoanDatum,
-  NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
-  RepaymentDatum, RepaymentDatumWithToken,
-}
+use fluidtokens/types/config.{ConfigDatum}
+use fluidtokens/types/dutch_auction.{DutchAuctionDatum}
 use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
-use fluidtokens/types/redeemer.{
-  AddCollateral, Borrow, Claim, LoanMintRedeemer, LoanWithdrawRedeemer,
-  PoolWithdrawRedeemer, Recast, Repay,
+use fluidtokens/types/loan.{
+  AddCollateral, Claim, LoanDatum, LoanMintRedeemer, LoanWithdrawRedeemer,
+  Recast, Repay,
+} as l
+use fluidtokens/types/pool.{
+  Borrow, Liquidation, NoLiquidationDutchAuctionClaim,
+  NoLiquidationFullCollateralClaim, PoolWithdrawRedeemer,
 }
+use fluidtokens/types/repayment.{RepaymentDatum, RepaymentDatumWithToken}
 use fluidtokens/utils.{
   is_nft_spent, is_output_to_spend_validator, quantity_of_policy_id,
   safe_list_at, value_without_policy_id_as_list,

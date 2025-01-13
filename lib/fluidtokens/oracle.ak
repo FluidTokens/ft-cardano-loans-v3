@@ -4,7 +4,7 @@ use cardano/assets.{Value, quantity_of}
 use cardano/transaction.{Redeemer, ScriptPurpose, Withdraw}
 use fluidtokens/constants
 use fluidtokens/types/general.{Asset}
-use fluidtokens/types/redeemer.{
+use fluidtokens/types/oracle.{
   Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
 }
 

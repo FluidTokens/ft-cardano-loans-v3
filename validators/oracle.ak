@@ -4,7 +4,7 @@ use cardano/address.{Credential}
 use cardano/transaction.{OutputReference, Transaction}
 use fluidtokens/authorizer
 use fluidtokens/types/general.{Asset}
-use fluidtokens/types/redeemer.{OracleRedeemer}
+use fluidtokens/types/oracle.{OracleRedeemer} as o
 
 validator oracle(
   verification_keys: List<ByteArray>,

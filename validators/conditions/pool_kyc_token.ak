@@ -9,8 +9,7 @@ use cardano/address.{Credential, Script}
 use cardano/transaction.{
   InlineDatum, Input, Output, Transaction, ValidityRange, Withdraw,
 }
-use fluidtokens/types/datum.{PoolDatum}
-use fluidtokens/types/redeemer.{Borrow, PoolWithdrawRedeemer}
+use fluidtokens/types/pool.{Borrow, PoolDatum, PoolWithdrawRedeemer}
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 

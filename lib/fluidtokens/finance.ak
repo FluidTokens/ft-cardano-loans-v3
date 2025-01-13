@@ -1,11 +1,11 @@
 use aiken/math/rational.{Rational}
 use cardano/assets.{Value, quantity_of}
-use fluidtokens/types/datum.{
+use fluidtokens/types/general.{CollateralAsset}
+use fluidtokens/types/oracle.{Aggregated, Dedicated, OraclePriceFeed, Pooled}
+use fluidtokens/types/pool.{
   InterestOnRemainingPrincipal, PrincipalAndInterestOnInstallments,
   RepaymentMode,
 }
-use fluidtokens/types/general.{CollateralAsset}
-use fluidtokens/types/redeemer.{Aggregated, Dedicated, OraclePriceFeed, Pooled}
 use fluidtokens/utils.{quantity_of_policy_id}
 
 fn rational_pow(r: rational.Rational, exponent: Int) -> Rational {
@@ -150,6 +150,34 @@ pub fn get_needed_collateral_with_oracles(
     get_lovelace_amount_in_token_currency(
       collateralInLovelace,
       collateralOraclePriceFeed,
+    ),
+  )
+}
+
+pub fn get_min_principal_for_collateral_without_oracles(
+  collateralAmount: Rational,
+  collateralPerSinglePrincipalUnit: Rational,
+) {
+  expect Some(minPrincipal) =
+    rational.div(collateralAmount, collateralPerSinglePrincipalUnit)
+  rational.ceil(minPrincipal)
+}
+
+pub fn get_min_principal_for_collateral_with_oracles(
+  collateralAmount: Rational,
+  ltv: Rational,
+  principalOraclePriceFeed: OraclePriceFeed,
+  collateralOraclePriceFeed: OraclePriceFeed,
+) {
+  let collateralAmountInLovelace =
+    get_token_amount_in_lovelace(collateralAmount, collateralOraclePriceFeed)
+
+  let principalInLovelace = rational.mul(collateralAmountInLovelace, ltv)
+
+  rational.ceil(
+    get_lovelace_amount_in_token_currency(
+      principalInLovelace,
+      principalOraclePriceFeed,
     ),
   )
 }
