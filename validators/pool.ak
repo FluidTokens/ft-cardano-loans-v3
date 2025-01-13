@@ -280,14 +280,7 @@ validator pool(configAsset: Asset) {
                 and {
                   remainingPrincipalAmountAfterBorrow > 0,
                   validate_eventual_output_to_pool(
-                    //TODO Is this correct index?
-                    safe_list_at(
-                      get_outputs_to_smart_credential(
-                        self.outputs,
-                        Script(config.poolSpendScriptHash),
-                      ),
-                      index,
-                    ),
+                    safe_list_at(self.outputs, index),
                     datum,
                     remainingPrincipalAmountAfterBorrow,
                     poolPolicyId,
