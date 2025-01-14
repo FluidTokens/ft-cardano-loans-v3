@@ -19,6 +19,7 @@ pub type WithdrawRedeemer {
 validator kyc_token(
   requestPolicyId: ByteArray,
   requestSpendScriptHash: ByteArray,
+  smartTokensSpendScriptHash: ByteArray,
 ) {
   withdraw(
     redeemer: WithdrawRedeemer,
@@ -38,6 +39,7 @@ validator kyc_token(
           self.inputs,
           Script(requestSpendScriptHash),
           credential,
+          smartTokensSpendScriptHash,
         ),
         requestRedeemer.actionsForEachInput,
       )

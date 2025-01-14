@@ -30,6 +30,7 @@ validator dutch_auction(configAsset: Asset) {
         self.inputs,
         Script(config.dutchAuctionSpendScriptHash),
         credential,
+        config.smartTokensSpendScriptHash,
       )
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
     expect length(scInputs) == length(redeemer.actionsForEachInput)
@@ -83,12 +84,14 @@ validator dutch_auction(configAsset: Asset) {
                   datum.debtAmount,
                   datum.ownerAddress,
                   ownerOutput,
+                  config.smartTokensSpendScriptHash,
                 ),
                 correctAmountSentToUser(
                   datum.currency,
                   currentPrice - datum.debtAmount,
                   borrowerAddress,
                   borrowerOutput,
+                  config.smartTokensSpendScriptHash,
                 ),
               }
             } else {
@@ -97,6 +100,7 @@ validator dutch_auction(configAsset: Asset) {
                 currentPrice,
                 datum.ownerAddress,
                 ownerOutput,
+                config.smartTokensSpendScriptHash,
               )
             }
           }
@@ -125,6 +129,7 @@ fn correctAmountSentToUser(
   amount: Int,
   userAddress: Address,
   userOutput: Output,
+  smartTokensSpendScriptHash: ByteArray,
 ) {
   expect Some(Inline(userStakeCredential)) = userAddress.stake_credential
   let correctDestination =
@@ -133,6 +138,7 @@ fn correctAmountSentToUser(
       userAddress.payment_credential,
       userStakeCredential,
       userAddress.stake_credential,
+      smartTokensSpendScriptHash,
     )
 
   let noDatum = userOutput.datum == NoDatum

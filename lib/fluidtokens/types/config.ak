@@ -1,6 +1,7 @@
 use cardano/address.{Credential}
 
 pub type ConfigDatum {
+  smartTokensSpendScriptHash: ByteArray,
   adminCredential: Credential,
   poolPolicyId: ByteArray,
   requestPolicyId: ByteArray,

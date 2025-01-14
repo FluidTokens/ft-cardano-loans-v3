@@ -40,6 +40,7 @@ validator pool(configAsset: Asset) {
         self.outputs,
         Script(config.poolSpendScriptHash),
         Script(policy_id),
+        config.smartTokensSpendScriptHash,
       )
     let isInputRefSpent =
       option.is_some(find_input(self.inputs, redeemer.inputRef))
@@ -110,6 +111,7 @@ validator pool(configAsset: Asset) {
         self.inputs,
         Script(config.poolSpendScriptHash),
         credential,
+        config.smartTokensSpendScriptHash,
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
@@ -157,6 +159,7 @@ validator pool(configAsset: Asset) {
                   self.outputs,
                   Script(config.loanSpendScriptHash),
                   credential,
+                  config.smartTokensSpendScriptHash,
                 ),
                 index,
               )

@@ -51,12 +51,14 @@ validator loan(configAsset: Asset) {
         self.inputs,
         Script(config.poolSpendScriptHash),
         Script(policy_id),
+        config.smartTokensSpendScriptHash,
       )
     let loanOutputs =
       st_utils.get_outputs_to_smart_credential(
         self.outputs,
         Script(config.loanSpendScriptHash),
         Script(policy_id),
+        config.smartTokensSpendScriptHash,
       )
     let mintedNFTs = dict.to_pairs(tokens(self.mint, policy_id))
 
@@ -108,6 +110,7 @@ validator loan(configAsset: Asset) {
         self.inputs,
         Script(config.loanSpendScriptHash),
         credential,
+        config.smartTokensSpendScriptHash,
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
@@ -171,6 +174,7 @@ validator loan(configAsset: Asset) {
                         self.outputs,
                         Script(config.dutchAuctionSpendScriptHash),
                         credential,
+                        config.smartTokensSpendScriptHash,
                       ),
                       index,
                     )
@@ -273,6 +277,7 @@ validator loan(configAsset: Asset) {
                               self.outputs,
                               Script(config.repaymentSpendScriptHash),
                               Script(config.repaymentPolicyId),
+                              config.smartTokensSpendScriptHash,
                             ),
                             index,
                           )
@@ -309,6 +314,7 @@ validator loan(configAsset: Asset) {
                   self.outputs,
                   Script(config.repaymentSpendScriptHash),
                   Script(config.repaymentPolicyId),
+                  config.smartTokensSpendScriptHash,
                 ),
                 index,
               )
@@ -362,6 +368,7 @@ validator loan(configAsset: Asset) {
                         self.outputs,
                         Script(config.loanSpendScriptHash),
                         credential,
+                        config.smartTokensSpendScriptHash,
                       ),
                       index,
                     )
@@ -385,6 +392,7 @@ validator loan(configAsset: Asset) {
                   self.outputs,
                   Script(config.loanSpendScriptHash),
                   credential,
+                  config.smartTokensSpendScriptHash,
                 ),
                 index,
               )
@@ -415,6 +423,7 @@ validator loan(configAsset: Asset) {
                   self.outputs,
                   Script(config.repaymentSpendScriptHash),
                   Script(config.repaymentPolicyId),
+                  config.smartTokensSpendScriptHash,
                 ),
                 index,
               )
@@ -465,6 +474,7 @@ validator loan(configAsset: Asset) {
                           self.outputs,
                           Script(config.loanSpendScriptHash),
                           credential,
+                          config.smartTokensSpendScriptHash,
                         ),
                         index,
                       )
@@ -747,6 +757,7 @@ fn validate_output_to_dutch_auction(
       Script(config.dutchAuctionSpendScriptHash),
       Script(config.dutchAuctionWithdrawScriptHash),
       None,
+      config.smartTokensSpendScriptHash,
     ),
     isDatumCorrect,
     correctValue,

@@ -34,12 +34,14 @@ validator repayment(configAsset: Asset) {
         self.inputs,
         Script(config.loanSpendScriptHash),
         Script(policy_id),
+        config.smartTokensSpendScriptHash,
       )
     let repaymentOutputs =
       st_utils.get_outputs_to_smart_credential(
         self.outputs,
         Script(config.repaymentSpendScriptHash),
         Script(policy_id),
+        config.smartTokensSpendScriptHash,
       )
     let mintedNFTs = dict.to_pairs(tokens(self.mint, policy_id))
 
@@ -106,6 +108,7 @@ validator repayment(configAsset: Asset) {
         self.inputs,
         Script(config.repaymentSpendScriptHash),
         credential,
+        config.smartTokensSpendScriptHash,
       )
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
     list.indexed_foldr(
