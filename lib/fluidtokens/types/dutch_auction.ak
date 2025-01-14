@@ -27,5 +27,6 @@ pub type DutchAuctionAction {
 }
 
 pub type DutchAuctionRedeemer {
+  configRefInputIndex: Int,
   actionsForEachInput: List<DutchAuctionAction>,
 }

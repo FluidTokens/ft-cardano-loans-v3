@@ -58,6 +58,7 @@ validator kyc_token(poolPolicyId: ByteArray, poolSpendScriptHash: ByteArray) {
         get_inputs_from_smart_credential(
           self.inputs,
           Script(poolSpendScriptHash),
+          credential,
         ),
         poolRedeemer.actionsForEachInput,
       )

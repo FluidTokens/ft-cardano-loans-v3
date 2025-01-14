@@ -4,32 +4,36 @@ use cardano/transaction.{Input, Output}
 
 pub fn is_output_to_smart_credential(
   output: Output,
-  credential: Credential,
+  spendScriptCredential: Credential,
+  withdrawScriptCredential: Credential,
   stakeCredential: Option<StakeCredential>,
 ) {
   or {
     //Native tokens
     and {
-      output.address.payment_credential == credential,
+      output.address.payment_credential == spendScriptCredential,
       output.address.stake_credential == stakeCredential,
     },
     //Smart tokens or native tokens accidentally sent to the smart account
-    output.address.stake_credential == Some(Inline(credential)),
+    output.address.stake_credential == Some(Inline(withdrawScriptCredential)),
   }
 }
 
 pub fn get_outputs_to_smart_credential(
   outputs: List<Output>,
-  credential: Credential,
+  spendScriptCredential: Credential,
+  withdrawScriptCredential: Credential,
 ) {
   list.filter(
     outputs,
     fn(output) {
       or {
         //Native tokens
-        output.address.payment_credential == credential,
+        output.address.payment_credential == spendScriptCredential,
         //Smart tokens (or native tokens accidentally sent to the smart account)
-        output.address.stake_credential == Some(Inline(credential)),
+        output.address.stake_credential == Some(
+          Inline(withdrawScriptCredential),
+        ),
       }
     },
   )
@@ -37,16 +41,19 @@ pub fn get_outputs_to_smart_credential(
 
 pub fn get_inputs_from_smart_credential(
   inputs: List<Input>,
-  credential: Credential,
+  spendScriptCredential: Credential,
+  withdrawScriptCredential: Credential,
 ) -> List<Input> {
   list.filter(
     inputs,
     fn(input) {
       or {
         //Native tokens
-        input.output.address.payment_credential == credential,
+        input.output.address.payment_credential == spendScriptCredential,
         //Smart tokens (or native tokens accidentally sent to the smart account)
-        input.output.address.stake_credential == Some(Inline(credential)),
+        input.output.address.stake_credential == Some(
+          Inline(withdrawScriptCredential),
+        ),
       }
     },
   )

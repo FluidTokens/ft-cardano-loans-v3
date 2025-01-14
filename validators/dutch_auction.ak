@@ -1,6 +1,6 @@
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
-use cardano/address.{Address, Credential}
+use cardano/address.{Address, Credential, Inline, Script}
 use cardano/assets.{flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, Transaction}
 use fluidtokens/authorizer
@@ -13,13 +13,24 @@ use smart_tokens/utils.{
   get_inputs_from_smart_credential, is_output_to_smart_credential,
 } as st_utils
 
-validator dutch_auction {
+validator dutch_auction(configAsset: Asset) {
   withdraw(
     redeemer: DutchAuctionRedeemer,
     credential: Credential,
     self: Transaction,
   ) {
-    let scInputs = get_inputs_from_smart_credential(self.inputs, credential)
+    let config =
+      utils.get_config(
+        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
+        configAsset.policyId,
+        configAsset.assetName,
+      )
+    let scInputs =
+      get_inputs_from_smart_credential(
+        self.inputs,
+        Script(config.dutchAuctionSpendScriptHash),
+        credential,
+      )
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
     expect length(scInputs) == length(redeemer.actionsForEachInput)
     expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
@@ -115,10 +126,12 @@ fn correctAmountSentToUser(
   userAddress: Address,
   userOutput: Output,
 ) {
+  expect Some(Inline(userStakeCredential)) = userAddress.stake_credential
   let correctDestination =
     is_output_to_smart_credential(
       userOutput,
       userAddress.payment_credential,
+      userStakeCredential,
       userAddress.stake_credential,
     )
 
