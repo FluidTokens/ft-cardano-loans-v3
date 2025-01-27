@@ -30,13 +30,13 @@ use smart_tokens/utils.{
   get_inputs_from_smart_credential, get_outputs_to_smart_credential,
 } as st_utils
 
-validator request(configAsset: Asset) {
+validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
   mint(redeemer: RequestMintRedeemer, policy_id: PolicyId, self: Transaction) {
     let config =
       utils.get_config(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
-        configAsset.policyId,
-        configAsset.assetName,
+        configNFTPolicyId,
+        configNFTAssetName,
       )
     let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
     let requestOutputs =
@@ -107,8 +107,8 @@ validator request(configAsset: Asset) {
     let config =
       utils.get_config(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
-        configAsset.policyId,
-        configAsset.assetName,
+        configNFTPolicyId,
+        configNFTAssetName,
       )
     let requestInputs =
       get_inputs_from_smart_credential(

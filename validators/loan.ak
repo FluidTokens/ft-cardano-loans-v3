@@ -34,7 +34,7 @@ use smart_tokens/utils.{
   is_output_to_smart_credential,
 } as st_utils
 
-validator loan(configAsset: Asset) {
+validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
   //Loan outputs are already checked by the pool validator, here we just ensure we don't mint additional undesired tokens
   //Burning is always allowed
   //Each output has a unique NFT
@@ -42,8 +42,8 @@ validator loan(configAsset: Asset) {
     let config =
       utils.get_config(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
-        configAsset.policyId,
-        configAsset.assetName,
+        configNFTPolicyId,
+        configNFTAssetName,
       )
 
     let poolInputs =
@@ -102,8 +102,8 @@ validator loan(configAsset: Asset) {
     let config =
       utils.get_config(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
-        configAsset.policyId,
-        configAsset.assetName,
+        configNFTPolicyId,
+        configNFTAssetName,
       )
     let loanInputs =
       get_inputs_from_smart_credential(

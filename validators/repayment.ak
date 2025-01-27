@@ -17,7 +17,10 @@ use fluidtokens/types/repayment.{
 use fluidtokens/utils.{is_nft_spent, quantity_of_policy_id, safe_list_at}
 use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 
-validator repayment(configAsset: Asset) {
+validator repayment(
+  configNFTPolicyId: PolicyId,
+  configNFTAssetName: ByteArray,
+) {
   //Repayment outputs are already checked by the loan validator, here we just ensure we don't mint additional undesired tokens
   //Burning is always allowed
   //Each output has a unique NFT
@@ -25,8 +28,8 @@ validator repayment(configAsset: Asset) {
     let config =
       utils.get_config(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
-        configAsset.policyId,
-        configAsset.assetName,
+        configNFTPolicyId,
+        configNFTAssetName,
       )
 
     let loanInputs =
@@ -100,8 +103,8 @@ validator repayment(configAsset: Asset) {
     let config =
       utils.get_config(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
-        configAsset.policyId,
-        configAsset.assetName,
+        configNFTPolicyId,
+        configNFTAssetName,
       )
     let repaymentInputs =
       get_inputs_from_smart_credential(

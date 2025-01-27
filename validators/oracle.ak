@@ -3,14 +3,15 @@ use aiken/collection/list
 use cardano/address.{Credential}
 use cardano/transaction.{OutputReference, Transaction}
 use fluidtokens/authorizer
-use fluidtokens/types/general.{Asset}
 use fluidtokens/types/oracle.{OracleRedeemer} as o
 
 validator oracle(
   verification_keys: List<ByteArray>,
   threshold: Int,
-  _oracle_asset: Asset,
-  governance_token: Asset,
+  _oracle_asset_policy_id: ByteArray,
+  _oracle_asset_asset_name: ByteArray,
+  governance_token_policy_id: ByteArray,
+  governance_token_asset_name: ByteArray,
 ) {
   //Allow to move Oracle NFT if governance have signed off.
   spend(
@@ -21,8 +22,8 @@ validator oracle(
   ) {
     //Governance approval (transaction signed by governance NFT holder)
     authorizer.authorize_via_nft_ownership(
-      governance_token.policyId,
-      governance_token.assetName,
+      governance_token_policy_id,
+      governance_token_asset_name,
       self.reference_inputs,
       self.withdrawals,
       self.extra_signatories,

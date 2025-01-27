@@ -13,7 +13,10 @@ use smart_tokens/utils.{
   get_inputs_from_smart_credential, is_output_to_smart_credential,
 } as st_utils
 
-validator dutch_auction(configAsset: Asset) {
+validator dutch_auction(
+  configNFTPolicyId: ByteArray,
+  configNFTAssetName: ByteArray,
+) {
   withdraw(
     redeemer: DutchAuctionRedeemer,
     credential: Credential,
@@ -22,8 +25,8 @@ validator dutch_auction(configAsset: Asset) {
     let config =
       utils.get_config(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
-        configAsset.policyId,
-        configAsset.assetName,
+        configNFTPolicyId,
+        configNFTAssetName,
       )
     let scInputs =
       get_inputs_from_smart_credential(
