@@ -5,7 +5,7 @@ use aiken/math/rational
 use aiken/option
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{PolicyId, Value, flatten, quantity_of, reduce, tokens}
+use cardano/assets.{PolicyId, Value, flatten, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Output, Transaction, find_input}
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/constants
@@ -75,22 +75,10 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
         },
       )
 
-    let mintedTokensQuantity =
-      reduce(
-        self.mint,
-        0,
-        fn(policyId, _assetName, amount, result) {
-          if policyId == policy_id {
-            result + amount
-          } else {
-            result
-          }
-        },
-      )
     and {
       isInputRefSpent,
+      //We don't need to check of a possible overflow (> 255) as if it happens the minted NFT is not unique anymore and the mint will fail
       isEachMintedTokenAccountedFor,
-      mintedTokensQuantity <= 255,
     }
   }
 
