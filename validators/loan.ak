@@ -60,7 +60,12 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
         Script(policy_id),
         config.smartTokensSpendScriptHash,
       )
-    let mintedNFTs = dict.to_pairs(tokens(self.mint, policy_id))
+    //We exclude the burnt tokens (quantity < 0) as they are always allowed
+    let mintedNFTs =
+      list.filter(
+        dict.to_pairs(tokens(self.mint, policy_id)),
+        fn(tokenPair) { tokenPair.2nd > 0 },
+      )
 
     let poolWithdrawRedeemer =
       safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
