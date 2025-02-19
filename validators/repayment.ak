@@ -53,50 +53,55 @@ validator repayment(
         fn(tokenPair) { tokenPair.2nd > 0 },
       )
 
-    let loanWithdrawRedeemer =
-      safe_list_at(self.redeemers, redeemer.loanWithdrawRedeemerIndex)
-    expect loanWithdrawRedeemer.1st == Withdraw(Script(config.loanPolicyId))
-    expect loanRedeemer: LoanWithdrawRedeemer = loanWithdrawRedeemer.2nd
+    if list.length(mintedNFTs) > 0 {
+      let loanWithdrawRedeemer =
+        safe_list_at(self.redeemers, redeemer.loanWithdrawRedeemerIndex)
+      expect loanWithdrawRedeemer.1st == Withdraw(Script(config.loanPolicyId))
+      expect loanRedeemer: LoanWithdrawRedeemer = loanWithdrawRedeemer.2nd
 
-    let expectedMintedNFTs =
-      list.indexed_foldr(
-        loanInputs,
-        [],
-        fn(index, input, result) {
-          let loanRedeemerAction =
-            safe_list_at(loanRedeemer.actionsForEachInput, index)
+      let expectedMintedNFTs =
+        list.indexed_foldr(
+          loanInputs,
+          [],
+          fn(index, input, result) {
+            let loanRedeemerAction =
+              safe_list_at(loanRedeemer.actionsForEachInput, index)
 
-          let shouldBeConsidered =
-            when loanRedeemerAction is {
-              Claim { liquidationMode, equity, .. } -> {
-                expect Liquidation { partialLiquidation, .. } = liquidationMode
-                partialLiquidation && equity > 0
+            let shouldBeConsidered =
+              when loanRedeemerAction is {
+                Claim { liquidationMode, equity, .. } -> {
+                  expect Liquidation { partialLiquidation, .. } =
+                    liquidationMode
+                  partialLiquidation && equity > 0
+                }
+                Repay { .. } -> True
+                Recast { .. } -> True
+                _ -> False
               }
-              Repay { .. } -> True
-              Recast { .. } -> True
-              _ -> False
+
+            if shouldBeConsidered {
+              let repaymentAssetName =
+                utils.hash_output_ref(input.output_reference)
+              let repaymentOutput = safe_list_at(repaymentOutputs, index)
+              expect and {
+                  dict.size(assets.tokens(repaymentOutput.value, policy_id)) == 1,
+                  assets.quantity_of(
+                    repaymentOutput.value,
+                    policy_id,
+                    repaymentAssetName,
+                  ) == 1,
+                }
+              list.push(result, Pair(repaymentAssetName, 1))
+            } else {
+              result
             }
+          },
+        )
 
-          if shouldBeConsidered {
-            let repaymentAssetName =
-              utils.hash_output_ref(input.output_reference)
-            let repaymentOutput = safe_list_at(repaymentOutputs, index)
-            expect and {
-                dict.size(assets.tokens(repaymentOutput.value, policy_id)) == 1,
-                assets.quantity_of(
-                  repaymentOutput.value,
-                  policy_id,
-                  repaymentAssetName,
-                ) == 1,
-              }
-            list.push(result, Pair(repaymentAssetName, 1))
-          } else {
-            result
-          }
-        },
-      )
-
-    expectedMintedNFTs == mintedNFTs
+      expectedMintedNFTs == mintedNFTs
+    } else {
+      True
+    }
   }
 
   withdraw(

@@ -67,35 +67,44 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
         fn(tokenPair) { tokenPair.2nd > 0 },
       )
 
-    let poolWithdrawRedeemer =
-      safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
-    expect poolWithdrawRedeemer.1st == Withdraw(Script(config.poolPolicyId))
-    expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
+    if list.length(mintedNFTs) > 0 {
+      let poolWithdrawRedeemer =
+        safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
+      expect poolWithdrawRedeemer.1st == Withdraw(Script(config.poolPolicyId))
+      expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
 
-    let expectedMintedNFTs =
-      list.indexed_foldr(
-        poolInputs,
-        [],
-        fn(index, input, result) {
-          let poolRedeemerAction =
-            safe_list_at(poolRedeemer.actionsForEachInput, index)
+      let expectedMintedNFTs =
+        list.indexed_foldr(
+          poolInputs,
+          [],
+          fn(index, input, result) {
+            let poolRedeemerAction =
+              safe_list_at(poolRedeemer.actionsForEachInput, index)
 
-          when poolRedeemerAction is {
-            Borrow { .. } -> {
-              let loanAssetName = utils.hash_output_ref(input.output_reference)
-              let loanOutput = safe_list_at(loanOutputs, index)
-              expect and {
-                  dict.size(assets.tokens(loanOutput.value, policy_id)) == 1,
-                  assets.quantity_of(loanOutput.value, policy_id, loanAssetName) == 1,
-                }
-              list.push(result, Pair(loanAssetName, 1))
+            when poolRedeemerAction is {
+              Borrow { .. } -> {
+                let loanAssetName =
+                  utils.hash_output_ref(input.output_reference)
+                let loanOutput = safe_list_at(loanOutputs, index)
+                expect and {
+                    dict.size(assets.tokens(loanOutput.value, policy_id)) == 1,
+                    assets.quantity_of(
+                      loanOutput.value,
+                      policy_id,
+                      loanAssetName,
+                    ) == 1,
+                  }
+                list.push(result, Pair(loanAssetName, 1))
+              }
+              _ -> result
             }
-            _ -> result
-          }
-        },
-      )
+          },
+        )
 
-    expectedMintedNFTs == mintedNFTs
+      expectedMintedNFTs == mintedNFTs
+    } else {
+      True
+    }
   }
 
   withdraw(
