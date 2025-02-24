@@ -280,6 +280,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                     poolPolicyId,
                     poolId,
                     config.poolSpendScriptHash,
+                    input.output.address.payment_credential,
                   ),
                 },
               },
@@ -393,6 +394,7 @@ fn validate_eventual_output_to_pool(
   poolPolicyId: ByteArray,
   poolId: ByteArray,
   poolSpendScriptHash: ByteArray,
+  poolInputPaymentCredential: Credential,
 ) {
   expect InlineDatum(outputDatum) = output.datum
   expect parsedDatum: PoolDatum = outputDatum
@@ -410,12 +412,14 @@ fn validate_eventual_output_to_pool(
 
   let dosProtection = length(flatten(output.value)) <= 5
 
-  let correctDestination =
-    if is_output_to_spend_validator(output, poolSpendScriptHash) {
-      output.address.stake_credential == datum.lenderAddress.stake_credential
-    } else {
-      //outputs have been already filtered at the beginning
-      True
+  let correctDestination = and {
+      output.address.payment_credential == poolInputPaymentCredential,
+      if is_output_to_spend_validator(output, poolSpendScriptHash) {
+        output.address.stake_credential == datum.lenderAddress.stake_credential
+      } else {
+        //outputs have been already filtered at the beginning
+        True
+      },
     }
 
   and {
