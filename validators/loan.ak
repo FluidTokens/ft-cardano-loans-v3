@@ -20,6 +20,7 @@ use fluidtokens/types/loan.{
   AddCollateral, Claim, LoanDatum, LoanMintRedeemer, LoanWithdrawRedeemer,
   Recast, Repay,
 } as l
+use fluidtokens/types/oracle.{Aggregated, CommonFeedData} as oracle_type
 use fluidtokens/types/pool.{
   Borrow, Liquidation, NoLiquidationDutchAuctionClaim,
   NoLiquidationFullCollateralClaim, PoolWithdrawRedeemer,
@@ -243,16 +244,30 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       principalOracleRefInputIndex,
                     )
                   expect Some(principalOraclePriceFeed) =
-                    retrieve_oracle_data(
-                      principalOracleRefInput.output.address.payment_credential,
-                      principalOracleRefInput.output.value,
-                      self.redeemers,
-                      validTo,
-                      datum.commonData.principalOracleAsset.policyId,
-                      datum.commonData.principalOracleAsset.assetName,
-                      datum.commonData.principalAsset.policyId,
-                      Some(datum.commonData.principalAsset.assetName),
-                    )
+                    if datum.commonData.principalAsset.policyId == "" {
+                      Some(
+                        Aggregated {
+                          common: CommonFeedData {
+                            valid_from: 0,
+                            valid_to: 0,
+                            token: Asset { policyId: "", assetName: "" },
+                          },
+                          token_price_in_lovelaces: 1,
+                          token_price_denominator: 1,
+                        },
+                      )
+                    } else {
+                      retrieve_oracle_data(
+                        principalOracleRefInput.output.address.payment_credential,
+                        principalOracleRefInput.output.value,
+                        self.redeemers,
+                        validTo,
+                        datum.commonData.principalOracleAsset.policyId,
+                        datum.commonData.principalOracleAsset.assetName,
+                        datum.commonData.principalAsset.policyId,
+                        Some(datum.commonData.principalAsset.assetName),
+                      )
+                    }
                   let remainingDebt =
                     get_remaining_debt(
                       datum.commonData.repaymentMode,
