@@ -196,10 +196,15 @@ pub fn can_liquidate(
   let collateralInLovelace =
     get_token_amount_in_lovelace(collateral, collateralOraclePriceFeed)
 
-  expect Some(currentLtv) =
-    rational.div(principalInLovelace, collateralInLovelace)
+  or {
+    collateralInLovelace == rational.zero,
+    {
+      expect Some(currentLtv) =
+        rational.div(principalInLovelace, collateralInLovelace)
 
-  rational.compare(liquidationLtv, currentLtv) == Greater
+      rational.compare(liquidationLtv, currentLtv) == Greater
+    },
+  }
 }
 
 //Remaining debt expressed in principal currency
