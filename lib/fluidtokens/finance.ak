@@ -3,8 +3,8 @@ use cardano/assets.{Value, quantity_of}
 use fluidtokens/types/general.{CollateralAsset}
 use fluidtokens/types/oracle.{Aggregated, Dedicated, OraclePriceFeed, Pooled}
 use fluidtokens/types/pool.{
-  InterestOnRemainingPrincipal, PrincipalAndInterestOnInstallments,
-  RepaymentMode,
+  InterestOnRemainingPrincipal, PerpetualLoan,
+  PrincipalAndInterestOnInstallments, RepaymentMode,
 }
 use fluidtokens/utils.{quantity_of_policy_id}
 
@@ -214,12 +214,17 @@ pub fn get_remaining_debt(
   interestRate: Rational,
   totalInstallments: Int,
   repaidInstallments: Int,
+  installmentPeriod: Int,
+  initialGracePeriod: Int,
 ) {
   ( totalInstallments - repaidInstallments ) * get_installment_amount(
     repaymentMode,
     principal,
     interestRate,
     totalInstallments,
+    repaidInstallments,
+    installmentPeriod,
+    initialGracePeriod,
     False,
     0,
   )
@@ -232,6 +237,9 @@ pub fn get_installment_amount(
   principal: Rational,
   interestRate: Rational,
   totalInstallments: Int,
+  repaidInstallments: Int,
+  installmentPeriod: Int,
+  initialGracePeriod: Int,
   isLate: Bool,
   penaltyFeeForLateRepayment: Int,
 ) {
@@ -280,6 +288,28 @@ pub fn get_installment_amount(
         rational.add(singleInstallmentAmountAsRational, penaltyFeeAsRational),
       )
     }
+    PerpetualLoan {
+      interestRateIncreaseLinearCoefficient,
+      interestRateIncreaseLinearCoefficientDivider,
+      ..
+    } -> {
+      let periodToLatestPaidInstallment = repaidInstallments * installmentPeriod
+      let timePassed = initialGracePeriod + periodToLatestPaidInstallment
+      expect Some(currentInterestRateIncrease) =
+        rational.new(
+          interestRateIncreaseLinearCoefficient * timePassed,
+          interestRateIncreaseLinearCoefficientDivider,
+        )
+      let currentInterestRate =
+        rational.add(interestRate, currentInterestRateIncrease)
+
+      let installmentAmountAsRational =
+        rational.mul(principal, currentInterestRate)
+
+      rational.ceil(
+        rational.add(installmentAmountAsRational, penaltyFeeAsRational),
+      )
+    }
   }
 }
 
@@ -321,6 +351,11 @@ pub fn is_repayment_late(
 }
 
 pub fn is_recasting_permitted(repaymentMode: RepaymentMode, doneRecasts: Int) {
-  expect InterestOnRemainingPrincipal(max_possible_recasts) = repaymentMode
-  doneRecasts < max_possible_recasts
+  when repaymentMode is {
+    InterestOnRemainingPrincipal { max_possible_recasts } ->
+      doneRecasts < max_possible_recasts
+    PerpetualLoan { max_possible_recasts, .. } ->
+      doneRecasts < max_possible_recasts
+    _ -> fail
+  }
 }

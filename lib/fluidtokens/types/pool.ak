@@ -13,6 +13,19 @@ pub type RepaymentMode {
   InterestOnRemainingPrincipal { max_possible_recasts: Int }
   //Installment amount = Principal+Interest/Installments
   PrincipalAndInterestOnInstallments
+  //These loans don't have a deadline, the borrower can repay whenever he wants
+  //But the interest rate increases over time linearly and if installments are > 1 and they are not paid in time
+  //the borrower can be liquidated
+  //Liquidation for too low ltv is always possible if enabled
+  //initialGracePeriod allows not to repay for a certain period after the loan starts but the interest rate keeps increasing!
+  //Recasting is permitted when enabled
+  //As the increase is linear, to know the interest rate (y) at a certain time (x), the formula is: y = A*x
+  //Where A = interestRateIncreaseLinearCoefficient / interestRateIncreaseLinearCoefficientDivider
+  PerpetualLoan {
+    interestRateIncreaseLinearCoefficient: Int,
+    interestRateIncreaseLinearCoefficientDivider: Int,
+    max_possible_recasts: Int,
+  }
 }
 
 pub type LiquidationMode {

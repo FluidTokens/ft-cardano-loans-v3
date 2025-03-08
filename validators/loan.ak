@@ -200,6 +200,8 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       interestRateAsRational,
                       datum.commonData.totalInstallments,
                       datum.repaidInstallments,
+                      datum.commonData.installmentPeriod,
+                      datum.commonData.initialGracePeriod,
                     )
                   and {
                     isRepaymentLate,
@@ -275,6 +277,8 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       interestRateAsRational,
                       datum.commonData.totalInstallments,
                       datum.repaidInstallments,
+                      datum.commonData.installmentPeriod,
+                      datum.commonData.initialGracePeriod,
                     )
                   let collateralAmount =
                     get_collateral_amount(input.output.value, datum.collateral)
@@ -362,6 +366,9 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 rational.from_int(datum.principalAmount),
                 interestRateAsRational,
                 datum.commonData.totalInstallments,
+                datum.repaidInstallments,
+                datum.commonData.installmentPeriod,
+                datum.commonData.initialGracePeriod,
                 isRepaymentLate,
                 datum.commonData.penaltyFeeForLateRepayment,
               )
@@ -463,6 +470,8 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 interestRateAsRational,
                 datum.commonData.totalInstallments,
                 datum.repaidInstallments,
+                datum.commonData.installmentPeriod,
+                datum.commonData.initialGracePeriod,
               )
             and {
               principalPaid > 0,
