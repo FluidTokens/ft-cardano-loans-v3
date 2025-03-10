@@ -37,8 +37,11 @@ validator dutch_auction(
       )
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
     expect length(scInputs) == length(redeemer.actionsForEachInput)
-    expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
-    expect Finite(validTo) = self.validity_range.upper_bound.bound_type
+    expect (Finite(validFrom), Finite(validTo)) =
+      (
+        self.validity_range.lower_bound.bound_type,
+        self.validity_range.upper_bound.bound_type,
+      )
 
     list.indexed_foldr(
       scInputs,
@@ -72,39 +75,45 @@ validator dutch_auction(
                 ),
               ),
               or {
-                validTo < datum.startDate,
+                and {
+                  datum.borrowerAddress == None,
+                  validTo < datum.startDate,
+                },
                 currentPrice <= datum.minPriceToCancel,
               },
             }
           Buy -> {
             expect Some(ownerOutput) = list.at(self.outputs, index)
-            if datum.borrowerAddress != None && currentPrice > datum.debtAmount {
-              expect Some(borrowerAddress) = datum.borrowerAddress
-              expect Some(borrowerOutput) = list.at(self.outputs, index + 1)
-              and {
+            and {
+              validTo < datum.startDate,
+              if datum.borrowerAddress != None && currentPrice > datum.debtAmount {
+                expect Some(borrowerAddress) = datum.borrowerAddress
+                expect Some(borrowerOutput) = list.at(self.outputs, index + 1)
+                and {
+                  correctAmountSentToUser(
+                    datum.currency,
+                    datum.debtAmount,
+                    datum.ownerAddress,
+                    ownerOutput,
+                    config.smartTokensSpendScriptHash,
+                  ),
+                  correctAmountSentToUser(
+                    datum.currency,
+                    currentPrice - datum.debtAmount,
+                    borrowerAddress,
+                    borrowerOutput,
+                    config.smartTokensSpendScriptHash,
+                  ),
+                }
+              } else {
                 correctAmountSentToUser(
                   datum.currency,
-                  datum.debtAmount,
+                  currentPrice,
                   datum.ownerAddress,
                   ownerOutput,
                   config.smartTokensSpendScriptHash,
-                ),
-                correctAmountSentToUser(
-                  datum.currency,
-                  currentPrice - datum.debtAmount,
-                  borrowerAddress,
-                  borrowerOutput,
-                  config.smartTokensSpendScriptHash,
-                ),
-              }
-            } else {
-              correctAmountSentToUser(
-                datum.currency,
-                currentPrice,
-                datum.ownerAddress,
-                ownerOutput,
-                config.smartTokensSpendScriptHash,
-              )
+                )
+              },
             }
           }
         }

@@ -13,7 +13,7 @@ pub type PermissionedDatum {
 
 pub type WithdrawRedeemer {
   requestWithdrawRedeemerIndex: Int,
-  authorizationMethodIndex: List<Int>,
+  authorizationMethodIndexes: List<Int>,
 }
 
 validator kyc_token(
@@ -69,9 +69,14 @@ validator kyc_token(
         expect InlineDatum(inputDatum) = inputAndAction.1st.output.datum
         expect datum: RequestDatum = inputDatum
         expect permissionedDatum: PermissionedDatum = datum.extraData
+        let authorizationMethodIndex =
+          safe_list_at(redeemer.authorizationMethodIndexes, index)
 
         let authorizationMethod =
-          safe_list_at(permissionedDatum.whitelisted_auths, index)
+          safe_list_at(
+            permissionedDatum.whitelisted_auths,
+            authorizationMethodIndex,
+          )
 
         authorize_action(
           create_auth(
