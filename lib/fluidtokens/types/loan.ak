@@ -19,7 +19,9 @@ pub type LoanDatum {
 
 pub type LoanMintRedeemer {
   configRefInputIndex: Int,
-  poolWithdrawRedeemerIndex: Int,
+  //True if comes from pool, false if comes from request
+  isPoolOrigin: Bool,
+  originWithdrawRedeemerIndex: Int,
 }
 
 pub type LoanAction {
