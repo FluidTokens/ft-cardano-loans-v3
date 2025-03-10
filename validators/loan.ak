@@ -26,6 +26,7 @@ use fluidtokens/types/pool.{
   NoLiquidationFullCollateralClaim, PoolWithdrawRedeemer,
 }
 use fluidtokens/types/repayment.{RepaymentDatum, RepaymentDatumWithToken}
+use fluidtokens/types/request.{Lend, RequestWithdrawRedeemer}
 use fluidtokens/utils.{
   is_nft_spent, is_output_to_spend_validator, quantity_of_policy_id,
   safe_list_at, value_without_policy_id_as_list,
@@ -47,13 +48,22 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
         configNFTAssetName,
       )
 
-    let poolInputs =
-      st_utils.get_inputs_from_smart_credential(
-        self.inputs,
-        Script(config.poolSpendScriptHash),
-        Script(policy_id),
-        config.smartTokensSpendScriptHash,
-      )
+    let originInputs =
+      if redeemer.isPoolOrigin {
+        st_utils.get_inputs_from_smart_credential(
+          self.inputs,
+          Script(config.poolSpendScriptHash),
+          Script(policy_id),
+          config.smartTokensSpendScriptHash,
+        )
+      } else {
+        st_utils.get_inputs_from_smart_credential(
+          self.inputs,
+          Script(config.requestSpendScriptHash),
+          Script(policy_id),
+          config.smartTokensSpendScriptHash,
+        )
+      }
     let loanOutputs =
       st_utils.get_outputs_to_smart_credential(
         self.outputs,
@@ -69,38 +79,75 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
       )
 
     if list.length(mintedNFTs) > 0 {
-      let poolWithdrawRedeemer =
-        safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
-      expect poolWithdrawRedeemer.1st == Withdraw(Script(config.poolPolicyId))
-      expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
-
       let expectedMintedNFTs =
-        list.indexed_foldr(
-          poolInputs,
-          [],
-          fn(index, input, result) {
-            let poolRedeemerAction =
-              safe_list_at(poolRedeemer.actionsForEachInput, index)
+        if redeemer.isPoolOrigin {
+          let poolWithdrawRedeemer =
+            safe_list_at(self.redeemers, redeemer.originWithdrawRedeemerIndex)
+          expect
+            poolWithdrawRedeemer.1st == Withdraw(Script(config.poolPolicyId))
+          expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
+          list.indexed_foldr(
+            originInputs,
+            [],
+            fn(index, input, result) {
+              let poolRedeemerAction =
+                safe_list_at(poolRedeemer.actionsForEachInput, index)
 
-            when poolRedeemerAction is {
-              Borrow { .. } -> {
-                let loanAssetName =
-                  utils.hash_output_ref(input.output_reference)
-                let loanOutput = safe_list_at(loanOutputs, index)
-                expect and {
-                    dict.size(assets.tokens(loanOutput.value, policy_id)) == 1,
-                    assets.quantity_of(
-                      loanOutput.value,
-                      policy_id,
-                      loanAssetName,
-                    ) == 1,
-                  }
-                list.push(result, Pair(loanAssetName, 1))
+              when poolRedeemerAction is {
+                Borrow { .. } -> {
+                  let loanAssetName =
+                    utils.hash_output_ref(input.output_reference)
+                  let loanOutput = safe_list_at(loanOutputs, index)
+                  expect and {
+                      dict.size(assets.tokens(loanOutput.value, policy_id)) == 1,
+                      assets.quantity_of(
+                        loanOutput.value,
+                        policy_id,
+                        loanAssetName,
+                      ) == 1,
+                    }
+                  list.push(result, Pair(loanAssetName, 1))
+                }
+                _ -> result
               }
-              _ -> result
-            }
-          },
-        )
+            },
+          )
+        } else {
+          let requestWithdrawRedeemer =
+            safe_list_at(self.redeemers, redeemer.originWithdrawRedeemerIndex)
+          expect
+            requestWithdrawRedeemer.1st == Withdraw(
+              Script(config.requestPolicyId),
+            )
+          expect requestRedeemer: RequestWithdrawRedeemer =
+            requestWithdrawRedeemer.2nd
+          list.indexed_foldr(
+            originInputs,
+            [],
+            fn(index, input, result) {
+              let requestRedeemerAction =
+                safe_list_at(requestRedeemer.actionsForEachInput, index)
+
+              when requestRedeemerAction is {
+                Lend { .. } -> {
+                  let loanAssetName =
+                    utils.hash_output_ref(input.output_reference)
+                  let loanOutput = safe_list_at(loanOutputs, index)
+                  expect and {
+                      dict.size(assets.tokens(loanOutput.value, policy_id)) == 1,
+                      assets.quantity_of(
+                        loanOutput.value,
+                        policy_id,
+                        loanAssetName,
+                      ) == 1,
+                    }
+                  list.push(result, Pair(loanAssetName, 1))
+                }
+                _ -> result
+              }
+            },
+          )
+        }
 
       expectedMintedNFTs == mintedNFTs
     } else {
