@@ -23,7 +23,7 @@ use fluidtokens/types/loan.{
 use fluidtokens/types/oracle.{Aggregated, CommonFeedData} as oracle_type
 use fluidtokens/types/pool.{
   Borrow, Liquidation, NoLiquidationDutchAuctionClaim,
-  NoLiquidationFullCollateralClaim, PoolWithdrawRedeemer,
+  NoLiquidationFullCollateralClaim, PerpetualLoan, PoolWithdrawRedeemer,
 }
 use fluidtokens/types/repayment.{RepaymentDatum, RepaymentDatumWithToken}
 use fluidtokens/types/request.{Lend, RequestWithdrawRedeemer}
@@ -192,7 +192,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
           rational.new(datum.commonData.interestRate, 1000)
 
         when redeemerAction is {
-          Claim(
+          Claim {
             liquidationMode,
             lenderBondInputIndex,
             collateralOracleRefInputIndex,
@@ -201,7 +201,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
             lenderAddress,
             equity,
             loanId,
-          ) -> {
+          } -> {
             expect (Finite(validFrom), Finite(validTo)) =
               (
                 self.validity_range.lower_bound.bound_type,
@@ -266,7 +266,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                     ),
                   }
                 }
-                Liquidation(lTV, lTVDivider, partialLiquidation) -> {
+                Liquidation { lTV, lTVDivider, partialLiquidation } -> {
                   let principalAmountAsRational =
                     rational.from_int(datum.principalAmount)
                   expect Some(collateralOracleToken) =
@@ -383,7 +383,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
             }
           }
 
-          Repay(borrowerBondInputIndex, loanId) -> {
+          Repay { borrowerBondInputIndex, loanId, isFinalRepayment } -> {
             expect Finite(validFrom) =
               self.validity_range.lower_bound.bound_type
             expect Some(borrowerBondInput) =
@@ -407,18 +407,35 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 datum.commonData.installmentPeriod,
                 datum.commonData.repaymentTimeWindow,
               )
+            let isPerpetualLoanAndIsFinalRepayment =
+              when datum.commonData.repaymentMode is {
+                PerpetualLoan { .. } -> isFinalRepayment
+                _ -> False
+              }
             let nextRepaymentAmount =
-              get_installment_amount(
-                datum.commonData.repaymentMode,
-                rational.from_int(datum.principalAmount),
-                interestRateAsRational,
-                datum.commonData.totalInstallments,
-                datum.repaidInstallments,
-                datum.commonData.installmentPeriod,
-                datum.commonData.initialGracePeriod,
-                isRepaymentLate,
-                datum.commonData.penaltyFeeForLateRepayment,
-              )
+              if isPerpetualLoanAndIsFinalRepayment {
+                get_remaining_debt(
+                  datum.commonData.repaymentMode,
+                  rational.from_int(datum.principalAmount),
+                  interestRateAsRational,
+                  datum.commonData.totalInstallments,
+                  datum.repaidInstallments,
+                  datum.commonData.installmentPeriod,
+                  datum.commonData.initialGracePeriod,
+                )
+              } else {
+                get_installment_amount(
+                  datum.commonData.repaymentMode,
+                  rational.from_int(datum.principalAmount),
+                  interestRateAsRational,
+                  datum.commonData.totalInstallments,
+                  datum.repaidInstallments,
+                  datum.commonData.installmentPeriod,
+                  datum.commonData.initialGracePeriod,
+                  isRepaymentLate,
+                  datum.commonData.penaltyFeeForLateRepayment,
+                )
+              }
             and {
               quantity_of(input.output.value, loanPolicyId, loanId) == 1,
               is_nft_spent(
@@ -441,7 +458,10 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               ),
               or {
                 and {
-                  datum.repaidInstallments == datum.commonData.totalInstallments - 1,
+                  or {
+                    isPerpetualLoanAndIsFinalRepayment,
+                    datum.repaidInstallments == datum.commonData.totalInstallments - 1,
+                  },
                   quantity_of(self.mint, loanPolicyId, loanId) == -1,
                 },
                 {
@@ -466,7 +486,11 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               },
             }
           }
-          AddCollateral(borrowerBondInputIndex, addedCollateralAmount, loanId) -> {
+          AddCollateral {
+            borrowerBondInputIndex,
+            addedCollateralAmount,
+            loanId,
+          } -> {
             expect Some(borrowerBondInput) =
               list.at(self.inputs, borrowerBondInputIndex)
             expect Some(loanOutput) =
@@ -497,7 +521,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               ),
             }
           }
-          Recast(borrowerBondInputIndex, principalPaid, loanId) -> {
+          Recast { borrowerBondInputIndex, principalPaid, loanId } -> {
             expect Some(borrowerBondInput) =
               list.at(self.inputs, borrowerBondInputIndex)
             expect Some(repaymentOutput) =

@@ -208,6 +208,7 @@ pub fn can_liquidate(
 }
 
 //Remaining debt expressed in principal currency
+//It ignores any late repayment penalty.
 pub fn get_remaining_debt(
   repaymentMode: RepaymentMode,
   principal: Rational,
@@ -217,17 +218,39 @@ pub fn get_remaining_debt(
   installmentPeriod: Int,
   initialGracePeriod: Int,
 ) {
-  ( totalInstallments - repaidInstallments ) * get_installment_amount(
-    repaymentMode,
-    principal,
-    interestRate,
-    totalInstallments,
-    repaidInstallments,
-    installmentPeriod,
-    initialGracePeriod,
-    False,
-    0,
-  )
+  when repaymentMode is {
+    PerpetualLoan {
+      interestRateIncreaseLinearCoefficient,
+      interestRateIncreaseLinearCoefficientDivider,
+      ..
+    } -> {
+      let periodToLatestPaidInstallment = repaidInstallments * installmentPeriod
+      let timePassed = initialGracePeriod + periodToLatestPaidInstallment
+      expect Some(currentInterestRateIncrease) =
+        rational.new(
+          interestRateIncreaseLinearCoefficient * timePassed,
+          interestRateIncreaseLinearCoefficientDivider,
+        )
+      let currentInterestRate =
+        rational.add(interestRate, currentInterestRateIncrease)
+
+      rational.ceil(
+        rational.add(principal, rational.mul(principal, currentInterestRate)),
+      )
+    }
+    _ ->
+      ( totalInstallments - repaidInstallments ) * get_installment_amount(
+        repaymentMode,
+        principal,
+        interestRate,
+        totalInstallments,
+        repaidInstallments,
+        installmentPeriod,
+        initialGracePeriod,
+        False,
+        0,
+      )
+  }
 }
 
 //Installment expressed in principal currency

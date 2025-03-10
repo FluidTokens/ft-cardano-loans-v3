@@ -32,7 +32,7 @@ pub type LoanAction {
     //This is the absolute input index that contains the lender bond
     lenderBondInputIndex: Int,
     //If loan doesn't use oracle, this is not used
-    collateralOracleInputIndex: Int,
+    collateralOracleRefInputIndex: Int,
     //If loan doesn't use oracle, this is not used
     principalOracleRefInputIndex: Int,
     //Used only when an auction must start as part of liquidation
@@ -46,19 +46,21 @@ pub type LoanAction {
   //Borrower action
   Repay {
     //This is the absolute input index that contains the borrower bond
-    bondInputIndex: Int,
+    borrowerBondInputIndex: Int,
     loanId: ByteArray,
+    //Used only in Perpetual Loans to signal the last repayment that will close the loan
+    isFinalRepayment: Bool,
   }
   //Borrower action
   AddCollateral {
-    bondInputIndex: Int,
+    borrowerBondInputIndex: Int,
     //Units of collateral added to improve the health of the loan
     addedCollateralAmount: Int,
     loanId: ByteArray,
   }
   //Borrower action
   Recast {
-    bondInputIndex: Int,
+    borrowerBondInputIndex: Int,
     //In principal units
     principalPaid: Int,
     loanId: ByteArray,
