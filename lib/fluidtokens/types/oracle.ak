@@ -25,6 +25,8 @@ pub type OraclePriceFeed {
     common: CommonFeedData,
     token_a_amount_in_pool: Int,
     token_b_amount_in_pool: Int,
+    //Fees expected to pay from the AMM pool. Put 3 for 0.3%
+    pool_fees_per_mille: Int,
   }
   //When used as collateral, complex vaults (represented by a key token) and NFTs can have a dedicated oracle 
   //that calculates the total value in lovelace.
