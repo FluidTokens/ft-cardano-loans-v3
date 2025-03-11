@@ -393,8 +393,8 @@ fn validate_output_to_loan(
   requestId: ByteArray,
 ) -> (Bool, LoanDatum) {
   let collateralUnchanged =
-    add(output.value, loanPolicyId, loanId, -1) == add(
-      requestValue,
+    add(without_lovelace(output.value), loanPolicyId, loanId, -1) == add(
+      without_lovelace(requestValue),
       requestPolicyId,
       requestId,
       -1,
