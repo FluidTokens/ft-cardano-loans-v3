@@ -1,5 +1,6 @@
 use aiken/collection/dict
 use aiken/collection/list
+use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
 use aiken/interval.{Finite}
 use aiken/primitive/bytearray
@@ -9,6 +10,10 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use fluidtokens/types/config.{ConfigDatum}
+use fluidtokens/types/general.{Asset}
+use fluidtokens/types/oracle.{
+  CharlieTokenSpecs, GenericData, OracleDatum, PriceData,
+}
 
 pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
   crypto.sha2_256(
@@ -109,4 +114,85 @@ pub fn safe_list_at(list: List<a>, index: Int) {
 pub fn safe_expect(maybeElem: Option<a>) {
   expect Some(elem) = maybeElem
   elem
+}
+
+//-------------------------- CHARLIE 3 UTILS
+
+/// Retrieves the price from the PriceData
+///
+/// @param price_data - The PriceData to extract the price from
+/// @return The price as an Int
+pub fn get_price(price_data: PriceData) -> Int {
+  when price_data is {
+    GenericData { price_map } ->
+      when pairs.get_first(price_map, 0) is {
+        Some(price) -> price
+        None -> fail @"Price not found"
+      }
+    _ -> fail @"Invalid PriceData variant"
+  }
+}
+
+/// Retrieves the timestamp from the PriceData
+///
+/// @param price_data - The PriceData to extract the timestamp from
+/// @return The timestamp as an Int
+pub fn get_timestamp(price_data: PriceData) -> Int {
+  when price_data is {
+    GenericData { price_map } ->
+      when pairs.get_first(price_map, 1) is {
+        Some(timestamp) -> timestamp
+        None -> fail @"Timestamp not found"
+      }
+    _ -> fail @"Invalid PriceData variant"
+  }
+}
+
+/// Retrieves the expiry from the PriceData
+///
+/// @param price_data - The PriceData to extract the expiry from
+/// @return The expiry as an Int
+pub fn get_expiry(price_data: PriceData) -> Int {
+  when price_data is {
+    GenericData { price_map } ->
+      when pairs.get_first(price_map, 2) is {
+        Some(expiry) -> expiry
+        None -> fail @"Expiry not found"
+      }
+    _ -> fail @"Invalid PriceData variant"
+  }
+}
+
+/// Checks if the oracle data is valid (not expired)
+///
+/// @param oracle_datum - The OracleDatum to check
+/// @param current_time - The current time to compare against
+/// @return True if the oracle is valid, False otherwise
+pub fn is_oracle_valid(oracle_datum: OracleDatum, current_time: Int) -> Bool {
+  current_time <= get_expiry(oracle_datum.price_data)
+}
+
+/// Retrieves the price from the OracleDatum
+///
+/// @param oracle_datum - The OracleDatum to extract the price from
+/// @return The price as an Int
+pub fn get_oracle_price(oracle_datum: OracleDatum) -> Int {
+  get_price(oracle_datum.price_data)
+}
+
+/// Retrieves the timestamp from the OracleDatum
+///
+/// @param oracle_datum - The OracleDatum to extract the timestamp from
+/// @return The timestamp as an Int
+pub fn get_oracle_timestamp(oracle_datum: OracleDatum) -> Int {
+  get_timestamp(oracle_datum.price_data)
+}
+
+pub fn get_oracle_config(
+  oracle_specs: CharlieTokenSpecs,
+  feedToken: Asset,
+) -> (PolicyId, Int) {
+  expect Some(token_pairs) = pairs.get_first(oracle_specs, feedToken.policyId)
+  expect Some(result) = pairs.get_first(token_pairs, feedToken.assetName)
+  result
 }

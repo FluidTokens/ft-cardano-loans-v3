@@ -1,7 +1,9 @@
 use aiken/math/rational.{Rational}
 use cardano/assets.{Value, quantity_of}
 use fluidtokens/types/general.{CollateralAsset}
-use fluidtokens/types/oracle.{Aggregated, Dedicated, OraclePriceFeed, Pooled}
+use fluidtokens/types/oracle.{
+  Aggregated, Dedicated, OraclePriceFeed, Pooled, PriceDataCharlie,
+}
 use fluidtokens/types/pool.{
   InterestOnRemainingPrincipal, PerpetualLoan,
   PrincipalAndInterestOnInstallments, RepaymentMode,
@@ -80,6 +82,11 @@ fn get_token_amount_in_lovelace(
         rational.new(price_in_lovelaces, price_denominator)
       rational.mul(tokenPrice, tokenAmount)
     }
+    PriceDataCharlie { price_in_lovelaces, price_denominator, .. } -> {
+      expect Some(tokenPrice) =
+        rational.new(price_in_lovelaces, price_denominator)
+      rational.mul(tokenPrice, tokenAmount)
+    }
   }
 }
 
@@ -109,6 +116,12 @@ fn get_lovelace_amount_in_token_currency(
         ),
       )
     Dedicated { price_in_lovelaces, price_denominator, .. } -> {
+      expect Some(tokenPrice) =
+        rational.new(price_in_lovelaces, price_denominator)
+      expect Some(tokensAmount) = rational.div(lovelaces, tokenPrice)
+      tokensAmount
+    }
+    PriceDataCharlie { price_in_lovelaces, price_denominator, .. } -> {
       expect Some(tokenPrice) =
         rational.new(price_in_lovelaces, price_denominator)
       expect Some(tokensAmount) = rational.div(lovelaces, tokenPrice)
