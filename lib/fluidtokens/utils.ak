@@ -1,5 +1,6 @@
 use aiken/collection/dict
 use aiken/collection/list
+use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
 use aiken/interval.{Finite}
 use aiken/primitive/bytearray
@@ -9,6 +10,8 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use fluidtokens/types/config.{ConfigDatum}
+use fluidtokens/types/general.{Asset}
+use fluidtokens/types/oracle.{CharlieTokenSpecs, GenericData, PriceData}
 
 pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
   crypto.sha2_256(
@@ -109,4 +112,27 @@ pub fn safe_list_at(list: List<a>, index: Int) {
 pub fn safe_expect(maybeElem: Option<a>) {
   expect Some(elem) = maybeElem
   elem
+}
+
+//-------------------------- CHARLIE 3 UTILS
+
+pub fn get_oracle_info(price_data: PriceData) -> (Int, Int, Int) {
+  when price_data is {
+    GenericData { price_map } ->
+      when price_map is {
+        [Pair(0, price), Pair(1, timestamp), Pair(2, expiry)] ->
+          (price, timestamp, expiry)
+        _ -> fail @"Invalid price, timestamp or expiry"
+      }
+    _ -> fail @"Invalid PriceData variant"
+  }
+}
+
+pub fn get_oracle_config(
+  oracle_specs: CharlieTokenSpecs,
+  feedToken: Asset,
+) -> (PolicyId, Int) {
+  expect Some(token_pairs) = pairs.get_first(oracle_specs, feedToken.policyId)
+  expect Some(result) = pairs.get_first(token_pairs, feedToken.assetName)
+  result
 }

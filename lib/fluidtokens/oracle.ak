@@ -6,6 +6,7 @@ use fluidtokens/constants
 use fluidtokens/types/general.{Asset}
 use fluidtokens/types/oracle.{
   Aggregated, Dedicated, OraclePriceFeed, OracleRedeemer, Pooled,
+  PriceDataCharlie,
 }
 
 //Ensure that the oracle is showing the data of the token
@@ -43,6 +44,7 @@ pub fn retrieve_oracle_data(
       Pooled { common, .. } -> common
       Aggregated { common, .. } -> common
       Dedicated { common, .. } -> common
+      PriceDataCharlie { common, .. } -> common
     }
 
   if and {

@@ -9,3 +9,5 @@ pub const repayment_action_installment = "installment_repayment"
 pub const repayment_action_recast = "recast"
 
 pub const repayment_action_partial_liquidation = "partial_liquidation"
+
+pub const charlie_identifier_asset_name = "OracleFeed"
