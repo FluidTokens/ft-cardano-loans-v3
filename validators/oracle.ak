@@ -9,9 +9,7 @@ use fluidtokens/constants
 use fluidtokens/types/oracle.{
   CharlieTokenSpecs, OracleDatum, OracleRedeemer, PriceDataCharlie,
 } as o
-use fluidtokens/utils.{
-  get_expiry, get_oracle_config, get_oracle_price, get_oracle_timestamp,
-}
+use fluidtokens/utils.{get_oracle_config, get_oracle_info}
 
 validator oracle(
   verification_keys: List<ByteArray>,
@@ -57,34 +55,36 @@ validator oracle(
         expect InlineDatum(referenceDatum) = charlie_input.output.datum
         expect oracleDatum: OracleDatum = referenceDatum
 
-        //informations coming from charli3
-        let start_oracle = get_oracle_timestamp(oracleDatum)
-        let end_oracle = get_expiry(oracleDatum.price_data)
-        let price_oracle = get_oracle_price(oracleDatum)
+        //Information coming from charli3
+        let (price_oracle, start_oracle, end_oracle) =
+          get_oracle_info(oracleDatum.price_data)
 
-        //for each assetname our contracts knows what token identifier should look for and also the mutlipliers to parse the datum from provider to our lovelace format
+        //For each assetname our contracts knows what token identifier should look for and also the mutlipliers to parse the datum from provider to our lovelace format
         let provider_info = get_oracle_config(charlie_specs, common.token)
         let token_provider_identifier = provider_info.1st
         let decimals = provider_info.2nd
 
-        //token price of FLDT 0.35 ADA therefore is 350000 by charlie FLDT 6 decimals
-        //therefore 1000000 unit FLDT = 350000 lovelace 
+        //Suppose token price of 1 FLDT is 0.35 ADA
+        //Charlie says 1 FLDT = 350000 lovelace and that it has 6 decimals
+        //Therefore 1000000 unitFLDT = 350000 lovelace 
         //unitFLDT/lovelace=0.35
-        //therefore we will write in redeemer 35 and 100 as divider
-        //token price of SNEK is 0.003 SNEK/ADA therefore is 3000 by charlie SNEK 0 decimals
-        //1 SNEK= 3000 lovelace
-        //we will write in redeemer 3000 and 1 as divider
-        //Raulito price is 0.20 and has 8 decimals
-        //100000000 uraulito=200000
-        //0.002 2/1000
-        //redeemrprice*100000000/redemeerdivider=charli3
-        //35*1000000/100 = charlie3
-        //3000*1/1=charlie3
+        //So we will write in the redeemer 35 as value and 100 as divider.
+        //Another example, token price of 1 SNEK is 0.003 ADA
+        //Charlie says 1 SNEK = 3000 lovelace and that it has 0 decimals
+        //Therefore 1 unitSNEK = 3000 lovelace
+        //So we will write in redeemer 3000 and 1 as divider.
+        //Again, token price of 1 Raulito  is 0.20 ADA
+        //Charlie says 1 Raulito = 200000 lovelace and that it has 8 decimals
+        //Therefore 100000000 unitRaulito = 200000 lovelace
+        //1 unitRaulito = 0.002 lovelace
+        //So we will write in redeemer 2 and 1000 as divider.
+        //The equality that must hold then it's:
+        //redeemer_price*charlie3_token_decimals/redeemer_divider == charlie3_price_oracle
         and {
           quantity_of(
             charlie_input.output.value,
             token_provider_identifier,
-            constants.assetname_identifier_charlie,
+            constants.charlie_identifier_asset_name,
           ) == 1,
           common.valid_from >= start_oracle,
           common.valid_to <= end_oracle,
