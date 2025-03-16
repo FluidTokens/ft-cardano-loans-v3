@@ -249,6 +249,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       datum.repaidInstallments,
                       datum.commonData.installmentPeriod,
                       datum.commonData.initialGracePeriod,
+                      validFrom - datum.lendDate,
                     )
                   and {
                     isRepaymentLate,
@@ -326,6 +327,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       datum.repaidInstallments,
                       datum.commonData.installmentPeriod,
                       datum.commonData.initialGracePeriod,
+                      validFrom - datum.lendDate,
                     )
                   let collateralAmount =
                     get_collateral_amount(input.output.value, datum.collateral)
@@ -422,6 +424,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                   datum.repaidInstallments,
                   datum.commonData.installmentPeriod,
                   datum.commonData.initialGracePeriod,
+                  validFrom - datum.lendDate,
                 )
               } else {
                 get_installment_amount(
@@ -522,6 +525,8 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
             }
           }
           Recast { borrowerBondInputIndex, principalPaid, loanId } -> {
+            expect Finite(validFrom) =
+              self.validity_range.lower_bound.bound_type
             expect Some(borrowerBondInput) =
               list.at(self.inputs, borrowerBondInputIndex)
             expect Some(repaymentOutput) =
@@ -543,6 +548,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 datum.repaidInstallments,
                 datum.commonData.installmentPeriod,
                 datum.commonData.initialGracePeriod,
+                validFrom - datum.lendDate,
               )
             and {
               principalPaid > 0,

@@ -247,6 +247,7 @@ pub fn get_remaining_debt(
   repaidInstallments: Int,
   installmentPeriod: Int,
   initialGracePeriod: Int,
+  timeSinceLendDate: Int,
 ) {
   when repaymentMode is {
     PerpetualLoan {
@@ -254,15 +255,20 @@ pub fn get_remaining_debt(
       interestRateIncreaseLinearCoefficientDivider,
       ..
     } -> {
-      let periodToLatestPaidInstallment = repaidInstallments * installmentPeriod
-      let timePassed = initialGracePeriod + periodToLatestPaidInstallment
-      expect Some(currentInterestRateIncrease) =
-        rational.new(
-          interestRateIncreaseLinearCoefficient * timePassed,
-          interestRateIncreaseLinearCoefficientDivider,
-        )
       let currentInterestRate =
-        rational.add(interestRate, currentInterestRateIncrease)
+        if interestRateIncreaseLinearCoefficient > 0 {
+          expect Some(currentInterestRateIncrease) =
+            rational.new(
+              interestRateIncreaseLinearCoefficient * timeSinceLendDate,
+              interestRateIncreaseLinearCoefficientDivider,
+            )
+          rational.add(
+            interestRate,
+            rational.mul(interestRate, currentInterestRateIncrease),
+          )
+        } else {
+          interestRate
+        }
 
       rational.ceil(
         rational.add(principal, rational.mul(principal, currentInterestRate)),
@@ -346,7 +352,8 @@ pub fn get_installment_amount(
       interestRateIncreaseLinearCoefficientDivider,
       ..
     } -> {
-      let periodToLatestPaidInstallment = repaidInstallments * installmentPeriod
+      let periodToLatestPaidInstallment =
+        ( repaidInstallments + 1 ) * installmentPeriod
       let timePassed = initialGracePeriod + periodToLatestPaidInstallment
       expect Some(currentInterestRateIncrease) =
         rational.new(
@@ -399,7 +406,8 @@ pub fn is_repayment_late(
   installmentPeriod: Int,
   repaymentTimeWindow: Int,
 ) {
-  let periodToLatestPaidInstallment = repaidInstallments * installmentPeriod
+  let periodToLatestPaidInstallment =
+    ( repaidInstallments + 1 ) * installmentPeriod
   validFrom > lendDate + initialGracePeriod + periodToLatestPaidInstallment + repaymentTimeWindow
 }
 
