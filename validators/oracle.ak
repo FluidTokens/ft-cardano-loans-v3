@@ -1,15 +1,18 @@
 use aiken/builtin
 use aiken/collection/list
 use aiken/math
-use cardano/address.{Credential}
+use cardano/address.{Credential, Script}
 use cardano/assets.{quantity_of}
 use cardano/transaction.{InlineDatum, OutputReference, Transaction}
 use fluidtokens/authorizer
 use fluidtokens/constants
 use fluidtokens/types/oracle.{
-  CharlieTokenSpecs, OracleDatum, OracleRedeemer, PriceDataCharlie,
+  CharlieTokenSpecs, FspDat, OracleDatum, OracleRedeemer, OrcfaxTokenSpecs,
+  PriceDataCharlie, PriceDataOrcfax, RationalDatum,
 } as o
-use fluidtokens/utils.{get_oracle_config, get_oracle_info}
+use fluidtokens/utils.{
+  get_oracle_config, get_oracle_info, get_oracle_orcfax_config,
+}
 
 validator oracle(
   verification_keys: List<ByteArray>,
@@ -19,6 +22,7 @@ validator oracle(
   governance_token_policy_id: ByteArray,
   governance_token_asset_name: ByteArray,
   charlie_specs: CharlieTokenSpecs,
+  orcfax_specs: OrcfaxTokenSpecs,
 ) {
   //Allow to move Oracle NFT if governance have signed off.
   spend(
@@ -91,6 +95,65 @@ validator oracle(
           price_in_lovelaces * math.pow(10, decimals) / price_denominator == price_oracle,
         }
       }
+
+      PriceDataOrcfax(
+        pointer_ref_input_index,
+        provider_ref_input_index,
+        common,
+        price_in_lovelaces,
+        price_denominator,
+      ) -> {
+        expect Some(orcfax_pointer_input) =
+          list.at(self.reference_inputs, pointer_ref_input_index)
+        expect InlineDatum(referenceDatum) = orcfax_pointer_input.output.datum
+        expect pointerDatum: FspDat = referenceDatum
+
+        expect Some(orcfax_price_input) =
+          list.at(self.reference_inputs, provider_ref_input_index)
+        expect InlineDatum(referenceDatum) = orcfax_price_input.output.datum
+        expect oracleDatum: RationalDatum = referenceDatum
+
+        let provider_info = get_oracle_orcfax_config(orcfax_specs, common.token)
+        let policy_pointer_identifier = provider_info.1st
+        let decimals = provider_info.2nd
+        let feed_id = provider_info.3rd
+
+        expect Script(orcfax_feed_scripthash) =
+          orcfax_price_input.output.address.payment_credential
+
+        expect Script(orcfax_pointer_scripthash) =
+          orcfax_pointer_input.output.address.payment_credential
+
+        //There is no check on expiration because orcfax keeps updating the utxo as soon as there is an update of price, so until utxo is present, feed is ok
+        //Orcfax provides price in numerator/denominator in TOKEN/ADA, but we use unitTOKEN/lovelace so in order to convert it 
+        //FLDT/ADA 0.3
+        //unitFLDT/lovelace 0.3 because same decimals
+        //SNEK/ADA 0.0002
+        //200 unitSNEK/lovelace 
+        //therefore in order to get we multipliy numerator by 10^6 and denominator by 10^decimals of token 
+        and {
+          orcfax_feed_scripthash == pointerDatum,
+          oracleDatum.statement.feed_id == feed_id,
+          orcfax_pointer_scripthash == policy_pointer_identifier,
+          quantity_of(
+            orcfax_pointer_input.output.value,
+            policy_pointer_identifier,
+            constants.orcfax_identifier_pointer_asset_name,
+          ) == 1,
+          quantity_of(
+            orcfax_price_input.output.value,
+            pointerDatum,
+            constants.orcfax_identifier_feed_asset_name,
+          ) == 1,
+          common.valid_from >= oracleDatum.statement.created_at,
+          oracleDatum.statement.body.num == price_in_lovelaces * 1000000,
+          oracleDatum.statement.body.denom == price_denominator * math.pow(
+            10,
+            decimals,
+          ),
+        }
+      }
+
       _ -> {
         let valid_signatures =
           list.foldl(
