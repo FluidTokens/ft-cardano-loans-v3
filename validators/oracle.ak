@@ -1,6 +1,8 @@
 use aiken/builtin
 use aiken/collection/list
 use aiken/math
+use aiken/math/rational.{compare}
+use aiken/primitive/bytearray.{starts_with}
 use cardano/address.{Credential, Script}
 use cardano/assets.{quantity_of}
 use cardano/transaction.{InlineDatum, OutputReference, Transaction}
@@ -124,16 +126,27 @@ validator oracle(
         expect Script(orcfax_pointer_scripthash) =
           orcfax_pointer_input.output.address.payment_credential
 
-        //There is no check on expiration because orcfax keeps updating the utxo as soon as there is an update of price, so until utxo is present, feed is ok
         //Orcfax provides price in numerator/denominator in TOKEN/ADA, but we use unitTOKEN/lovelace so in order to convert it 
         //FLDT/ADA 0.3
         //unitFLDT/lovelace 0.3 because same decimals
-        //SNEK/ADA 0.0002
+        //SNEK/ADA 0.0002 so 200/1000000
         //200 unitSNEK/lovelace 
         //therefore in order to get we multipliy numerator by 10^6 and denominator by 10^decimals of token 
+        expect Some(fluid_price) =
+          rational.new(price_in_lovelaces, price_denominator)
+        expect Some(multiplier) = rational.new(1000000, math.pow(10, decimals))
+        let result = rational.mul(fluid_price, multiplier)
+        let reduced = rational.reduce(result)
+        expect Some(orcfax_price) =
+          rational.new(
+            oracleDatum.statement.body.num,
+            oracleDatum.statement.body.denom,
+          )
+        //Orcfax does not has expiration however has tolerance, meaning that a feed older than that time should not be considered
+        //In our case we have 6 hours tolerance
         and {
           orcfax_feed_scripthash == pointerDatum,
-          oracleDatum.statement.feed_id == feed_id,
+          starts_with(oracleDatum.statement.feed_id, feed_id),
           orcfax_pointer_scripthash == policy_pointer_identifier,
           quantity_of(
             orcfax_pointer_input.output.value,
@@ -145,12 +158,8 @@ validator oracle(
             pointerDatum,
             constants.orcfax_identifier_feed_asset_name,
           ) == 1,
-          common.valid_from >= oracleDatum.statement.created_at,
-          oracleDatum.statement.body.num == price_in_lovelaces * 1000000,
-          oracleDatum.statement.body.denom == price_denominator * math.pow(
-            10,
-            decimals,
-          ),
+          common.valid_to - constants.max_orcfax_tolerance <= oracleDatum.statement.created_at,
+          compare(reduced, orcfax_price) == Equal,
         }
       }
 
