@@ -155,7 +155,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
         let lname = builtin.fst_pair(l)
         let rname = builtin.fst_pair(r)
         bytearray.compare(lname, rname)
-      })  == mintedNFTs
+      }) == mintedNFTs
     } else {
       True
     }
