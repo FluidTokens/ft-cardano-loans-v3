@@ -1,3 +1,5 @@
+use aiken/builtin
+use aiken/primitive/bytearray
 use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
@@ -83,8 +85,8 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
         if redeemer.isPoolOrigin {
           let poolWithdrawRedeemer =
             safe_list_at(self.redeemers, redeemer.originWithdrawRedeemerIndex)
-          expect
-            poolWithdrawRedeemer.1st == Withdraw(Script(config.poolPolicyId))
+          expect poolWithdrawRedeemer.1st == Withdraw(Script(config.poolPolicyId))
+
           expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
           list.indexed_foldr(
             originInputs,
@@ -149,7 +151,11 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
           )
         }
 
-      expectedMintedNFTs == mintedNFTs
+      list.sort(expectedMintedNFTs, fn (l: Pair<ByteArray, Int>, r: Pair<ByteArray, Int>) {
+        let lname = builtin.fst_pair(l)
+        let rname = builtin.fst_pair(r)
+        bytearray.compare(lname, rname)
+      })  == mintedNFTs
     } else {
       True
     }
