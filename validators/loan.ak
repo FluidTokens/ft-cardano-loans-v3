@@ -149,7 +149,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
           )
         }
 
-      expectedMintedNFTs == mintedNFTs
+      list.sort(expectedMintedNFTs, utils.pairs_ordering) == mintedNFTs
     } else {
       True
     }

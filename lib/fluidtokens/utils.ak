@@ -136,3 +136,11 @@ pub fn get_oracle_config(
   expect Some(result) = pairs.get_first(token_pairs, feedToken.assetName)
   result
 }
+
+//It requires that the keys are not duplicated
+pub fn pairs_ordering(
+  pair1: Pair<ByteArray, Int>,
+  pair2: Pair<ByteArray, Int>,
+) -> Ordering {
+  bytearray.compare(pair1.1st, pair2.1st)
+}
