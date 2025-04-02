@@ -270,7 +270,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               },
               quantity_of(input.output.value, poolPolicyId, poolId) == 1,
               validity_range_within_an_hour(self),
-              loanOutputValidationResults.1st,
+              loanOutputValidationResults,
               bonds_sent_to_both_parties(
                 self.mint,
                 outputWithLenderToken,
@@ -278,8 +278,6 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 config.lenderBondPolicyId,
                 inputUtxoId,
                 datum.lenderAddress,
-                datum.lenderTokenOutputMustHaveLoanDatum,
-                loanOutputValidationResults.2nd,
               ),
               or {
                 and {
@@ -321,15 +319,9 @@ fn bonds_sent_to_both_parties(
   lenderBondPolicyId: ByteArray,
   bondId: ByteArray,
   lenderAddress: Address,
-  lenderTokenOutputMustHaveLoanDatum: Bool,
-  lenderBondOutputDatum: LoanDatum,
 ) {
   and {
     outputWithLenderToken.address == lenderAddress,
-    or {
-      lenderTokenOutputMustHaveLoanDatum == False,
-      outputWithLenderToken.datum == InlineDatum(lenderBondOutputDatum),
-    },
     quantity_of(mintedValue, borrowerBondPolicyId, bondId) == 1,
     quantity_of(outputWithLenderToken.value, lenderBondPolicyId, bondId) == 1,
     length(flatten(outputWithLenderToken.value)) <= 5,
@@ -348,7 +340,7 @@ fn validate_output_to_loan(
   end: Int,
   borrowerAddress: Address,
   poolId: ByteArray,
-) -> (Bool, LoanDatum) {
+) -> Bool {
   let containsEnoughCollateral =
     when chosenCollateral.maybeAssetName is {
       Some(chosenCollateralAssetName) ->
@@ -392,13 +384,13 @@ fn validate_output_to_loan(
       True
     }
   let dosProtection = length(flatten(output.value)) <= 21
-  (and {
-      correctDestination,
-      isDatumCorrect,
-      containsLoanNFT,
-      containsEnoughCollateral,
-      dosProtection,
-    }, newDatum)
+  and {
+    correctDestination,
+    isDatumCorrect,
+    containsLoanNFT,
+    containsEnoughCollateral,
+    dosProtection,
+  }
 }
 
 //Expects remainingPrincipalAmountAfterBorrow > 0

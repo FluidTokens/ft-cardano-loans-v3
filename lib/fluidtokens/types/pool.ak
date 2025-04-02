@@ -78,8 +78,6 @@ pub type PoolDatum {
   principalLTVDivider: List<Int>,
   //True if borrowable amount of the collateralOptions must be updated through oracles
   dynamicCollateralPrice: Bool,
-  //If true, the output of lender's bond contains LoanDatum, useful if the lender is a SC to do onchain validation.
-  lenderTokenOutputMustHaveLoanDatum: Bool,
   //Permissioned pools use this field to specify an extra Withdraw validator to force the conditions of the Borrow action.
   //Put "NONE" if it's a permissionless pool
   permissionedConditionScriptHash: ByteArray,
