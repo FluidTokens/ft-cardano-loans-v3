@@ -17,7 +17,7 @@ use fluidtokens/types/config.{ConfigDatum}
 use fluidtokens/types/dutch_auction.{DutchAuctionDatum}
 use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
 use fluidtokens/types/loan.{
-  AddCollateral, Claim, LoanDatum, LoanMintRedeemer, LoanWithdrawRedeemer,
+  ChangeCollateral, Claim, LoanDatum, LoanMintRedeemer, LoanWithdrawRedeemer,
   Recast, Repay,
 } as l
 use fluidtokens/types/oracle.{Aggregated, CommonFeedData} as oracle_type
@@ -489,41 +489,106 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               },
             }
           }
-          AddCollateral {
+          ChangeCollateral {
             borrowerBondInputIndex,
-            addedCollateralAmount,
+            newCollateralAmount,
             loanId,
-          } -> {
-            expect Some(borrowerBondInput) =
-              list.at(self.inputs, borrowerBondInputIndex)
-            expect Some(loanOutput) =
-              list.at(
-                get_outputs_to_smart_credential(
-                  self.outputs,
-                  Script(config.loanSpendScriptHash),
-                  credential,
-                  config.smartTokensSpendScriptHash,
-                ),
-                index,
-              )
-            and {
-              addedCollateralAmount > 0,
-              quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-              is_nft_spent(
-                config.borrowerBondPolicyId,
-                datum.borrowerAssetName,
-                borrowerBondInput,
-              ),
-              validate_output_to_loan_for_adding_collateral(
-                loanOutput,
-                datum,
-                addedCollateralAmount,
-                input.output.value,
-                input.output.address.stake_credential,
-                config.loanSpendScriptHash,
-              ),
+            collateralOracleRefInputIndex,
+            principalOracleRefInputIndex,
+          } ->
+            when datum.commonData.liquidationMode is {
+              Liquidation { lTV, lTVDivider, .. } -> {
+                expect Finite(validTo) =
+                  self.validity_range.upper_bound.bound_type
+                expect Some(borrowerBondInput) =
+                  list.at(self.inputs, borrowerBondInputIndex)
+                expect Some(loanOutput) =
+                  list.at(
+                    get_outputs_to_smart_credential(
+                      self.outputs,
+                      Script(config.loanSpendScriptHash),
+                      credential,
+                      config.smartTokensSpendScriptHash,
+                    ),
+                    index,
+                  )
+                let principalAmountAsRational =
+                  rational.from_int(datum.principalAmount)
+                expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
+                expect Some(collateralOracleToken) =
+                  datum.collateral.maybeOracleTokenAsset
+                let collateralOracleRefInput =
+                  safe_list_at(
+                    self.reference_inputs,
+                    collateralOracleRefInputIndex,
+                  )
+                expect Some(collateralOraclePriceFeed) =
+                  retrieve_oracle_data(
+                    collateralOracleRefInput.output.address.payment_credential,
+                    collateralOracleRefInput.output.value,
+                    self.redeemers,
+                    validTo,
+                    collateralOracleToken.policyId,
+                    collateralOracleToken.assetName,
+                    datum.collateral.policyId,
+                    datum.collateral.maybeAssetName,
+                  )
+                let principalOracleRefInput =
+                  safe_list_at(
+                    self.reference_inputs,
+                    principalOracleRefInputIndex,
+                  )
+                expect Some(principalOraclePriceFeed) =
+                  if datum.commonData.principalAsset.policyId == "" {
+                    Some(
+                      Aggregated {
+                        common: CommonFeedData {
+                          valid_from: 0,
+                          valid_to: 0,
+                          token: Asset { policyId: "", assetName: "" },
+                        },
+                        token_price_in_lovelaces: 1,
+                        token_price_denominator: 1,
+                      },
+                    )
+                  } else {
+                    retrieve_oracle_data(
+                      principalOracleRefInput.output.address.payment_credential,
+                      principalOracleRefInput.output.value,
+                      self.redeemers,
+                      validTo,
+                      datum.commonData.principalOracleAsset.policyId,
+                      datum.commonData.principalOracleAsset.assetName,
+                      datum.commonData.principalAsset.policyId,
+                      Some(datum.commonData.principalAsset.assetName),
+                    )
+                  }
+                and {
+                  quantity_of(input.output.value, loanPolicyId, loanId) == 1,
+                  is_nft_spent(
+                    config.borrowerBondPolicyId,
+                    datum.borrowerAssetName,
+                    borrowerBondInput,
+                  ),
+                  can_liquidate(
+                    principalAmountAsRational,
+                    rational.from_int(newCollateralAmount),
+                    ltvAsRational,
+                    principalOraclePriceFeed,
+                    collateralOraclePriceFeed,
+                  ) == False,
+                  validate_output_to_loan_for_changing_collateral(
+                    loanOutput,
+                    datum,
+                    newCollateralAmount,
+                    input.output.value,
+                    input.output.address.stake_credential,
+                    config.loanSpendScriptHash,
+                  ),
+                }
+              }
+              _ -> False
             }
-          }
           Recast { borrowerBondInputIndex, principalPaid, loanId } -> {
             expect Finite(validFrom) =
               self.validity_range.lower_bound.bound_type
@@ -722,10 +787,10 @@ fn validate_eventual_output_to_loan_for_repayment(
   }
 }
 
-fn validate_output_to_loan_for_adding_collateral(
+fn validate_output_to_loan_for_changing_collateral(
   loanOutput: Output,
   datum: LoanDatum,
-  additionalCollateralAmount: Int,
+  newCollateralAmount: Int,
   loanValue: Value,
   prevStakeCredential: Option<StakeCredential>,
   loanSpendScriptHash: ByteArray,
@@ -735,8 +800,6 @@ fn validate_output_to_loan_for_adding_collateral(
 
   let correctValue =
     if datum.collateral.maybeAssetName == None {
-      let oldCollateralTokens =
-        quantity_of_policy_id(loanValue, datum.collateral.policyId)
       let newCollateralTokens =
         quantity_of_policy_id(loanOutput.value, datum.collateral.policyId)
       //The Value must be the same as before except for the quantity of tokens with same collateral's policyId
@@ -748,17 +811,19 @@ fn validate_output_to_loan_for_adding_collateral(
       let dosProtection = length(flatten(loanOutput.value)) <= 21
       and {
         sameValueWithoutCollateralTokens,
-        newCollateralTokens > oldCollateralTokens,
+        newCollateralTokens == newCollateralAmount,
         dosProtection,
       }
     } else {
       expect Some(assetName) = datum.collateral.maybeAssetName
+      //As there is no simple way to forcefully set a token amount in a Value, 
+      //we substract the current amount (resulting it as 0) and add the new one
       let expectedValue =
         add(
           loanValue,
           datum.collateral.policyId,
           assetName,
-          additionalCollateralAmount,
+          -quantity_of(loanValue, datum.collateral.policyId, assetName) + newCollateralAmount,
         )
       loanOutput.value == expectedValue
     }

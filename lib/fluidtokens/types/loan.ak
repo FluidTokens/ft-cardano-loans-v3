@@ -52,11 +52,13 @@ pub type LoanAction {
     isFinalRepayment: Bool,
   }
   //Borrower action
-  AddCollateral {
+  ChangeCollateral {
     borrowerBondInputIndex: Int,
-    //Units of collateral added to improve the health of the loan
-    addedCollateralAmount: Int,
+    //Units of collateral that remain in the loan after the change
+    newCollateralAmount: Int,
     loanId: ByteArray,
+    collateralOracleRefInputIndex: Int,
+    principalOracleRefInputIndex: Int,
   }
   //Borrower action
   Recast {
