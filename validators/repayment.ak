@@ -98,7 +98,7 @@ validator repayment(
           },
         )
 
-      expectedMintedNFTs == mintedNFTs
+      list.sort(expectedMintedNFTs, utils.pairs_ordering) == mintedNFTs
     } else {
       True
     }
