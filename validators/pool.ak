@@ -161,7 +161,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 input.output.value,
                 datum.commonData.principalAsset.policyId,
                 datum.commonData.principalAsset.assetName,
-              ) - wantedPrincipalAmount
+              ) - wantedPrincipalAmount - config.borrowerPoolExtraCompensation
 
             expect Some(principalLtvAsRational) =
               rational.new(
