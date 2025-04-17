@@ -134,7 +134,7 @@ validator oracle(
         //therefore in order to get we multipliy numerator by 10^6 and denominator by 10^decimals of token 
         expect Some(fluid_price) =
           rational.new(price_in_lovelaces, price_denominator)
-        expect Some(multiplier) = rational.new(1000000, math.pow(10, decimals))
+        expect Some(multiplier) = rational.new(math.pow(10, decimals), 1000000)
         let result = rational.mul(fluid_price, multiplier)
         let reduced = rational.reduce(result)
         expect Some(orcfax_price) =
