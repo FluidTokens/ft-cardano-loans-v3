@@ -38,8 +38,8 @@ validator oracle(
       governance_token_policy_id,
       governance_token_asset_name,
       self.reference_inputs,
+      self.inputs,
       self.withdrawals,
-      self.extra_signatories,
     )
   }
 

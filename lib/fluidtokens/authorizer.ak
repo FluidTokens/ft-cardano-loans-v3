@@ -79,6 +79,19 @@ pub fn authorize_via_credential(
   }
 }
 
+pub fn authorize_via_credential_script(
+  validating_credential: Credential,
+  withdrawals: Pairs<Credential, Lovelace>,
+  transaction_inputs: List<Input>,
+) -> Bool {
+  expect Script(script_hash) = validating_credential
+
+  or {
+    authorize_action(CardanoWithdrawScriptAuth(script_hash, withdrawals)),
+    authorize_action(CardanoSpendScriptAuth(script_hash, transaction_inputs)),
+  }
+}
+
 //True if the tx has a ref_input with the NFT inside and the owner:
 //- signed the tx if it's a wallet
 //- is a withdraw script in the withdrawals if it's a script
@@ -86,8 +99,8 @@ pub fn authorize_via_nft_ownership(
   nft_policy_id: ByteArray,
   nft_asset_name: ByteArray,
   reference_inputs: List<Input>,
+  transaction_inputs: List<Input>,
   withdrawals: Pairs<Credential, Lovelace>,
-  extra_signatories: List<VerificationKeyHash>,
 ) -> Bool {
   when
     reference_inputs
@@ -102,7 +115,7 @@ pub fn authorize_via_nft_ownership(
       ..
     }) ->
       payment_credential
-        |> authorize_via_credential(withdrawals, extra_signatories)
+        |> authorize_via_credential_script(withdrawals, transaction_inputs)
     _ -> False
   }
 }
