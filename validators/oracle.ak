@@ -46,6 +46,7 @@ validator oracle(
   //Validate that n/m oracles have signed on this TX
   withdraw(redeemer: OracleRedeemer, _credential: Credential, self: Transaction) {
     let unique_signatures = list.unique(redeemer.signatures)
+    expect unique_signatures == redeemer.signatures
 
     when redeemer.data is {
       PriceDataCharlie {
@@ -163,6 +164,7 @@ validator oracle(
         }
       }
       _ -> {
+        let serialise_data = builtin.serialise_data(redeemer.data)
         let valid_signatures =
           list.foldl(
             unique_signatures,
@@ -170,15 +172,13 @@ validator oracle(
             fn(redem, valid_signatures) -> Int {
               expect Some(verification_key) =
                 list.at(verification_keys, redem.key_position)
-              if builtin.verify_ed25519_signature(
-                verification_key,
-                builtin.serialise_data(redeemer.data),
-                redem.signature,
-              ) {
-                valid_signatures + 1
-              } else {
-                valid_signatures
-              }
+              expect
+                builtin.verify_ed25519_signature(
+                  verification_key,
+                  serialise_data,
+                  redem.signature,
+                ) == True
+              valid_signatures + 1
             },
           )
         valid_signatures >= threshold
