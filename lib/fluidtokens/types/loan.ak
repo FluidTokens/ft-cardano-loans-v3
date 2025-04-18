@@ -1,4 +1,3 @@
-use cardano/address.{Address}
 use cardano/assets.{AssetName}
 use fluidtokens/types/general.{AuthorizationMethod, CollateralAsset}
 use fluidtokens/types/pool.{CommonData, LiquidationMode}
@@ -31,14 +30,14 @@ pub type LoanAction {
     liquidationMode: LiquidationMode,
     //This is the absolute input index that contains the lender bond
     lenderBondInputIndex: Int,
+    //This is the absolute ref input index that contains the borrower bond
+    borrowerBondRefInputIndex: Int,
     //If loan doesn't use oracle, this is not used
     collateralOracleRefInputIndex: Int,
     //If loan doesn't use oracle, this is not used
     principalOracleRefInputIndex: Int,
     //Used only when an auction must start as part of liquidation
     lenderAuth: AuthorizationMethod,
-    //Used only when an auction must start as part of liquidation
-    lenderAddress: Address,
     //Only for partialLiquidation, it's collateralValue - remainingDebt expressed in principal currency
     equity: Int,
     loanId: ByteArray,

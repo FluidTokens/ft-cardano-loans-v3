@@ -195,10 +195,10 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
           Claim {
             liquidationMode,
             lenderBondInputIndex,
+            borrowerBondRefInputIndex,
             collateralOracleRefInputIndex,
             principalOracleRefInputIndex,
             lenderAuth,
-            lenderAddress,
             equity,
             loanId,
           } -> {
@@ -207,8 +207,11 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 self.validity_range.lower_bound.bound_type,
                 self.validity_range.upper_bound.bound_type,
               )
-            expect Some(lenderBondInput) =
-              list.at(self.inputs, lenderBondInputIndex)
+            expect (Some(lenderBondInput), Some(borrowerBondInput)) =
+              (
+                list.at(self.inputs, lenderBondInputIndex),
+                list.at(self.reference_inputs, borrowerBondRefInputIndex),
+              )
             let isRepaymentLate =
               is_repayment_late(
                 validFrom,
@@ -256,11 +259,11 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                     validate_output_to_dutch_auction(
                       dutchAuctionOutput,
                       input,
-                      lenderBondInput,
+                      borrowerBondInput.output.address,
                       validTo,
                       datum.collateral,
                       lenderAuth,
-                      lenderAddress,
+                      lenderBondInput.output.address,
                       datum.commonData.principalAsset,
                       remainingDebt,
                       config,
@@ -705,7 +708,12 @@ fn equity_sent_to_borrower(
   let isDatumCorrect = parsedDatum == newDatum
   let containsRepaymentNFT =
     quantity_of(equityOutput.value, repaymentPolicyId, repaymentId) == 1
-  let dosProtection = length(flatten(equityOutput.value)) <= 21
+  let dosProtection =
+    if principalAssetPolicyId == "" {
+      length(flatten(equityOutput.value)) <= 2
+    } else {
+      length(flatten(equityOutput.value)) <= 3
+    }
   and {
     //No staking check here
     isDatumCorrect,
@@ -738,7 +746,12 @@ fn validate_output_to_repayment(
   let containsRepaymentNFT =
     quantity_of(repaymentOutput.value, repaymentPolicyId, repaymentId) == 1
   let isDatumCorrect = parsedDatum == newDatum
-  let dosProtection = length(flatten(repaymentOutput.value)) <= 3
+  let dosProtection =
+    if loanAsset.policyId == "" {
+      length(flatten(repaymentOutput.value)) <= 2
+    } else {
+      length(flatten(repaymentOutput.value)) <= 3
+    }
   and {
     //No staking check here
     isDatumCorrect,
@@ -808,7 +821,12 @@ fn validate_output_to_loan_for_changing_collateral(
           loanOutput.value,
           datum.collateral.policyId,
         )
-      let dosProtection = length(flatten(loanOutput.value)) <= 21
+      let dosProtection =
+        if datum.collateral.policyId == "" {
+          length(flatten(loanValue)) <= 2
+        } else {
+          length(flatten(loanValue)) <= 3
+        }
       and {
         sameValueWithoutCollateralTokens,
         newCollateralTokens == newCollateralAmount,
@@ -887,7 +905,7 @@ fn validate_eventual_output_to_loan_for_recasting(
 fn validate_output_to_dutch_auction(
   dutchAuctionOutput: Output,
   loanInput: Input,
-  borrowerBondInput: Input,
+  borrowerAddress: Address,
   validTo: Int,
   collateral: CollateralAsset,
   lenderAuth: AuthorizationMethod,
@@ -898,7 +916,6 @@ fn validate_output_to_dutch_auction(
 ) {
   expect InlineDatum(outputDatum) = dutchAuctionOutput.datum
   expect parsedDatum: DutchAuctionDatum = outputDatum
-  let borrowerAddress = borrowerBondInput.output.address
 
   let newDatum =
     DutchAuctionDatum {
@@ -930,7 +947,12 @@ fn validate_output_to_dutch_auction(
       )
     }
 
-  let dosProtection = length(flatten(dutchAuctionOutput.value)) <= 21
+  let dosProtection =
+    if collateral.policyId == "" {
+      length(flatten(dutchAuctionOutput.value)) <= 2
+    } else {
+      length(flatten(dutchAuctionOutput.value)) <= 3
+    }
   and {
     is_output_to_smart_credential(
       dutchAuctionOutput,

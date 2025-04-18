@@ -391,7 +391,12 @@ fn validate_output_to_loan(
       //outputs have been already filtered at the beginning
       True
     }
-  let dosProtection = length(flatten(output.value)) <= 21
+  let dosProtection =
+    if chosenCollateral.policyId == "" {
+      length(flatten(output.value)) <= 2
+    } else {
+      length(flatten(output.value)) <= 3
+    }
   (and {
       correctDestination,
       isDatumCorrect,
@@ -425,7 +430,12 @@ fn validate_eventual_output_to_pool(
 
   let isDatumCorrect = parsedDatum == datum
 
-  let dosProtection = length(flatten(output.value)) <= 5
+  let dosProtection =
+    if datum.commonData.principalAsset.policyId == "" {
+      length(flatten(output.value)) <= 2
+    } else {
+      length(flatten(output.value)) <= 3
+    }
 
   let correctDestination = and {
       output.address.payment_credential == poolInputPaymentCredential,
