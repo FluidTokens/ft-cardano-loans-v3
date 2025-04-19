@@ -53,14 +53,14 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
         st_utils.get_inputs_from_smart_credential(
           self.inputs,
           Script(config.poolSpendScriptHash),
-          Script(policy_id),
+          Script(config.poolPolicyId),
           config.smartTokensSpendScriptHash,
         )
       } else {
         st_utils.get_inputs_from_smart_credential(
           self.inputs,
           Script(config.requestSpendScriptHash),
-          Script(policy_id),
+          Script(config.requestPolicyId),
           config.smartTokensSpendScriptHash,
         )
       }
@@ -99,6 +99,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                     utils.hash_output_ref(input.output_reference)
                   let loanOutput = safe_list_at(loanOutputs, index)
                   expect and {
+                      input.output_reference.output_index <= 255,
                       dict.size(assets.tokens(loanOutput.value, policy_id)) == 1,
                       assets.quantity_of(
                         loanOutput.value,
@@ -134,6 +135,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                     utils.hash_output_ref(input.output_reference)
                   let loanOutput = safe_list_at(loanOutputs, index)
                   expect and {
+                      input.output_reference.output_index <= 255,
                       dict.size(assets.tokens(loanOutput.value, policy_id)) == 1,
                       assets.quantity_of(
                         loanOutput.value,
@@ -238,7 +240,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       get_outputs_to_smart_credential(
                         self.outputs,
                         Script(config.dutchAuctionSpendScriptHash),
-                        credential,
+                        Script(config.dutchAuctionWithdrawScriptHash),
                         config.smartTokensSpendScriptHash,
                       ),
                       index,
@@ -629,6 +631,8 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               is_recasting_permitted(
                 datum.commonData.repaymentMode,
                 datum.doneRecasts,
+                datum.repaidInstallments,
+                dueInstallments,
               ),
               validate_output_to_repayment(
                 repaymentOutput: repaymentOutput,

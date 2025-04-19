@@ -178,7 +178,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                 get_outputs_to_smart_credential(
                   self.outputs,
                   Script(config.loanSpendScriptHash),
-                  credential,
+                  Script(config.loanPolicyId),
                   config.smartTokensSpendScriptHash,
                 ),
                 index,
@@ -393,12 +393,21 @@ fn validate_output_to_loan(
   requestId: ByteArray,
 ) -> (Bool, LoanDatum) {
   let collateralUnchanged =
-    add(without_lovelace(output.value), loanPolicyId, loanId, -1) == add(
-      without_lovelace(requestValue),
-      requestPolicyId,
-      requestId,
-      -1,
-    )
+    if collateral.policyId == "" {
+      add(output.value, loanPolicyId, loanId, -1) == add(
+        requestValue,
+        requestPolicyId,
+        requestId,
+        -1,
+      )
+    } else {
+      add(without_lovelace(output.value), loanPolicyId, loanId, -1) == add(
+        without_lovelace(requestValue),
+        requestPolicyId,
+        requestId,
+        -1,
+      )
+    }
 
   let containsLoanNFT = quantity_of(output.value, loanPolicyId, loanId) == 1
   expect InlineDatum(outputDatum) = output.datum

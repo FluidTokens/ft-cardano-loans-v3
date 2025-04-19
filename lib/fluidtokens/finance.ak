@@ -244,7 +244,7 @@ pub fn can_liquidate(
       expect Some(currentLtv) =
         rational.div(principalInLovelace, collateralInLovelace)
 
-      rational.compare(liquidationLtv, currentLtv) == Greater
+      rational.compare(liquidationLtv, currentLtv) == Less
     },
   }
 }
@@ -329,12 +329,12 @@ pub fn get_installment_amount(
       expect Some(interestPerInstallmentAsRational) =
         rational.div(interestRate, rational.from_int(totalInstallments))
       let numerator =
-        rational_pow(
-          rational.mul(
-            rational.mul(principal, interestPerInstallmentAsRational),
+        rational.mul(
+          rational.mul(principal, interestPerInstallmentAsRational),
+          rational_pow(
             rational.add(oneAsRational, interestPerInstallmentAsRational),
+            totalInstallments,
           ),
-          totalInstallments,
         )
       let denominator =
         rational.sub(
@@ -423,7 +423,14 @@ pub fn is_repayment_late(
   validFrom > lendDate + initialGracePeriod + periodToLatestPaidInstallment + repaymentTimeWindow
 }
 
-pub fn is_recasting_permitted(repaymentMode: RepaymentMode, doneRecasts: Int) {
+pub fn is_recasting_permitted(
+  repaymentMode: RepaymentMode,
+  doneRecasts: Int,
+  repaidInstallments: Int,
+  dueInstallments: Int,
+) {
+  //A Recast is permitted only when all due installments + 1 are paid, otherwise the borrower avoids paying what is due
+  expect repaidInstallments >= dueInstallments + 1
   when repaymentMode is {
     InterestOnRemainingPrincipal { max_possible_recasts } ->
       doneRecasts < max_possible_recasts

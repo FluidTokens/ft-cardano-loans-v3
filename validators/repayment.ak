@@ -36,7 +36,7 @@ validator repayment(
       st_utils.get_inputs_from_smart_credential(
         self.inputs,
         Script(config.loanSpendScriptHash),
-        Script(policy_id),
+        Script(config.loanPolicyId),
         config.smartTokensSpendScriptHash,
       )
     let repaymentOutputs =

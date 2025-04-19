@@ -62,7 +62,7 @@ validator kyc_token(
         get_inputs_from_smart_credential(
           self.inputs,
           Script(poolSpendScriptHash),
-          credential,
+          Script(poolPolicyId),
           smartTokensSpendScriptHash,
         ),
         poolRedeemer.actionsForEachInput,

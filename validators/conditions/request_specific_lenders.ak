@@ -38,7 +38,7 @@ validator kyc_token(
         get_inputs_from_smart_credential(
           self.inputs,
           Script(requestSpendScriptHash),
-          credential,
+          Script(requestPolicyId),
           smartTokensSpendScriptHash,
         ),
         requestRedeemer.actionsForEachInput,

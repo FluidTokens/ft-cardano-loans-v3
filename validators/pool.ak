@@ -147,7 +147,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 get_outputs_to_smart_credential(
                   self.outputs,
                   Script(config.loanSpendScriptHash),
-                  credential,
+                  Script(config.loanPolicyId),
                   config.smartTokensSpendScriptHash,
                 ),
                 index,
