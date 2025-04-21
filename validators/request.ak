@@ -155,11 +155,13 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
               quantity_of(input.output.value, requestPolicyId, requestId) == 1,
               quantity_of(self.mint, requestPolicyId, requestId) == -1,
               requestExpired,
-              validate_collateral_less_penality_output(
+              validate_collateral_less_penalty_output(
                 input.output.value,
                 borrowerOutput,
                 datum.borrowerAddress,
                 datum.requestExpirationPenalty,
+                requestPolicyId,
+                requestId,
               ),
             }
           }
@@ -321,14 +323,22 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
   }
 }
 
-fn validate_collateral_less_penality_output(
+fn validate_collateral_less_penalty_output(
   requestValue: Value,
   borrowerOutput: Output,
   borrowerAddress: Address,
   requestExpirationPenalty: Int,
+  requestPolicyId: ByteArray,
+  requestAssetName: ByteArray,
 ) {
   let inputValueNoAda = without_lovelace(requestValue)
-  let outputValueNoAda = without_lovelace(borrowerOutput.value)
+  let outputValueNoAda =
+    add(
+      without_lovelace(borrowerOutput.value),
+      requestPolicyId,
+      requestAssetName,
+      -1,
+    )
   let outputAdaCorrect =
     quantity_of(borrowerOutput.value, "", "") >= quantity_of(
       requestValue,
