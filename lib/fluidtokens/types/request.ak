@@ -33,13 +33,8 @@ pub type RequestMintRedeemer {
 
 pub type RequestAction {
   Cancel { requestId: ByteArray }
-  CancelAfterExpiration {
-    requestId: ByteArray,
-    //This output goes back to borrower and contains the collateral minus the lovelace penalty
-    borrowerOutputIndex: Int,
-  }
+  CancelAfterExpiration { requestId: ByteArray }
   Lend {
-    outputWithBorrowerTokenIndex: Int,
     //Ref input index of the principal oracle, if principal is ADA this must be -1
     principalOracleRefInputIndex: Int,
     //If collateral doesn't use oracle or is ADA, this must be -1

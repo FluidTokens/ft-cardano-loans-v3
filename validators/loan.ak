@@ -9,8 +9,9 @@ use cardano/assets.{
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/constants
 use fluidtokens/finance.{
-  can_liquidate, get_collateral_amount, get_equity, get_installment_amount,
-  get_remaining_debt, is_recasting_permitted, is_repayment_late,
+  can_liquidate, get_collateral_amount, get_due_installments, get_equity,
+  get_installment_amount, get_remaining_debt, is_recasting_permitted,
+  is_repayment_late,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/config.{ConfigDatum}
@@ -632,7 +633,13 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 datum.commonData.repaymentMode,
                 datum.doneRecasts,
                 datum.repaidInstallments,
-                dueInstallments,
+                get_due_installments(
+                  validFrom,
+                  datum.lendDate,
+                  datum.commonData.initialGracePeriod,
+                  datum.repaidInstallments,
+                  datum.commonData.installmentPeriod,
+                ),
               ),
               validate_output_to_repayment(
                 repaymentOutput: repaymentOutput,

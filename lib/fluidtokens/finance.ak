@@ -373,7 +373,10 @@ pub fn get_installment_amount(
           interestRateIncreaseLinearCoefficientDivider,
         )
       let currentInterestRate =
-        rational.add(interestRate, currentInterestRateIncrease)
+        rational.add(
+          interestRate,
+          rational.mul(interestRate, currentInterestRateIncrease),
+        )
 
       let installmentAmountAsRational =
         rational.mul(principal, currentInterestRate)
@@ -421,6 +424,22 @@ pub fn is_repayment_late(
   let periodToLatestPaidInstallment =
     ( repaidInstallments + 1 ) * installmentPeriod
   validFrom > lendDate + initialGracePeriod + periodToLatestPaidInstallment + repaymentTimeWindow
+}
+
+pub fn get_due_installments(
+  validFrom: Int,
+  lendDate: Int,
+  initialGracePeriod: Int,
+  repaidInstallments: Int,
+  installmentPeriod: Int,
+) {
+  let periodToLatestPaidInstallment =
+    ( repaidInstallments + 1 ) * installmentPeriod
+  let timePassed =
+    validFrom - (
+      lendDate + initialGracePeriod + periodToLatestPaidInstallment
+    )
+  timePassed / installmentPeriod
 }
 
 pub fn is_recasting_permitted(

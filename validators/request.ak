@@ -146,11 +146,11 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                 ),
               ),
             }
-          CancelAfterExpiration(requestId, borrowerOutputIndex) -> {
+          CancelAfterExpiration(requestId) -> {
             expect Finite(validFrom) =
               self.validity_range.lower_bound.bound_type
             let requestExpired = validFrom > datum.requestExpiration
-            let borrowerOutput = safe_list_at(self.outputs, borrowerOutputIndex)
+            let borrowerOutput = safe_list_at(self.outputs, index)
             and {
               quantity_of(input.output.value, requestPolicyId, requestId) == 1,
               quantity_of(self.mint, requestPolicyId, requestId) == -1,
@@ -164,7 +164,6 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
             }
           }
           Lend(
-            outputWithBorrowerTokenIndex,
             principalOracleRefInputIndex,
             collateralOracleRefInputIndex,
             givenPrincipalAmount,
@@ -183,8 +182,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                 ),
                 index,
               )
-            let outputWithBorrowerToken =
-              safe_list_at(self.outputs, outputWithBorrowerTokenIndex)
+            let outputWithBorrowerToken = safe_list_at(self.outputs, index)
 
             expect Some(principalLtvAsRational) =
               rational.new(datum.principalLTV, datum.principalLTVDivider)
