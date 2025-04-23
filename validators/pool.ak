@@ -15,7 +15,6 @@ use fluidtokens/finance.{
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/general.{Asset, CollateralAsset}
 use fluidtokens/types/loan.{LoanDatum}
-use fluidtokens/types/oracle.{Aggregated, CommonFeedData} as oracle_type
 use fluidtokens/types/pool.{
   Borrow, Cancel, Liquidation, PoolDatum, PoolMintRedeemer, PoolWithdrawRedeemer,
 } as p
@@ -166,7 +165,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 input.output.value,
                 datum.commonData.principalAsset.policyId,
                 datum.commonData.principalAsset.assetName,
-              ) - wantedPrincipalAmount - config.borrowerPoolExtraCompensation
+              ) - wantedPrincipalAmount
 
             expect Some(principalLtvAsRational) =
               rational.new(
@@ -200,31 +199,17 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                     principalOracleRefInputIndex,
                   )
                 expect Some(principalOraclePriceFeed) =
-                  if datum.commonData.principalAsset.policyId == "" {
-                    Some(
-                      Aggregated {
-                        common: CommonFeedData {
-                          valid_from: 0,
-                          valid_to: 0,
-                          token: Asset { policyId: "", assetName: "" },
-                        },
-                        token_price_in_lovelaces: 1,
-                        token_price_denominator: 1,
-                      },
-                    )
-                  } else {
-                    retrieve_oracle_data(
-                      principalOracleRefInput.output.address.payment_credential,
-                      principalOracleRefInput.output.value,
-                      self.redeemers,
-                      validFrom,
-                      validTo,
-                      datum.commonData.principalOracleAsset.policyId,
-                      datum.commonData.principalOracleAsset.assetName,
-                      datum.commonData.principalAsset.policyId,
-                      Some(datum.commonData.principalAsset.assetName),
-                    )
-                  }
+                  retrieve_oracle_data(
+                    principalOracleRefInput.output.address.payment_credential,
+                    principalOracleRefInput.output.value,
+                    self.redeemers,
+                    validFrom,
+                    validTo,
+                    datum.commonData.principalOracleAsset.policyId,
+                    datum.commonData.principalOracleAsset.assetName,
+                    datum.commonData.principalAsset.policyId,
+                    Some(datum.commonData.principalAsset.assetName),
+                  )
                 validate_output_to_loan(
                   loanOutput,
                   config.loanPolicyId,
@@ -375,7 +360,7 @@ fn validate_output_to_loan(
   let newDatum =
     LoanDatum {
       commonData: poolDatum.commonData,
-      originAssetName: poolId,
+      originId: bytearray.concat("POOL", poolId),
       borrowerAssetName: loanId,
       lenderAssetName: loanId,
       collateral: chosenCollateral,

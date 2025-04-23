@@ -22,7 +22,6 @@ use fluidtokens/types/loan.{
   ChangeCollateral, Claim, LoanDatum, LoanMintRedeemer, LoanWithdrawRedeemer,
   Recast, Repay,
 } as l
-use fluidtokens/types/oracle.{Aggregated, CommonFeedData} as oracle_type
 use fluidtokens/types/pool.{
   Borrow, Liquidation, NoLiquidationDutchAuctionClaim,
   NoLiquidationFullCollateralClaim, PerpetualLoan, PoolWithdrawRedeemer,
@@ -302,31 +301,17 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       principalOracleRefInputIndex,
                     )
                   expect Some(principalOraclePriceFeed) =
-                    if datum.commonData.principalAsset.policyId == "" {
-                      Some(
-                        Aggregated {
-                          common: CommonFeedData {
-                            valid_from: 0,
-                            valid_to: 0,
-                            token: Asset { policyId: "", assetName: "" },
-                          },
-                          token_price_in_lovelaces: 1,
-                          token_price_denominator: 1,
-                        },
-                      )
-                    } else {
-                      retrieve_oracle_data(
-                        principalOracleRefInput.output.address.payment_credential,
-                        principalOracleRefInput.output.value,
-                        self.redeemers,
-                        validFrom,
-                        validTo,
-                        datum.commonData.principalOracleAsset.policyId,
-                        datum.commonData.principalOracleAsset.assetName,
-                        datum.commonData.principalAsset.policyId,
-                        Some(datum.commonData.principalAsset.assetName),
-                      )
-                    }
+                    retrieve_oracle_data(
+                      principalOracleRefInput.output.address.payment_credential,
+                      principalOracleRefInput.output.value,
+                      self.redeemers,
+                      validFrom,
+                      validTo,
+                      datum.commonData.principalOracleAsset.policyId,
+                      datum.commonData.principalOracleAsset.assetName,
+                      datum.commonData.principalAsset.policyId,
+                      Some(datum.commonData.principalAsset.assetName),
+                    )
                   let remainingDebt =
                     get_remaining_debt(
                       datum.commonData.repaymentMode,
@@ -395,8 +380,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
           }
 
           Repay { borrowerBondInputIndex, loanId, isFinalRepayment } -> {
-            expect Finite(validFrom) =
-              self.validity_range.lower_bound.bound_type
+            expect Finite(validTo) = self.validity_range.upper_bound.bound_type
             expect Some(borrowerBondInput) =
               list.at(self.inputs, borrowerBondInputIndex)
             expect Some(repaymentOutput) =
@@ -411,7 +395,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               )
             let isRepaymentLate =
               is_repayment_late(
-                validFrom,
+                validTo,
                 datum.lendDate,
                 datum.commonData.initialGracePeriod,
                 datum.repaidInstallments,
@@ -433,7 +417,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                   datum.repaidInstallments,
                   datum.commonData.installmentPeriod,
                   datum.commonData.initialGracePeriod,
-                  validFrom - datum.lendDate,
+                  validTo - datum.lendDate,
                 )
               } else {
                 get_installment_amount(
@@ -552,31 +536,17 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                     principalOracleRefInputIndex,
                   )
                 expect Some(principalOraclePriceFeed) =
-                  if datum.commonData.principalAsset.policyId == "" {
-                    Some(
-                      Aggregated {
-                        common: CommonFeedData {
-                          valid_from: 0,
-                          valid_to: 0,
-                          token: Asset { policyId: "", assetName: "" },
-                        },
-                        token_price_in_lovelaces: 1,
-                        token_price_denominator: 1,
-                      },
-                    )
-                  } else {
-                    retrieve_oracle_data(
-                      principalOracleRefInput.output.address.payment_credential,
-                      principalOracleRefInput.output.value,
-                      self.redeemers,
-                      validFrom,
-                      validTo,
-                      datum.commonData.principalOracleAsset.policyId,
-                      datum.commonData.principalOracleAsset.assetName,
-                      datum.commonData.principalAsset.policyId,
-                      Some(datum.commonData.principalAsset.assetName),
-                    )
-                  }
+                  retrieve_oracle_data(
+                    principalOracleRefInput.output.address.payment_credential,
+                    principalOracleRefInput.output.value,
+                    self.redeemers,
+                    validFrom,
+                    validTo,
+                    datum.commonData.principalOracleAsset.policyId,
+                    datum.commonData.principalOracleAsset.assetName,
+                    datum.commonData.principalAsset.policyId,
+                    Some(datum.commonData.principalAsset.assetName),
+                  )
                 and {
                   quantity_of(input.output.value, loanPolicyId, loanId) == 1,
                   is_nft_spent(
@@ -604,8 +574,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               _ -> False
             }
           Recast { borrowerBondInputIndex, principalPaid, loanId } -> {
-            expect Finite(validFrom) =
-              self.validity_range.lower_bound.bound_type
+            expect Finite(validTo) = self.validity_range.upper_bound.bound_type
             expect Some(borrowerBondInput) =
               list.at(self.inputs, borrowerBondInputIndex)
             expect Some(repaymentOutput) =
@@ -627,7 +596,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 datum.repaidInstallments,
                 datum.commonData.installmentPeriod,
                 datum.commonData.initialGracePeriod,
-                validFrom - datum.lendDate,
+                validTo - datum.lendDate,
               )
             and {
               principalPaid > 0,
@@ -642,7 +611,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 datum.doneRecasts,
                 datum.repaidInstallments,
                 get_due_installments(
-                  validFrom,
+                  validTo,
                   datum.lendDate,
                   datum.commonData.initialGracePeriod,
                   datum.repaidInstallments,
@@ -793,7 +762,7 @@ fn validate_eventual_output_to_loan_for_repayment(
   let newDatum =
     LoanDatum {
       commonData: datum.commonData,
-      originAssetName: datum.originAssetName,
+      originId: datum.originId,
       borrowerAssetName: datum.borrowerAssetName,
       lenderAssetName: datum.lenderAssetName,
       collateral: datum.collateral,
@@ -898,7 +867,7 @@ fn validate_eventual_output_to_loan_for_recasting(
   let newDatum =
     LoanDatum {
       commonData: datum.commonData,
-      originAssetName: datum.originAssetName,
+      originId: datum.originId,
       borrowerAssetName: datum.borrowerAssetName,
       lenderAssetName: datum.lenderAssetName,
       collateral: datum.collateral,

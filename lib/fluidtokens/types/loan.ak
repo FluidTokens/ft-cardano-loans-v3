@@ -5,7 +5,7 @@ use fluidtokens/types/pool.{CommonData, LiquidationMode}
 pub type LoanDatum {
   commonData: CommonData,
   //Either the poolId or the requestId
-  originAssetName: AssetName,
+  originId: AssetName,
   borrowerAssetName: AssetName,
   lenderAssetName: AssetName,
   collateral: CollateralAsset,

@@ -18,7 +18,6 @@ use fluidtokens/finance.{
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/general.{Asset, CollateralAsset}
 use fluidtokens/types/loan.{LoanDatum}
-use fluidtokens/types/oracle.{Aggregated, CommonFeedData} as oracle_type
 use fluidtokens/types/pool.{CommonData, Liquidation}
 use fluidtokens/types/request.{
   Cancel, CancelAfterExpiration, Lend, RequestDatum, RequestMintRedeemer,
@@ -223,31 +222,17 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                     principalOracleRefInputIndex,
                   )
                 expect Some(principalOraclePriceFeed) =
-                  if datum.commonData.principalAsset.policyId == "" {
-                    Some(
-                      Aggregated {
-                        common: CommonFeedData {
-                          valid_from: 0,
-                          valid_to: 0,
-                          token: Asset { policyId: "", assetName: "" },
-                        },
-                        token_price_in_lovelaces: 1,
-                        token_price_denominator: 1,
-                      },
-                    )
-                  } else {
-                    retrieve_oracle_data(
-                      principalOracleRefInput.output.address.payment_credential,
-                      principalOracleRefInput.output.value,
-                      self.redeemers,
-                      validFrom,
-                      validTo,
-                      datum.commonData.principalOracleAsset.policyId,
-                      datum.commonData.principalOracleAsset.assetName,
-                      datum.commonData.principalAsset.policyId,
-                      Some(datum.commonData.principalAsset.assetName),
-                    )
-                  }
+                  retrieve_oracle_data(
+                    principalOracleRefInput.output.address.payment_credential,
+                    principalOracleRefInput.output.value,
+                    self.redeemers,
+                    validFrom,
+                    validTo,
+                    datum.commonData.principalOracleAsset.policyId,
+                    datum.commonData.principalOracleAsset.assetName,
+                    datum.commonData.principalAsset.policyId,
+                    Some(datum.commonData.principalAsset.assetName),
+                  )
                 expect
                   givenPrincipalAmount >= get_min_principal_for_collateral_with_oracles(
                     collateralAmount,
@@ -431,7 +416,7 @@ fn validate_output_to_loan(
   let newDatum =
     LoanDatum {
       commonData: requestDatum.commonData,
-      originAssetName: requestId,
+      originId: bytearray.concat("REQUEST", requestId),
       borrowerAssetName: loanId,
       lenderAssetName: loanId,
       collateral,

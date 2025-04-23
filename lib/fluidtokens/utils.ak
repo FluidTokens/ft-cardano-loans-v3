@@ -30,7 +30,7 @@ pub fn indexed_filter(list: List<a>, predicate: fn(Int, a) -> Bool) -> List<a> {
 }
 
 pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
-  crypto.sha2_256(
+  crypto.blake2b_224(
     bytearray.push(outputRef.transaction_id, outputRef.output_index),
   )
 }
