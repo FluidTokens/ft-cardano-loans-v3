@@ -15,6 +15,20 @@ use fluidtokens/types/oracle.{
   CharlieTokenSpecs, GenericData, OrcfaxTokenSpecs, PriceData,
 }
 
+pub fn indexed_filter(list: List<a>, predicate: fn(Int, a) -> Bool) -> List<a> {
+  list.indexed_foldr(
+    list,
+    [],
+    fn(index, elem, acc) {
+      if predicate(index, elem) {
+        list.push(acc, elem)
+      } else {
+        acc
+      }
+    },
+  )
+}
+
 pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
   crypto.sha2_256(
     bytearray.push(outputRef.transaction_id, outputRef.output_index),

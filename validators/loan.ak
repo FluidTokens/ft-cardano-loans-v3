@@ -5,6 +5,7 @@ use aiken/math/rational
 use cardano/address.{Address, Credential, Script, StakeCredential}
 use cardano/assets.{
   AssetName, PolicyId, Value, add, flatten, quantity_of, tokens,
+  without_lovelace,
 }
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/constants
@@ -288,6 +289,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       collateralOracleRefInput.output.address.payment_credential,
                       collateralOracleRefInput.output.value,
                       self.redeemers,
+                      validFrom,
                       validTo,
                       collateralOracleToken.policyId,
                       collateralOracleToken.assetName,
@@ -317,6 +319,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                         principalOracleRefInput.output.address.payment_credential,
                         principalOracleRefInput.output.value,
                         self.redeemers,
+                        validFrom,
                         validTo,
                         datum.commonData.principalOracleAsset.policyId,
                         datum.commonData.principalOracleAsset.assetName,
@@ -504,8 +507,11 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
           } ->
             when datum.commonData.liquidationMode is {
               Liquidation { lTV, lTVDivider, .. } -> {
-                expect Finite(validTo) =
-                  self.validity_range.upper_bound.bound_type
+                expect (Finite(validFrom), Finite(validTo)) =
+                  (
+                    self.validity_range.lower_bound.bound_type,
+                    self.validity_range.upper_bound.bound_type,
+                  )
                 expect Some(borrowerBondInput) =
                   list.at(self.inputs, borrowerBondInputIndex)
                 expect Some(loanOutput) =
@@ -533,6 +539,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                     collateralOracleRefInput.output.address.payment_credential,
                     collateralOracleRefInput.output.value,
                     self.redeemers,
+                    validFrom,
                     validTo,
                     collateralOracleToken.policyId,
                     collateralOracleToken.assetName,
@@ -562,6 +569,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       principalOracleRefInput.output.address.payment_credential,
                       principalOracleRefInput.output.value,
                       self.redeemers,
+                      validFrom,
                       validTo,
                       datum.commonData.principalOracleAsset.policyId,
                       datum.commonData.principalOracleAsset.assetName,
@@ -714,7 +722,7 @@ fn equity_sent_to_borrower(
     }
 
   let containsCorrectAmount =
-    quantity_of(equityOutput.value, principalAssetPolicyId, principalAssetName) == equity
+    quantity_of(equityOutput.value, principalAssetPolicyId, principalAssetName) >= equity
 
   let isDatumCorrect = parsedDatum == newDatum
   let containsRepaymentNFT =
@@ -828,8 +836,11 @@ fn validate_output_to_loan_for_changing_collateral(
         quantity_of_policy_id(loanOutput.value, datum.collateral.policyId)
       //The Value must be the same as before except for the quantity of tokens with same collateral's policyId
       let sameValueWithoutCollateralTokens =
-        value_without_policy_id_as_list(loanValue, datum.collateral.policyId) == value_without_policy_id_as_list(
-          loanOutput.value,
+        value_without_policy_id_as_list(
+          without_lovelace(loanValue),
+          datum.collateral.policyId,
+        ) == value_without_policy_id_as_list(
+          without_lovelace(loanOutput.value),
           datum.collateral.policyId,
         )
       let dosProtection =

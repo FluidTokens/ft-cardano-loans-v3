@@ -46,32 +46,33 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
     let isInputRefSpent =
       option.is_some(find_input(self.inputs, redeemer.inputRef))
 
+    let mintedTokens =
+      list.filter(
+        dict.to_pairs(tokens(self.mint, policy_id)),
+        fn(Pair(_assetName, quantity)) { quantity > 0 },
+      )
+
     let isEachMintedTokenAccountedFor =
       list.indexed_foldr(
-        dict.to_pairs(tokens(self.mint, policy_id)),
+        mintedTokens,
         True,
         fn(index, Pair(assetName, quantity), result) {
           expect result
 
-          if quantity > 0 {
-            let correctAssetName = and {
-                bytearray.at(assetName, 0) == index,
-                bytearray.drop(assetName, 1) == bytearray.drop(inputRefHash, 1),
-              }
-
-            expect Some(output) = list.at(poolOutputs, index)
-            let outputHasUniqueToken = and {
-                dict.size(assets.tokens(output.value, policy_id)) == 1,
-                assets.quantity_of(output.value, policy_id, assetName) == 1,
-              }
-            and {
-              quantity == 1,
-              correctAssetName,
-              outputHasUniqueToken,
+          let correctAssetName = and {
+              bytearray.at(assetName, 0) == index,
+              bytearray.drop(assetName, 1) == bytearray.drop(inputRefHash, 1),
             }
-          } else {
-            //Burning the tokens is always allowed
-            True
+
+          expect Some(output) = list.at(poolOutputs, index)
+          let outputHasUniqueToken = and {
+              dict.size(assets.tokens(output.value, policy_id)) == 1,
+              assets.quantity_of(output.value, policy_id, assetName) == 1,
+            }
+          and {
+            quantity == 1,
+            correctAssetName,
+            outputHasUniqueToken,
           }
         },
       )
@@ -140,7 +141,11 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
             poolId,
             permissionedConditionWithdrawIndex,
           ) -> {
-            expect Finite(validTo) = self.validity_range.upper_bound.bound_type
+            expect (Finite(validFrom), Finite(validTo)) =
+              (
+                self.validity_range.lower_bound.bound_type,
+                self.validity_range.upper_bound.bound_type,
+              )
             let inputUtxoId = utils.hash_output_ref(input.output_reference)
             let loanOutput =
               safe_list_at(
@@ -182,6 +187,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                     collateralOracleRefInput.output.address.payment_credential,
                     collateralOracleRefInput.output.value,
                     self.redeemers,
+                    validFrom,
                     validTo,
                     chosenCollateralOracleToken.policyId,
                     chosenCollateralOracleToken.assetName,
@@ -211,6 +217,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       principalOracleRefInput.output.address.payment_credential,
                       principalOracleRefInput.output.value,
                       self.redeemers,
+                      validFrom,
                       validTo,
                       datum.commonData.principalOracleAsset.policyId,
                       datum.commonData.principalOracleAsset.assetName,
@@ -288,6 +295,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 },
                 and {
                   remainingPrincipalAmountAfterBorrow > 0,
+                  index <= 255,
                   validate_eventual_output_to_pool(
                     safe_list_at(self.outputs, index),
                     datum,

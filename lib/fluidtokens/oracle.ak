@@ -29,6 +29,7 @@ pub fn retrieve_oracle_data(
   oraclePaymentCredential: PaymentCredential,
   oracleInputValue: Value,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
+  transactionValidFrom: Int,
   transactionValidTo: Int,
   oracleTokenPolicyId: ByteArray,
   oracleTokenAssetName: ByteArray,
@@ -51,6 +52,7 @@ pub fn retrieve_oracle_data(
   if and {
     commonFeedData.valid_to - commonFeedData.valid_from <= constants.max_oracle_validity_range,
     commonFeedData.valid_to >= transactionValidTo,
+    commonFeedData.valid_from <= transactionValidFrom,
     is_feed_token_correct(
       expectedTokenPolicyId,
       expectedTokenMaybeAssetName,
