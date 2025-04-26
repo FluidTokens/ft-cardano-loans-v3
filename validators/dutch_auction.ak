@@ -83,12 +83,13 @@ validator dutch_auction(
               },
             }
           Buy -> {
-            expect Some(ownerOutput) = list.at(self.outputs, index)
+            expect Some(ownerOutput) = list.at(self.outputs, index * 2)
             and {
               datum.startDate <= validFrom,
               if datum.borrowerAddress != None && currentPrice > datum.debtAmount {
                 expect Some(borrowerAddress) = datum.borrowerAddress
-                expect Some(borrowerOutput) = list.at(self.outputs, index + 1)
+                expect Some(borrowerOutput) =
+                  list.at(self.outputs, index * 2 + 1)
                 and {
                   correctAmountSentToUser(
                     datum.currency,

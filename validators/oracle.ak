@@ -1,15 +1,20 @@
 use aiken/builtin
 use aiken/collection/list
 use aiken/math
-use cardano/address.{Credential}
+use aiken/math/rational.{compare}
+use aiken/primitive/bytearray.{starts_with}
+use cardano/address.{Credential, Script}
 use cardano/assets.{quantity_of}
 use cardano/transaction.{InlineDatum, OutputReference, Transaction}
 use fluidtokens/authorizer
 use fluidtokens/constants
 use fluidtokens/types/oracle.{
-  CharlieTokenSpecs, OracleDatum, OracleRedeemer, PriceDataCharlie,
+  CharlieTokenSpecs, FspDat, OracleDatum, OracleRedeemer, OrcfaxTokenSpecs,
+  PriceDataCharlie, PriceDataOrcfax, RationalDatum,
 } as o
-use fluidtokens/utils.{get_oracle_config, get_oracle_info}
+use fluidtokens/utils.{
+  get_oracle_config, get_oracle_info, get_oracle_orcfax_config,
+}
 
 validator oracle(
   verification_keys: List<ByteArray>,
@@ -19,6 +24,7 @@ validator oracle(
   governance_token_policy_id: ByteArray,
   governance_token_asset_name: ByteArray,
   charlie_specs: CharlieTokenSpecs,
+  orcfax_specs: OrcfaxTokenSpecs,
 ) {
   //Allow to move Oracle NFT if governance have signed off.
   spend(
@@ -32,14 +38,15 @@ validator oracle(
       governance_token_policy_id,
       governance_token_asset_name,
       self.reference_inputs,
+      self.inputs,
       self.withdrawals,
-      self.extra_signatories,
     )
   }
 
   //Validate that n/m oracles have signed on this TX
   withdraw(redeemer: OracleRedeemer, _credential: Credential, self: Transaction) {
     let unique_signatures = list.unique(redeemer.signatures)
+    expect unique_signatures == redeemer.signatures
 
     when redeemer.data is {
       PriceDataCharlie {
@@ -91,7 +98,73 @@ validator oracle(
           price_in_lovelaces * math.pow(10, decimals) / price_denominator == price_oracle,
         }
       }
+
+      PriceDataOrcfax(
+        pointer_ref_input_index,
+        provider_ref_input_index,
+        common,
+        price_in_lovelaces,
+        price_denominator,
+      ) -> {
+        expect Some(orcfax_pointer_input) =
+          list.at(self.reference_inputs, pointer_ref_input_index)
+        expect InlineDatum(referenceDatum) = orcfax_pointer_input.output.datum
+        expect pointerDatum: FspDat = referenceDatum
+
+        expect Some(orcfax_price_input) =
+          list.at(self.reference_inputs, provider_ref_input_index)
+        expect InlineDatum(referenceDatum) = orcfax_price_input.output.datum
+        expect oracleDatum: RationalDatum = referenceDatum
+
+        let provider_info = get_oracle_orcfax_config(orcfax_specs, common.token)
+        let policy_pointer_identifier = provider_info.1st
+        let decimals = provider_info.2nd
+        let feed_id = provider_info.3rd
+
+        expect Script(orcfax_feed_scripthash) =
+          orcfax_price_input.output.address.payment_credential
+
+        expect Script(orcfax_pointer_scripthash) =
+          orcfax_pointer_input.output.address.payment_credential
+
+        //Orcfax provides price in numerator/denominator in TOKEN/ADA, but we use unitTOKEN/lovelace so in order to convert it 
+        //FLDT/ADA 0.3
+        //unitFLDT/lovelace 0.3 because same decimals
+        //SNEK/ADA 0.0002 so 200/1000000
+        //200 unitSNEK/lovelace 
+        //therefore in order to get we multipliy numerator by 10^6 and denominator by 10^decimals of token 
+        expect Some(fluid_price) =
+          rational.new(price_in_lovelaces, price_denominator)
+        expect Some(multiplier) = rational.new(math.pow(10, decimals), 1000000)
+        let result = rational.mul(fluid_price, multiplier)
+        let reduced = rational.reduce(result)
+        expect Some(orcfax_price) =
+          rational.new(
+            oracleDatum.statement.body.num,
+            oracleDatum.statement.body.denom,
+          )
+        //Orcfax does not has expiration however has tolerance, meaning that a feed older than that time should not be considered
+        //In our case we have 6 hours tolerance
+        and {
+          orcfax_feed_scripthash == pointerDatum,
+          starts_with(oracleDatum.statement.feed_id, feed_id),
+          orcfax_pointer_scripthash == policy_pointer_identifier,
+          quantity_of(
+            orcfax_pointer_input.output.value,
+            policy_pointer_identifier,
+            constants.orcfax_identifier_pointer_asset_name,
+          ) == 1,
+          quantity_of(
+            orcfax_price_input.output.value,
+            pointerDatum,
+            constants.orcfax_identifier_feed_asset_name,
+          ) == 1,
+          common.valid_to - constants.max_orcfax_tolerance <= oracleDatum.statement.created_at,
+          compare(reduced, orcfax_price) == Equal,
+        }
+      }
       _ -> {
+        let serialise_data = builtin.serialise_data(redeemer.data)
         let valid_signatures =
           list.foldl(
             unique_signatures,
@@ -99,15 +172,13 @@ validator oracle(
             fn(redem, valid_signatures) -> Int {
               expect Some(verification_key) =
                 list.at(verification_keys, redem.key_position)
-              if builtin.verify_ed25519_signature(
-                verification_key,
-                builtin.serialise_data(redeemer.data),
-                redem.signature,
-              ) {
-                valid_signatures + 1
-              } else {
-                valid_signatures
-              }
+              expect
+                builtin.verify_ed25519_signature(
+                  verification_key,
+                  serialise_data,
+                  redem.signature,
+                ) == True
+              valid_signatures + 1
             },
           )
         valid_signatures >= threshold

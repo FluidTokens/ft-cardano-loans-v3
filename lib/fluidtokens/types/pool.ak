@@ -9,7 +9,7 @@ use cardano/transaction.{OutputReference}
 use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
 
 pub type RepaymentMode {
-  //Amortization. Express number of possible recasts: 0 means no recasting, negative means unlimited
+  //Amortization. Express number of possible recasts: 0 means no recasting, if you want "unlimited" just put a very big int
   InterestOnRemainingPrincipal { max_possible_recasts: Int }
   //Installment amount = Principal+Interest/Installments
   PrincipalAndInterestOnInstallments

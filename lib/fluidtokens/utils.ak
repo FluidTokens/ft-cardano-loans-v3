@@ -11,10 +11,26 @@ use cardano/transaction.{
 }
 use fluidtokens/types/config.{ConfigDatum}
 use fluidtokens/types/general.{Asset}
-use fluidtokens/types/oracle.{CharlieTokenSpecs, GenericData, PriceData}
+use fluidtokens/types/oracle.{
+  CharlieTokenSpecs, GenericData, OrcfaxTokenSpecs, PriceData,
+}
+
+pub fn indexed_filter(list: List<a>, predicate: fn(Int, a) -> Bool) -> List<a> {
+  list.indexed_foldr(
+    list,
+    [],
+    fn(index, elem, acc) {
+      if predicate(index, elem) {
+        list.push(acc, elem)
+      } else {
+        acc
+      }
+    },
+  )
+}
 
 pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
-  crypto.sha2_256(
+  crypto.blake2b_224(
     bytearray.push(outputRef.transaction_id, outputRef.output_index),
   )
 }
@@ -143,4 +159,13 @@ pub fn pairs_ordering(
   pair2: Pair<ByteArray, Int>,
 ) -> Ordering {
   bytearray.compare(pair1.1st, pair2.1st)
+}
+
+pub fn get_oracle_orcfax_config(
+  oracle_specs: OrcfaxTokenSpecs,
+  feedToken: Asset,
+) -> (PolicyId, Int, ByteArray) {
+  expect Some(token_pairs) = pairs.get_first(oracle_specs, feedToken.policyId)
+  expect Some(result) = pairs.get_first(token_pairs, feedToken.assetName)
+  result
 }

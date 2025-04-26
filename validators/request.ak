@@ -18,7 +18,6 @@ use fluidtokens/finance.{
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/general.{Asset, CollateralAsset}
 use fluidtokens/types/loan.{LoanDatum}
-use fluidtokens/types/oracle.{Aggregated, CommonFeedData} as oracle_type
 use fluidtokens/types/pool.{CommonData, Liquidation}
 use fluidtokens/types/request.{
   Cancel, CancelAfterExpiration, Lend, RequestDatum, RequestMintRedeemer,
@@ -50,36 +49,36 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
     let isInputRefSpent =
       option.is_some(find_input(self.inputs, redeemer.inputRef))
 
+    let mintedTokens =
+      list.filter(
+        dict.to_pairs(tokens(self.mint, policy_id)),
+        fn(Pair(_assetName, quantity)) { quantity > 0 },
+      )
+
     let isEachMintedTokenAccountedFor =
       list.indexed_foldr(
-        dict.to_pairs(tokens(self.mint, policy_id)),
+        mintedTokens,
         True,
         fn(index, Pair(assetName, quantity), result) {
           expect result
 
-          if quantity > 0 {
-            let correctAssetName = and {
-                bytearray.at(assetName, 0) == index,
-                bytearray.drop(assetName, 1) == bytearray.drop(inputRefHash, 1),
-              }
-
-            expect Some(output) = list.at(requestOutputs, index)
-            let outputHasUniqueToken = and {
-                dict.size(assets.tokens(output.value, policy_id)) == 1,
-                assets.quantity_of(output.value, policy_id, assetName) == 1,
-              }
-            and {
-              quantity == 1,
-              correctAssetName,
-              outputHasUniqueToken,
+          let correctAssetName = and {
+              bytearray.at(assetName, 0) == index,
+              bytearray.drop(assetName, 1) == bytearray.drop(inputRefHash, 1),
             }
-          } else {
-            //Burning the tokens is always allowed
-            True
+
+          expect Some(output) = list.at(requestOutputs, index)
+          let outputHasUniqueToken = and {
+              dict.size(assets.tokens(output.value, policy_id)) == 1,
+              assets.quantity_of(output.value, policy_id, assetName) == 1,
+            }
+          and {
+            quantity == 1,
+            correctAssetName,
+            outputHasUniqueToken,
           }
         },
       )
-
     let mintedTokensQuantity =
       reduce(
         self.mint,
@@ -146,45 +145,51 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                 ),
               ),
             }
-          CancelAfterExpiration(requestId, borrowerOutputIndex) -> {
+          CancelAfterExpiration(requestId) -> {
             expect Finite(validFrom) =
               self.validity_range.lower_bound.bound_type
             let requestExpired = validFrom > datum.requestExpiration
-            let borrowerOutput = safe_list_at(self.outputs, borrowerOutputIndex)
+            let borrowerOutput = safe_list_at(self.outputs, index)
             and {
               quantity_of(input.output.value, requestPolicyId, requestId) == 1,
               quantity_of(self.mint, requestPolicyId, requestId) == -1,
               requestExpired,
-              validate_collateral_less_penality_output(
+              validate_collateral_less_penalty_output(
                 input.output.value,
                 borrowerOutput,
                 datum.borrowerAddress,
                 datum.requestExpirationPenalty,
+                requestPolicyId,
+                requestId,
               ),
             }
           }
           Lend(
-            outputWithBorrowerTokenIndex,
             principalOracleRefInputIndex,
             collateralOracleRefInputIndex,
             givenPrincipalAmount,
             requestId,
             permissionedConditionWithdrawIndex,
           ) -> {
-            expect Finite(validTo) = self.validity_range.upper_bound.bound_type
+            expect (Finite(validFrom), Finite(validTo)) =
+              (
+                self.validity_range.lower_bound.bound_type,
+                self.validity_range.upper_bound.bound_type,
+              )
+            //Request not expired
+            expect validFrom < datum.requestExpiration
             let inputUtxoId = utils.hash_output_ref(input.output_reference)
             let loanOutput =
               safe_list_at(
                 get_outputs_to_smart_credential(
                   self.outputs,
                   Script(config.loanSpendScriptHash),
-                  credential,
+                  Script(config.loanPolicyId),
                   config.smartTokensSpendScriptHash,
                 ),
                 index,
               )
-            let outputWithBorrowerToken =
-              safe_list_at(self.outputs, outputWithBorrowerTokenIndex)
+            let outputWithBorrowerToken = safe_list_at(self.outputs, index)
 
             expect Some(principalLtvAsRational) =
               rational.new(datum.principalLTV, datum.principalLTVDivider)
@@ -204,6 +209,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                     collateralOracleRefInput.output.address.payment_credential,
                     collateralOracleRefInput.output.value,
                     self.redeemers,
+                    validFrom,
                     validTo,
                     collateralOracleToken.policyId,
                     collateralOracleToken.assetName,
@@ -216,30 +222,17 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                     principalOracleRefInputIndex,
                   )
                 expect Some(principalOraclePriceFeed) =
-                  if datum.commonData.principalAsset.policyId == "" {
-                    Some(
-                      Aggregated {
-                        common: CommonFeedData {
-                          valid_from: 0,
-                          valid_to: 0,
-                          token: Asset { policyId: "", assetName: "" },
-                        },
-                        token_price_in_lovelaces: 1,
-                        token_price_denominator: 1,
-                      },
-                    )
-                  } else {
-                    retrieve_oracle_data(
-                      principalOracleRefInput.output.address.payment_credential,
-                      principalOracleRefInput.output.value,
-                      self.redeemers,
-                      validTo,
-                      datum.commonData.principalOracleAsset.policyId,
-                      datum.commonData.principalOracleAsset.assetName,
-                      datum.commonData.principalAsset.policyId,
-                      Some(datum.commonData.principalAsset.assetName),
-                    )
-                  }
+                  retrieve_oracle_data(
+                    principalOracleRefInput.output.address.payment_credential,
+                    principalOracleRefInput.output.value,
+                    self.redeemers,
+                    validFrom,
+                    validTo,
+                    datum.commonData.principalOracleAsset.policyId,
+                    datum.commonData.principalOracleAsset.assetName,
+                    datum.commonData.principalAsset.policyId,
+                    Some(datum.commonData.principalAsset.assetName),
+                  )
                 expect
                   givenPrincipalAmount >= get_min_principal_for_collateral_with_oracles(
                     collateralAmount,
@@ -323,14 +316,22 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
   }
 }
 
-fn validate_collateral_less_penality_output(
+fn validate_collateral_less_penalty_output(
   requestValue: Value,
   borrowerOutput: Output,
   borrowerAddress: Address,
   requestExpirationPenalty: Int,
+  requestPolicyId: ByteArray,
+  requestAssetName: ByteArray,
 ) {
   let inputValueNoAda = without_lovelace(requestValue)
-  let outputValueNoAda = without_lovelace(borrowerOutput.value)
+  let outputValueNoAda =
+    add(
+      without_lovelace(borrowerOutput.value),
+      requestPolicyId,
+      requestAssetName,
+      -1,
+    )
   let outputAdaCorrect =
     quantity_of(borrowerOutput.value, "", "") >= quantity_of(
       requestValue,
@@ -393,12 +394,21 @@ fn validate_output_to_loan(
   requestId: ByteArray,
 ) -> (Bool, LoanDatum) {
   let collateralUnchanged =
-    add(without_lovelace(output.value), loanPolicyId, loanId, -1) == add(
-      without_lovelace(requestValue),
-      requestPolicyId,
-      requestId,
-      -1,
-    )
+    if collateral.policyId == "" {
+      add(output.value, loanPolicyId, loanId, -1) == add(
+        requestValue,
+        requestPolicyId,
+        requestId,
+        -1,
+      )
+    } else {
+      add(without_lovelace(output.value), loanPolicyId, loanId, -1) == add(
+        without_lovelace(requestValue),
+        requestPolicyId,
+        requestId,
+        -1,
+      )
+    }
 
   let containsLoanNFT = quantity_of(output.value, loanPolicyId, loanId) == 1
   expect InlineDatum(outputDatum) = output.datum
@@ -406,7 +416,7 @@ fn validate_output_to_loan(
   let newDatum =
     LoanDatum {
       commonData: requestDatum.commonData,
-      originAssetName: requestId,
+      originId: bytearray.concat("REQUEST", requestId),
       borrowerAssetName: loanId,
       lenderAssetName: loanId,
       collateral,
@@ -430,7 +440,12 @@ fn validate_output_to_loan(
       //outputs have been already filtered at the beginning
       True
     }
-  let dosProtection = length(flatten(output.value)) <= 21
+  let dosProtection =
+    if collateral.policyId == "" {
+      length(flatten(output.value)) <= 2
+    } else {
+      length(flatten(output.value)) <= 3
+    }
   (and {
       correctDestination,
       isDatumCorrect,
