@@ -315,6 +315,7 @@ fn bonds_sent_to_both_parties(
 ) {
   and {
     outputWithLenderToken.address == lenderAddress,
+    outputWithLenderToken.datum == InlineDatum(""),
     quantity_of(mintedValue, borrowerBondPolicyId, bondId) == 1,
     quantity_of(outputWithLenderToken.value, lenderBondPolicyId, bondId) == 1,
     length(flatten(outputWithLenderToken.value)) <= 5,
