@@ -20,7 +20,7 @@ use fluidtokens/types/dutch_auction.{DutchAuctionDatum}
 use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
 use fluidtokens/types/loan.{
   ChangeCollateral, Claim, LoanDatum, LoanMintRedeemer, LoanWithdrawRedeemer,
-  Recast, Repay,
+  Recast, Repay, LoanRepaymentData,
 } as l
 use fluidtokens/types/pool.{
   Borrow, Liquidation, NoLiquidationDutchAuctionClaim,
@@ -448,7 +448,14 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                   assetName: datum.lenderAssetName,
                 },
                 action: constants.repayment_action_installment,
-                extra_data: datum,
+                extra_data: LoanRepaymentData {
+                  loanId: loanId,
+                  principalAmount: datum.principalAmount,
+                  interestRate: datum.commonData.interestRate,
+                  repaidInstallments: datum.repaidInstallments,
+                  totalInstallments: datum.commonData.totalInstallments,
+                  repaymentMode: datum.commonData.repaymentMode,
+                },
                 repaymentPolicyId: config.repaymentPolicyId,
                 repaymentId: utils.hash_output_ref(input.output_reference),
               ),
@@ -627,7 +634,14 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                   assetName: datum.lenderAssetName,
                 },
                 action: constants.repayment_action_recast,
-                extra_data: datum,
+                extra_data: LoanRepaymentData {
+                  loanId: loanId,
+                  principalAmount: datum.principalAmount,
+                  interestRate: datum.commonData.interestRate,
+                  repaidInstallments: datum.repaidInstallments,
+                  totalInstallments: datum.commonData.totalInstallments,
+                  repaymentMode: datum.commonData.repaymentMode,
+                },
                 repaymentPolicyId: config.repaymentPolicyId,
                 repaymentId: utils.hash_output_ref(input.output_reference),
               ),
