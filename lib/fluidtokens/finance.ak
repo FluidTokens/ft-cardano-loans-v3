@@ -267,27 +267,30 @@ pub fn get_remaining_debt(
       interestRateIncreaseLinearCoefficientDivider,
       ..
     } -> {
-      let currentInterestRate =
-        if interestRateIncreaseLinearCoefficient > 0 {
-          expect Some(currentInterestRateIncrease) =
-            rational.new(
-              interestRateIncreaseLinearCoefficient * timeSinceLendDate,
-              interestRateIncreaseLinearCoefficientDivider,
-            )
-          rational.add(
-            interestRate,
-            rational.mul(interestRate, currentInterestRateIncrease),
-          )
+      let lastRepaidInstallmentTime =
+        if repaidInstallments == 0 {
+          0
         } else {
-          interestRate
+          initialGracePeriod + repaidInstallments * installmentPeriod
         }
 
-      rational.ceil(
-        rational.add(principal, rational.mul(principal, currentInterestRate)),
-      )
+      let periodToPay = timeSinceLendDate - lastRepaidInstallmentTime
+      expect Some(currentInterestRateIncrease) =
+        rational.new(
+          interestRateIncreaseLinearCoefficient * periodToPay,
+          interestRateIncreaseLinearCoefficientDivider,
+        )
+
+      let currentInterestRate =
+        rational.add(currentInterestRateIncrease, interestRate)
+
+      let currentInterest = rational.mul(principal, currentInterestRate)
+
+      rational.ceil(rational.sub(principal, currentInterest))
     }
+
     _ ->
-      ( totalInstallments - repaidInstallments ) * get_installment_amount(
+      ( totalInstallments - repaidInstallments ) * get_next_installment_amount(
         repaymentMode,
         principal,
         interestRate,
@@ -303,7 +306,7 @@ pub fn get_remaining_debt(
 
 //Installment expressed in principal currency
 //TODO Should we do the subtraction if it's the last installment?
-pub fn get_installment_amount(
+pub fn get_next_installment_amount(
   repaymentMode: RepaymentMode,
   principal: Rational,
   interestRate: Rational,
@@ -364,19 +367,21 @@ pub fn get_installment_amount(
       interestRateIncreaseLinearCoefficientDivider,
       ..
     } -> {
-      let periodToLatestPaidInstallment =
-        ( repaidInstallments + 1 ) * installmentPeriod
-      let timePassed = initialGracePeriod + periodToLatestPaidInstallment
+      let periodToPay =
+        if repaidInstallments == 0 {
+          initialGracePeriod + installmentPeriod
+        } else {
+          installmentPeriod
+        }
+
       expect Some(currentInterestRateIncrease) =
         rational.new(
-          interestRateIncreaseLinearCoefficient * timePassed,
+          interestRateIncreaseLinearCoefficient * periodToPay,
           interestRateIncreaseLinearCoefficientDivider,
         )
+
       let currentInterestRate =
-        rational.add(
-          interestRate,
-          rational.mul(interestRate, currentInterestRateIncrease),
-        )
+        rational.add(currentInterestRateIncrease, interestRate)
 
       let installmentAmountAsRational =
         rational.mul(principal, currentInterestRate)

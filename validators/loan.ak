@@ -11,7 +11,7 @@ use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/constants
 use fluidtokens/finance.{
   can_liquidate, get_collateral_amount, get_due_installments, get_equity,
-  get_installment_amount, get_remaining_debt, is_recasting_permitted,
+  get_next_installment_amount, get_remaining_debt, is_recasting_permitted,
   is_repayment_late,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
@@ -420,7 +420,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                   validTo - datum.lendDate,
                 )
               } else {
-                get_installment_amount(
+                get_next_installment_amount(
                   datum.commonData.repaymentMode,
                   rational.from_int(datum.principalAmount),
                   interestRateAsRational,

@@ -16,10 +16,12 @@ pub type RepaymentMode {
   //These loans don't have a deadline, the borrower can repay whenever he wants
   //But the interest rate increases over time linearly and if installments are > 1 and they are not paid in time
   //the borrower can be liquidated
+  //At each installment the borrower has to pay only the interest since last installment
+  //when the borrower wants to close the loan, he has to pay the principal + interest since last installment
   //Liquidation for too low ltv is always possible if enabled
   //initialGracePeriod allows not to repay for a certain period after the loan starts but the interest rate keeps increasing!
   //Recasting is permitted when enabled
-  //As the increase is linear, to know the interest rate (y) at a certain time (x), the formula is: y = A*x
+  //As the increase is linear, to know the current interest rate (y) at a certain time (x), the formula is: y = A*x + interestRate
   //Where A = interestRateIncreaseLinearCoefficient / interestRateIncreaseLinearCoefficientDivider
   PerpetualLoan {
     interestRateIncreaseLinearCoefficient: Int,
