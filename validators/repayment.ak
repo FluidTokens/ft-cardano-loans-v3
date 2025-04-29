@@ -48,8 +48,9 @@ validator repayment(
             safe_list_at(loanRedeemer.actionsForEachInput, index)
           when loanRedeemerAction is {
             Claim { liquidationMode, equity, .. } -> {
-              expect Liquidation { partialLiquidation, .. } = liquidationMode
-              partialLiquidation && equity > 0
+              expect Liquidation { partialLiquidationPenaltyPerMille, .. } =
+                liquidationMode
+              partialLiquidationPenaltyPerMille >= 0 && equity > 0
             }
             Repay { .. } -> True
             Recast { .. } -> True

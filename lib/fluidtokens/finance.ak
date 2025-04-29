@@ -19,41 +19,6 @@ fn rational_pow(r: rational.Rational, exponent: Int) -> Rational {
   }
 }
 
-//Calculate the token_b required to purchase wanted_token_a_amount of token_a
-//TODO Is this formula accepted for any AMM?
-fn token_b_needed_to_purchase_token_a_in_AMM_pool(
-  wanted_token_a_amount: Rational,
-  token_a_amount_in_pool: Int,
-  token_b_amount_in_pool: Int,
-  pool_fees_per_mille: Int,
-) -> Int {
-  let buy_amount_int = wanted_token_a_amount |> rational.truncate()
-
-  let nominator = buy_amount_int * 1000 * token_b_amount_in_pool
-  let denominator =
-    ( token_a_amount_in_pool - buy_amount_int ) * ( 1000 - pool_fees_per_mille )
-  let token_b_required = nominator / denominator
-  token_b_required
-}
-
-//Calculate the token_b received when selling selling_token_a_amount of token_a
-//TODO Is this formula accepted for any AMM?
-fn token_b_received_from_selling_token_a_in_AMM_pool(
-  selling_token_a_amount: Rational,
-  token_a_amount: Int,
-  token_b_amount: Int,
-  pool_fees_per_mille: Int,
-) -> Int {
-  let remaining_after_pool_fees = 1000 - pool_fees_per_mille
-  let sell_amount_int = selling_token_a_amount |> rational.truncate()
-
-  let nominator = sell_amount_int * remaining_after_pool_fees * token_b_amount
-  let denominator =
-    token_a_amount * 1000 + remaining_after_pool_fees * sell_amount_int
-  let asset_return = nominator / denominator
-  asset_return
-}
-
 fn get_token_amount_in_lovelace(
   tokenAmount: Rational,
   oraclePriceFeed: OraclePriceFeed,
@@ -64,20 +29,7 @@ fn get_token_amount_in_lovelace(
         rational.new(token_price_in_lovelaces, token_price_denominator)
       rational.mul(tokenPrice, tokenAmount)
     }
-    Pooled {
-      token_a_amount_in_pool,
-      token_b_amount_in_pool,
-      pool_fees_per_mille,
-      ..
-    } ->
-      rational.from_int(
-        token_b_received_from_selling_token_a_in_AMM_pool(
-          tokenAmount,
-          token_a_amount_in_pool,
-          token_b_amount_in_pool,
-          pool_fees_per_mille,
-        ),
-      )
+    Pooled { .. } -> fail
     Dedicated { price_in_lovelaces, price_denominator, .. } -> {
       expect Some(tokenPrice) =
         rational.new(price_in_lovelaces, price_denominator)
@@ -107,20 +59,7 @@ fn get_lovelace_amount_in_token_currency(
       expect Some(tokensAmount) = rational.div(lovelaces, tokenPrice)
       tokensAmount
     }
-    Pooled {
-      token_a_amount_in_pool,
-      token_b_amount_in_pool,
-      pool_fees_per_mille,
-      ..
-    } ->
-      rational.from_int(
-        token_b_needed_to_purchase_token_a_in_AMM_pool(
-          lovelaces,
-          token_a_amount_in_pool,
-          token_b_amount_in_pool,
-          pool_fees_per_mille,
-        ),
-      )
+    Pooled { .. } -> fail
     Dedicated { price_in_lovelaces, price_denominator, .. } -> {
       expect Some(tokenPrice) =
         rational.new(price_in_lovelaces, price_denominator)
@@ -400,14 +339,24 @@ pub fn get_equity(
   remainingDebt: Rational,
   principalOraclePriceFeed: OraclePriceFeed,
   collateralOraclePriceFeed: OraclePriceFeed,
+  partialLiquidationPenaltyPerMille: Int,
 ) {
   let remainingDebtInLovelace =
     get_token_amount_in_lovelace(remainingDebt, principalOraclePriceFeed)
   let collateralInLovelace =
     get_token_amount_in_lovelace(collateralAmount, collateralOraclePriceFeed)
 
+  expect Some(partialLiquidationPenaltyAsRational) =
+    rational.new(partialLiquidationPenaltyPerMille, 1000)
+
+  let partialLiquidationPenalty =
+    rational.mul(remainingDebtInLovelace, partialLiquidationPenaltyAsRational)
+
   let equityInLovelace =
-    rational.sub(collateralInLovelace, remainingDebtInLovelace)
+    rational.sub(
+      rational.sub(collateralInLovelace, remainingDebtInLovelace),
+      partialLiquidationPenalty,
+    )
 
   let equity =
     get_lovelace_amount_in_token_currency(

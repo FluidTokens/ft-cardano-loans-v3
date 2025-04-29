@@ -36,9 +36,11 @@ pub type LiquidationMode {
   Liquidation {
     lTV: Int,
     lTVDivider: Int,
-    //If true, when claiming the collateral the lender must pay to the borrower the difference
-    //If false, borrower loses all the collateral when liquidation happens
-    partialLiquidation: Bool,
+    //If true, 
+    //If negative, borrower loses all the collateral when liquidation happens
+    //If >= 0, when claiming the collateral the lender must pay to the borrower the difference
+    //If > 0, this represents the per mille of the debt that must be given to the lender as penalty for being liquidated
+    partialLiquidationPenaltyPerMille: Int,
   }
 }
 

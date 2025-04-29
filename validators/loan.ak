@@ -273,7 +273,11 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                     ),
                   }
                 }
-                Liquidation { lTV, lTVDivider, partialLiquidation } -> {
+                Liquidation {
+                  lTV,
+                  lTVDivider,
+                  partialLiquidationPenaltyPerMille,
+                } -> {
                   let principalAmountAsRational =
                     rational.from_int(datum.principalAmount)
                   expect Some(collateralOracleToken) =
@@ -332,6 +336,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       rational.from_int(remainingDebt),
                       principalOraclePriceFeed,
                       collateralOraclePriceFeed,
+                      partialLiquidationPenaltyPerMille,
                     ),
                     or {
                       isRepaymentLate,
@@ -344,7 +349,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       ),
                     },
                     or {
-                      partialLiquidation == False,
+                      partialLiquidationPenaltyPerMille < 0,
                       equity <= 0,
                       {
                         expect Some(borrowerCompensationOutput) =
