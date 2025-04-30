@@ -407,13 +407,13 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 datum.commonData.installmentPeriod,
                 datum.commonData.repaymentTimeWindow,
               )
-            let isPerpetualLoanAndIsFinalRepayment =
+            let isPerpetualLoan =
               when datum.commonData.repaymentMode is {
-                PerpetualLoan { .. } -> isFinalRepayment
+                PerpetualLoan { .. } -> True
                 _ -> False
               }
             let nextRepaymentAmount =
-              if isPerpetualLoanAndIsFinalRepayment {
+              if isPerpetualLoan && isFinalRepayment {
                 get_remaining_debt(
                   datum.commonData.repaymentMode,
                   rational.from_int(datum.principalAmount),
@@ -459,9 +459,10 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               ),
               or {
                 and {
-                  or {
-                    isPerpetualLoanAndIsFinalRepayment,
-                    datum.repaidInstallments == datum.commonData.totalInstallments - 1,
+                  if isPerpetualLoan {
+                    isFinalRepayment
+                  } else {
+                    datum.repaidInstallments == datum.commonData.totalInstallments - 1
                   },
                   quantity_of(self.mint, loanPolicyId, loanId) == -1,
                 },

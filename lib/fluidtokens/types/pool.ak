@@ -52,6 +52,7 @@ pub type CommonData {
   interestRate: Int,
   //How much time between 2 consecutive installments
   installmentPeriod: Int,
+  //Total number of installments, in case of Perpetual loans it is not used
   totalInstallments: Int,
   //Period after starting the loan and before starting repaying (borrower can't be liquidated in this period)
   initialGracePeriod: Int,
