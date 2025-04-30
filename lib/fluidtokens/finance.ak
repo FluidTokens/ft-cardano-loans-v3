@@ -1,5 +1,6 @@
 use aiken/math/rational.{Rational}
 use cardano/assets.{Value, quantity_of}
+use fluidtokens/constants
 use fluidtokens/types/general.{CollateralAsset}
 use fluidtokens/types/oracle.{
   Aggregated, Dedicated, OraclePriceFeed, Pooled, PriceDataCharlie,
@@ -201,16 +202,12 @@ pub fn get_remaining_debt(
   timeSinceLendDate: Int,
 ) {
   when repaymentMode is {
-    PerpetualLoan {
-      interestRateIncreaseLinearCoefficient,
-      interestRateIncreaseLinearCoefficientDivider,
-      ..
-    } -> {
+    PerpetualLoan { apyIncreaseLinearCoefficient, .. } -> {
       let lastRepaidInstallmentTime =
         if repaidInstallments == 0 {
           0
         } else {
-          initialGracePeriod + repaidInstallments * installmentPeriod
+          ( initialGracePeriod + repaidInstallments * installmentPeriod ) * constants.hour_to_millis
         }
 
       let periodToPay = timeSinceLendDate - lastRepaidInstallmentTime
@@ -311,7 +308,7 @@ pub fn get_next_installment_amount(
           initialGracePeriod + installmentPeriod
         } else {
           installmentPeriod
-        }
+        } * constants.hour_to_millis
 
       expect Some(currentInterestRateIncrease) =
         rational.new(
@@ -377,7 +374,9 @@ pub fn is_repayment_late(
 ) {
   let periodToLatestPaidInstallment =
     ( repaidInstallments + 1 ) * installmentPeriod
-  validFrom > lendDate + initialGracePeriod + periodToLatestPaidInstallment + repaymentTimeWindow
+  validFrom > lendDate + (
+    initialGracePeriod + periodToLatestPaidInstallment + repaymentTimeWindow
+  ) * constants.hour_to_millis
 }
 
 pub fn get_due_installments(
@@ -391,7 +390,7 @@ pub fn get_due_installments(
     ( repaidInstallments + 1 ) * installmentPeriod
   let timePassed =
     validFrom - (
-      lendDate + initialGracePeriod + periodToLatestPaidInstallment
+      lendDate + ( initialGracePeriod + periodToLatestPaidInstallment ) * constants.hour_to_millis
     )
   timePassed / installmentPeriod
 }

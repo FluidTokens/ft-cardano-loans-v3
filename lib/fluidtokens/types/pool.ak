@@ -14,20 +14,18 @@ pub type RepaymentMode {
   //Installment amount = Principal+Interest/Installments
   PrincipalAndInterestOnInstallments
   //These loans don't have a deadline, the borrower can repay whenever he wants
-  //But the interest rate increases over time linearly and if installments are > 1 and they are not paid in time
+  //The APY increases over time linearly and if installments are > 1 and they are not paid in time
   //the borrower can be liquidated
   //At each installment the borrower has to pay only the interest since last installment
-  //when the borrower wants to close the loan, he has to pay the principal + interest since last installment
+  //When the borrower wants to close the loan, he has to pay the principal + interest since last installment
   //Liquidation for too low ltv is always possible if enabled
   //initialGracePeriod allows not to repay for a certain period after the loan starts but the interest rate keeps increasing!
+  //So the first installment requires you to pay that too
   //Recasting is permitted when enabled
-  //As the increase is linear, to know the current interest rate (y) at a certain time (x), the formula is: y = A*x + interestRate
-  //Where A = interestRateIncreaseLinearCoefficient / interestRateIncreaseLinearCoefficientDivider
-  PerpetualLoan {
-    interestRateIncreaseLinearCoefficient: Int,
-    interestRateIncreaseLinearCoefficientDivider: Int,
-    max_possible_recasts: Int,
-  }
+  //APY = mx + c = apyIncreaseLinearCoefficient/10000 * x + interestRate/10000 (the variable called as such)
+  //Hourly interest rate = c / 8760
+  //Normal installment amount = hourly interest rate * installmentPeriod
+  PerpetualLoan { apyIncreaseLinearCoefficient: Int, max_possible_recasts: Int }
 }
 
 pub type LiquidationMode {
@@ -48,17 +46,20 @@ pub type CommonData {
   principalAsset: Asset,
   //Used in dynamicPriced pools and in partial liquidations, it indicates the oracle NFT for the principal
   principalOracleAsset: Asset,
-  //Per mille of the loan to repay to lender
+  //The interest rate of the loan is this number/10000, so 0.01% is expressed as 1.
+  //For perpetuals this variable actually represents c in the formula APY=mx+c, and it can be used for:
+  //installmentAmount (hourly) = c/8760
   interestRate: Int,
-  //How much time between 2 consecutive installments
+  //How much time between 2 consecutive installments, expressed in hours
   installmentPeriod: Int,
   //Total number of installments, in case of Perpetual loans it is not used
   totalInstallments: Int,
   //Period after starting the loan and before starting repaying (borrower can't be liquidated in this period)
+  //Expressed in hours
   initialGracePeriod: Int,
   liquidationMode: LiquidationMode,
   repaymentMode: RepaymentMode,
-  //Period to repay without being considered late
+  //Period to repay without being considered late, expressed in hours
   //After this period, borrower can be liquidated if he hasn't paid the installment
   repaymentTimeWindow: Int,
   //Fee borrower pays when he could be liquidated but he repays, <= 0 means no penalty

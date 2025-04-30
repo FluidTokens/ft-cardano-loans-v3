@@ -192,7 +192,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
 
         expect Some(interestRateAsRational) =
-          rational.new(datum.commonData.interestRate, 1000)
+          rational.new(datum.commonData.interestRate, 10000)
 
         when redeemerAction is {
           Claim {

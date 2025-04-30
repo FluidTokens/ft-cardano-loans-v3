@@ -12,6 +12,7 @@ pub type DutchAuctionDatum {
   loweringFrequency: Int,
   //Expressed in units
   minPriceToCancel: Int,
+  //In POSIX millis
   startDate: Int,
   //If present it means it's a ducth auction from a liquidated asset:
   //The lender must get max principal+interest

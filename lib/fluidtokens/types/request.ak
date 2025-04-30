@@ -22,7 +22,7 @@ pub type RequestDatum {
   permissionedConditionScriptHash: ByteArray,
   //Same considerations of PoolDatum
   extraData: Data,
-  //POSIX after which the request is considered expired and anybody can cancel it
+  //POSIX millis after which the request is considered expired and anybody can cancel it
   requestExpiration: Int,
   //In lovelace, how much you earn removing this expired request from the smart contract
   requestExpirationPenalty: Int,
