@@ -203,26 +203,33 @@ pub fn get_remaining_debt(
 ) {
   when repaymentMode is {
     PerpetualLoan { apyIncreaseLinearCoefficient, .. } -> {
-      let lastRepaidInstallmentTime =
-        if repaidInstallments == 0 {
-          0
-        } else {
-          ( initialGracePeriod + repaidInstallments * installmentPeriod ) * constants.hour_to_millis
-        }
+      expect Some(passedHoursSoFarSquared) =
+        rational.new(timeSinceLendDate * timeSinceLendDate, 7200000)
+      expect Some(m) = rational.new(apyIncreaseLinearCoefficient, 10000)
 
-      let periodToPay = timeSinceLendDate - lastRepaidInstallmentTime
-      expect Some(currentInterestRateIncrease) =
-        rational.new(
-          interestRateIncreaseLinearCoefficient * periodToPay,
-          interestRateIncreaseLinearCoefficientDivider,
+      let passedHoursSinceLastRepaidInstallment =
+        rational.from_int(
+          initialGracePeriod + installmentPeriod * repaidInstallments,
         )
 
-      let currentInterestRate =
-        rational.add(currentInterestRateIncrease, interestRate)
+      expect Some(hourlyInterestRate) =
+        rational.div(interestRate, rational.from_int(87600000))
 
-      let currentInterest = rational.mul(principal, currentInterestRate)
+      expect Some(secondPart) =
+        rational.div(
+          rational.mul(m, passedHoursSoFarSquared),
+          rational.from_int(8760),
+        )
 
-      rational.ceil(rational.sub(principal, currentInterest))
+      let secondFactor =
+        rational.add(
+          rational.mul(
+            hourlyInterestRate,
+            passedHoursSinceLastRepaidInstallment,
+          ),
+          secondPart,
+        )
+      rational.ceil(rational.mul(principal, secondFactor))
     }
 
     _ ->
@@ -298,33 +305,24 @@ pub fn get_next_installment_amount(
         rational.add(singleInstallmentAmountAsRational, penaltyFeeAsRational),
       )
     }
-    PerpetualLoan {
-      interestRateIncreaseLinearCoefficient,
-      interestRateIncreaseLinearCoefficientDivider,
-      ..
-    } -> {
-      let periodToPay =
+    PerpetualLoan { .. } -> {
+      let periodToPayInHours =
         if repaidInstallments == 0 {
           initialGracePeriod + installmentPeriod
         } else {
           installmentPeriod
         } * constants.hour_to_millis
 
-      expect Some(currentInterestRateIncrease) =
-        rational.new(
-          interestRateIncreaseLinearCoefficient * periodToPay,
-          interestRateIncreaseLinearCoefficientDivider,
-        )
+      expect Some(hourlyInterestRate) =
+        rational.div(interestRate, rational.from_int(87600000))
 
-      let currentInterestRate =
-        rational.add(currentInterestRateIncrease, interestRate)
+      let interestRateInPeriod =
+        rational.mul(rational.from_int(periodToPayInHours), hourlyInterestRate)
 
-      let installmentAmountAsRational =
-        rational.mul(principal, currentInterestRate)
+      //Only pay interest
+      let installmentAmount = rational.mul(principal, interestRateInPeriod)
 
-      rational.ceil(
-        rational.add(installmentAmountAsRational, penaltyFeeAsRational),
-      )
+      rational.ceil(rational.add(installmentAmount, penaltyFeeAsRational))
     }
   }
 }

@@ -48,11 +48,11 @@ pub type CommonData {
   principalOracleAsset: Asset,
   //The interest rate of the loan is this number/10000, so 0.01% is expressed as 1.
   //For perpetuals this variable actually represents c in the formula APY=mx+c, and it can be used for:
-  //installmentAmount (hourly) = c/8760
+  //installmentAmount (hourly) = c/10000/8760
   interestRate: Int,
   //How much time between 2 consecutive installments, expressed in hours
   installmentPeriod: Int,
-  //Total number of installments, in case of Perpetual loans it is not used
+  //Total number of installments, in case of Perpetual loans if it's > 0 it means we have infinite installments
   totalInstallments: Int,
   //Period after starting the loan and before starting repaying (borrower can't be liquidated in this period)
   //Expressed in hours
