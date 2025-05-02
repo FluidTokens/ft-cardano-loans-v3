@@ -203,33 +203,23 @@ pub fn get_remaining_debt(
 ) {
   when repaymentMode is {
     PerpetualLoan { apyIncreaseLinearCoefficient, .. } -> {
-      expect Some(passedHoursSoFarSquared) =
-        rational.new(timeSinceLendDate * timeSinceLendDate, 7200000)
-      expect Some(m) = rational.new(apyIncreaseLinearCoefficient, 10000)
+      //The formula is:
+      //remainingDebt = principal*hourlyInterestRate*passedHoursSinceLastRepaidInstallment + principal*m*passedHoursSoFar/8760*passedHoursSoFar
+      //which becomes:
+      //remainingDebt = principal*(hourlyInterestRate*passedHoursSinceLastRepaidInstallment) + (m*passedHoursSoFar^2/8760)
+      expect Some(passedHoursSoFar) = rational.new(timeSinceLendDate, 3600000)
+      expect Some(m) = rational.new(apyIncreaseLinearCoefficient, 1000000)
+      let apy = rational.add(rational.mul(passedHoursSoFar, m), interestRate)
 
-      let passedHoursSinceLastRepaidInstallment =
-        rational.from_int(
-          initialGracePeriod + installmentPeriod * repaidInstallments,
-        )
+      trace passedHoursSoFar
+      trace m
+      trace interestRate
+      trace rational.mul(passedHoursSoFar, m)
+      trace apy
 
-      expect Some(hourlyInterestRate) =
-        rational.div(interestRate, rational.from_int(87600000))
-
-      expect Some(secondPart) =
-        rational.div(
-          rational.mul(m, passedHoursSoFarSquared),
-          rational.from_int(8760),
-        )
-
-      let secondFactor =
-        rational.add(
-          rational.mul(
-            hourlyInterestRate,
-            passedHoursSinceLastRepaidInstallment,
-          ),
-          secondPart,
-        )
-      rational.ceil(rational.mul(principal, secondFactor))
+      rational.ceil(
+        rational.mul(principal, rational.add(rational.from_int(1), apy)),
+      )
     }
 
     _ ->
@@ -306,15 +296,16 @@ pub fn get_next_installment_amount(
       )
     }
     PerpetualLoan { .. } -> {
+      //Borrower repays only the interest, which corresponds to principal*hourlyInterestRate*periodToPayInHours
       let periodToPayInHours =
         if repaidInstallments == 0 {
           initialGracePeriod + installmentPeriod
         } else {
           installmentPeriod
-        } * constants.hour_to_millis
+        }
 
       expect Some(hourlyInterestRate) =
-        rational.div(interestRate, rational.from_int(87600000))
+        rational.div(interestRate, rational.from_int(8760))
 
       let interestRateInPeriod =
         rational.mul(rational.from_int(periodToPayInHours), hourlyInterestRate)
@@ -408,4 +399,49 @@ pub fn is_recasting_permitted(
       doneRecasts < max_possible_recasts
     _ -> fail
   }
+}
+
+//c = 1000/10000, m = 100/1000000
+test perpetual_installment_amount() {
+  let repaymentMode =
+    PerpetualLoan { apyIncreaseLinearCoefficient: 100, max_possible_recasts: 0 }
+  expect Some(principal) = rational.new(1000000000, 1)
+  expect Some(interestRate) = rational.new(1000, 10000)
+
+  let installmentAmount =
+    get_next_installment_amount(
+      repaymentMode: repaymentMode,
+      principal: principal,
+      interestRate: interestRate,
+      totalInstallments: 8,
+      repaidInstallments: 0,
+      installmentPeriod: 720,
+      initialGracePeriod: 720,
+      isLate: False,
+      penaltyFeeForLateRepayment: 0,
+    )
+  installmentAmount == 8210000
+}
+
+//c = 1000/10000, m = 100/1000000
+test perpetual_remaining_debt() {
+  let repaymentMode =
+    PerpetualLoan { apyIncreaseLinearCoefficient: 100, max_possible_recasts: 0 }
+  expect Some(principal) = rational.new(1000000000, 1)
+  expect Some(interestRate) = rational.new(1000, 10000)
+
+  let debt =
+    get_remaining_debt(
+      repaymentMode: repaymentMode,
+      principal: principal,
+      interestRate: interestRate,
+      totalInstallments: 1,
+      repaidInstallments: 0,
+      installmentPeriod: 720,
+      initialGracePeriod: 0,
+      timeSinceLendDate: 15768000000,
+    )
+
+  //31536000000,
+  debt == 2000000000
 }

@@ -22,7 +22,7 @@ pub type RepaymentMode {
   //initialGracePeriod allows not to repay for a certain period after the loan starts but the interest rate keeps increasing!
   //So the first installment requires you to pay that too
   //Recasting is permitted when enabled
-  //APY = mx + c = apyIncreaseLinearCoefficient/10000 * x + interestRate/10000 (the variable called as such)
+  //APY = mx + c = apyIncreaseLinearCoefficient/1000000 * x + interestRate/10000 (the variable called as such)
   //Hourly interest rate = c / 8760
   //Normal installment amount = hourly interest rate * installmentPeriod
   PerpetualLoan { apyIncreaseLinearCoefficient: Int, max_possible_recasts: Int }
