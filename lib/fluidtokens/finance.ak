@@ -208,17 +208,53 @@ pub fn get_remaining_debt(
       //which becomes:
       //remainingDebt = principal*(hourlyInterestRate*passedHoursSinceLastRepaidInstallment) + (m*passedHoursSoFar^2/8760)
       expect Some(passedHoursSoFar) = rational.new(timeSinceLendDate, 3600000)
+      expect Some(passedHoursSoFarSquared) =
+        rational.new(timeSinceLendDate * timeSinceLendDate, 12960000000000)
       expect Some(m) = rational.new(apyIncreaseLinearCoefficient, 1000000)
-      let apy = rational.add(rational.mul(passedHoursSoFar, m), interestRate)
 
-      trace passedHoursSoFar
-      trace m
-      trace interestRate
-      trace rational.mul(passedHoursSoFar, m)
-      trace apy
+      let passedHoursSinceLastRepaidInstallment =
+        rational.from_int(
+          initialGracePeriod + installmentPeriod * repaidInstallments,
+        )
+
+      expect Some(hourlyInterestRate) =
+        rational.div(interestRate, rational.from_int(8760))
+
+      let secondFactor =
+        rational.mul(
+          rational.mul(hourlyInterestRate, principal),
+          passedHoursSinceLastRepaidInstallment,
+        )
+
+      let apy = rational.add(rational.mul(passedHoursSoFar, m), secondFactor)
+
+      expect Some(firstPiece) =
+        //rational.mul(principal, rational.mul(passedHoursSoFar, m))
+        rational.div(
+          rational.mul(principal, rational.mul(m, passedHoursSoFarSquared)),
+          rational.from_int(8760),
+        )
+
+      let secondPiece =
+        rational.mul(
+          principal,
+          rational.mul(
+            hourlyInterestRate,
+            passedHoursSinceLastRepaidInstallment,
+          ),
+        )
+
+      // trace passedHoursSoFar
+      // trace m
+      // trace secondFactor
+      // trace rational.mul(passedHoursSoFar, m)
+      // trace apy
+      trace firstPiece
+      trace secondPiece
 
       rational.ceil(
-        rational.mul(principal, rational.add(rational.from_int(1), apy)),
+        //rational.mul(principal, rational.add(rational.from_int(1), apy)),
+        rational.add(principal, rational.add(firstPiece, secondPiece)),
       )
     }
 
@@ -415,8 +451,8 @@ test perpetual_installment_amount() {
       interestRate: interestRate,
       totalInstallments: 8,
       repaidInstallments: 0,
-      installmentPeriod: 720,
-      initialGracePeriod: 720,
+      installmentPeriod: 730,
+      initialGracePeriod: 0,
       isLate: False,
       penaltyFeeForLateRepayment: 0,
     )
@@ -435,13 +471,12 @@ test perpetual_remaining_debt() {
       repaymentMode: repaymentMode,
       principal: principal,
       interestRate: interestRate,
-      totalInstallments: 1,
+      totalInstallments: 200,
       repaidInstallments: 0,
-      installmentPeriod: 720,
+      installmentPeriod: 730,
       initialGracePeriod: 0,
-      timeSinceLendDate: 15768000000,
+      timeSinceLendDate: 31536000000,
     )
 
-  //31536000000,
   debt == 2000000000
 }
