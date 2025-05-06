@@ -195,7 +195,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
               rational.new(datum.principalLTV, datum.principalLTVDivider)
             let collateralAmount =
               get_collateral_amount(input.output.value, datum.collateral)
-            let loanOutputValidationResults =
+            let isLoanOutputValid =
               if datum.dynamicCollateralPrice {
                 let collateralOracleRefInput =
                   safe_list_at(
@@ -239,7 +239,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                     principalLtvAsRational,
                     principalOraclePriceFeed,
                     collateralOraclePriceFeed,
-                  )
+                  ) && givenPrincipalAmount <= datum.maxPrincipal
                 validate_output_to_loan(
                   loanOutput,
                   config.loanPolicyId,
@@ -292,7 +292,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
               quantity_of(input.output.value, requestPolicyId, requestId) == 1,
               quantity_of(self.mint, requestPolicyId, requestId) == -1,
               validity_range_within_an_hour(self),
-              loanOutputValidationResults.1st,
+              isLoanOutputValid,
               bonds_sent_to_both_parties_and_principal_sent_to_borrower(
                 self.mint,
                 outputWithBorrowerToken,
@@ -300,8 +300,6 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                 config.lenderBondPolicyId,
                 inputUtxoId,
                 datum.borrowerAddress,
-                datum.borrowerTokenOutputMustHaveLoanDatum,
-                loanOutputValidationResults.2nd,
                 givenPrincipalAmount,
                 datum.commonData.principalAsset,
               ),
@@ -351,6 +349,7 @@ fn validate_collateral_less_penalty_output(
 //Expects that the bond minting policy allows minting of a token only if:
 //- the AssetName is hash of a tx input
 //- the quantity is strictly 1
+//We force that the borrower output contains a InlineDatum to allow PlutusV2 contracts to use it
 fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
   mintedValue: Value,
   outputWithBorrowerToken: Output,
@@ -358,17 +357,12 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
   lenderBondPolicyId: ByteArray,
   bondId: ByteArray,
   borrowerAddress: Address,
-  borrowerTokenOutputMustHaveLoanDatum: Bool,
-  borrowerBondOutputDatum: LoanDatum,
   givenPrincipalAmount: Int,
   principalAsset: Asset,
 ) {
+  expect InlineDatum(_) = outputWithBorrowerToken.datum
   and {
     outputWithBorrowerToken.address == borrowerAddress,
-    or {
-      borrowerTokenOutputMustHaveLoanDatum == False,
-      outputWithBorrowerToken.datum == InlineDatum(borrowerBondOutputDatum),
-    },
     quantity_of(outputWithBorrowerToken.value, borrowerBondPolicyId, bondId) == 1,
     quantity_of(
       outputWithBorrowerToken.value,
@@ -393,7 +387,7 @@ fn validate_output_to_loan(
   borrowerAddress: Address,
   requestPolicyId: ByteArray,
   requestId: ByteArray,
-) -> (Bool, LoanDatum) {
+) -> Bool {
   let collateralUnchanged =
     if collateral.policyId == "" {
       add(output.value, loanPolicyId, loanId, -1) == add(
@@ -445,11 +439,11 @@ fn validate_output_to_loan(
     } else {
       length(flatten(output.value)) <= 3
     }
-  (and {
-      correctDestination,
-      isDatumCorrect,
-      containsLoanNFT,
-      collateralUnchanged,
-      dosProtection,
-    }, newDatum)
+  and {
+    correctDestination,
+    isDatumCorrect,
+    containsLoanNFT,
+    collateralUnchanged,
+    dosProtection,
+  }
 }

@@ -172,7 +172,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 safe_list_at(datum.principalLTV, chosenCollateralIndex),
                 safe_list_at(datum.principalLTVDivider, chosenCollateralIndex),
               )
-            let loanOutputValidationResults =
+            let isLoanOutputValid =
               if datum.dynamicCollateralPrice {
                 let collateralOracleRefInput =
                   safe_list_at(
@@ -262,7 +262,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               },
               quantity_of(input.output.value, poolPolicyId, poolId) == 1,
               validity_range_within_an_hour(self),
-              loanOutputValidationResults,
+              isLoanOutputValid,
               bonds_sent_to_both_parties(
                 self.mint,
                 outputWithLenderToken,

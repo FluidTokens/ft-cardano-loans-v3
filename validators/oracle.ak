@@ -43,7 +43,7 @@ validator oracle(
     )
   }
 
-  //Validate that n/m oracles have signed on this TX
+  //Validate that n/m oracles have signed this tx
   withdraw(redeemer: OracleRedeemer, _credential: Credential, self: Transaction) {
     let unique_signatures = list.unique(redeemer.signatures)
     expect unique_signatures == redeemer.signatures

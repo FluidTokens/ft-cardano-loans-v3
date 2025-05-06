@@ -12,12 +12,10 @@ pub type RequestDatum {
   //Same considerations of PoolDatum
   principalLTV: Int,
   principalLTVDivider: Int,
-  //Max principal that the borrower can accept, to avoid an immediate liquidation by a malicious borrower that puts too much
+  //Max principal that the borrower can accept, to avoid an immediate liquidation by a malicious lender that gives too much
   maxPrincipal: Int,
   //Same considerations of PoolDatum
   dynamicCollateralPrice: Bool,
-  //If true, the output of borrower's bond contains LoanDatum, useful if the borrower is a SC to do onchain validation.
-  borrowerTokenOutputMustHaveLoanDatum: Bool,
   //Same considerations of PoolDatum
   permissionedConditionScriptHash: ByteArray,
   //Same considerations of PoolDatum

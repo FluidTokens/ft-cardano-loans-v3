@@ -16,7 +16,7 @@ pub type WithdrawRedeemer {
   authorizationMethodIndexes: List<Int>,
 }
 
-validator kyc_token(
+validator specific_lenders(
   requestPolicyId: ByteArray,
   requestSpendScriptHash: ByteArray,
   smartTokensSpendScriptHash: ByteArray,

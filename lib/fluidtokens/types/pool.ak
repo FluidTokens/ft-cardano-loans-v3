@@ -13,7 +13,7 @@ pub type RepaymentMode {
   InterestOnRemainingPrincipal { max_possible_recasts: Int }
   //Installment amount = Principal+Interest/Installments
   PrincipalAndInterestOnInstallments
-  //These loans don't have a deadline, the borrower can repay whenever he wants
+  //Perpetual loans don't have a deadline, the borrower can repay whenever he wants
   //The APY increases over time linearly and if installments are > 1 and they are not paid in time
   //the borrower can be liquidated
   //At each installment the borrower has to pay only the interest since last installment
