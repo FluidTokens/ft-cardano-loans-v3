@@ -6,8 +6,6 @@ pub type LoanDatum {
   commonData: CommonData,
   //Either the poolId or the requestId
   originId: AssetName,
-  borrowerAssetName: AssetName,
-  lenderAssetName: AssetName,
   collateral: CollateralAsset,
   //Principal taken with the loan expressed in units, for example 100ADA -> 100000000
   principalAmount: Int,
