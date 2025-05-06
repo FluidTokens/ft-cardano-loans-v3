@@ -1,5 +1,6 @@
 use aiken/math/rational.{Rational}
 use cardano/assets.{Value, quantity_of}
+use fluidtokens/constants
 use fluidtokens/types/general.{CollateralAsset}
 use fluidtokens/types/oracle.{
   Aggregated, Dedicated, OraclePriceFeed, Pooled, PriceDataCharlie,
@@ -19,41 +20,6 @@ fn rational_pow(r: rational.Rational, exponent: Int) -> Rational {
   }
 }
 
-//Calculate the token_b required to purchase wanted_token_a_amount of token_a
-//TODO Is this formula accepted for any AMM?
-fn token_b_needed_to_purchase_token_a_in_AMM_pool(
-  wanted_token_a_amount: Rational,
-  token_a_amount_in_pool: Int,
-  token_b_amount_in_pool: Int,
-  pool_fees_per_mille: Int,
-) -> Int {
-  let buy_amount_int = wanted_token_a_amount |> rational.truncate()
-
-  let nominator = buy_amount_int * 1000 * token_b_amount_in_pool
-  let denominator =
-    ( token_a_amount_in_pool - buy_amount_int ) * ( 1000 - pool_fees_per_mille )
-  let token_b_required = nominator / denominator
-  token_b_required
-}
-
-//Calculate the token_b received when selling selling_token_a_amount of token_a
-//TODO Is this formula accepted for any AMM?
-fn token_b_received_from_selling_token_a_in_AMM_pool(
-  selling_token_a_amount: Rational,
-  token_a_amount: Int,
-  token_b_amount: Int,
-  pool_fees_per_mille: Int,
-) -> Int {
-  let remaining_after_pool_fees = 1000 - pool_fees_per_mille
-  let sell_amount_int = selling_token_a_amount |> rational.truncate()
-
-  let nominator = sell_amount_int * remaining_after_pool_fees * token_b_amount
-  let denominator =
-    token_a_amount * 1000 + remaining_after_pool_fees * sell_amount_int
-  let asset_return = nominator / denominator
-  asset_return
-}
-
 fn get_token_amount_in_lovelace(
   tokenAmount: Rational,
   oraclePriceFeed: OraclePriceFeed,
@@ -64,20 +30,7 @@ fn get_token_amount_in_lovelace(
         rational.new(token_price_in_lovelaces, token_price_denominator)
       rational.mul(tokenPrice, tokenAmount)
     }
-    Pooled {
-      token_a_amount_in_pool,
-      token_b_amount_in_pool,
-      pool_fees_per_mille,
-      ..
-    } ->
-      rational.from_int(
-        token_b_received_from_selling_token_a_in_AMM_pool(
-          tokenAmount,
-          token_a_amount_in_pool,
-          token_b_amount_in_pool,
-          pool_fees_per_mille,
-        ),
-      )
+    Pooled { .. } -> fail
     Dedicated { price_in_lovelaces, price_denominator, .. } -> {
       expect Some(tokenPrice) =
         rational.new(price_in_lovelaces, price_denominator)
@@ -107,20 +60,7 @@ fn get_lovelace_amount_in_token_currency(
       expect Some(tokensAmount) = rational.div(lovelaces, tokenPrice)
       tokensAmount
     }
-    Pooled {
-      token_a_amount_in_pool,
-      token_b_amount_in_pool,
-      pool_fees_per_mille,
-      ..
-    } ->
-      rational.from_int(
-        token_b_needed_to_purchase_token_a_in_AMM_pool(
-          lovelaces,
-          token_a_amount_in_pool,
-          token_b_amount_in_pool,
-          pool_fees_per_mille,
-        ),
-      )
+    Pooled { .. } -> fail
     Dedicated { price_in_lovelaces, price_denominator, .. } -> {
       expect Some(tokenPrice) =
         rational.new(price_in_lovelaces, price_denominator)
@@ -262,32 +202,64 @@ pub fn get_remaining_debt(
   timeSinceLendDate: Int,
 ) {
   when repaymentMode is {
-    PerpetualLoan {
-      interestRateIncreaseLinearCoefficient,
-      interestRateIncreaseLinearCoefficientDivider,
-      ..
-    } -> {
-      let currentInterestRate =
-        if interestRateIncreaseLinearCoefficient > 0 {
-          expect Some(currentInterestRateIncrease) =
-            rational.new(
-              interestRateIncreaseLinearCoefficient * timeSinceLendDate,
-              interestRateIncreaseLinearCoefficientDivider,
-            )
-          rational.add(
-            interestRate,
-            rational.mul(interestRate, currentInterestRateIncrease),
-          )
-        } else {
-          interestRate
-        }
+    PerpetualLoan { apyIncreaseLinearCoefficient, .. } -> {
+      //The formula is:
+      //remainingDebt = principal*hourlyInterestRate*passedHoursSinceLastRepaidInstallment + principal*m*passedHoursSoFar/8760*passedHoursSoFar
+      //which becomes:
+      //remainingDebt = principal*(hourlyInterestRate*passedHoursSinceLastRepaidInstallment) + (m*passedHoursSoFar^2/8760)
+      expect Some(passedHoursSoFar) = rational.new(timeSinceLendDate, 3600000)
+      expect Some(passedHoursSoFarSquared) =
+        rational.new(timeSinceLendDate * timeSinceLendDate, 12960000000000)
+      expect Some(m) = rational.new(apyIncreaseLinearCoefficient, 1000000)
+
+      let passedHoursSinceLastRepaidInstallment =
+        rational.from_int(
+          initialGracePeriod + installmentPeriod * repaidInstallments,
+        )
+
+      expect Some(hourlyInterestRate) =
+        rational.div(interestRate, rational.from_int(8760))
+
+      let secondFactor =
+        rational.mul(
+          rational.mul(hourlyInterestRate, principal),
+          passedHoursSinceLastRepaidInstallment,
+        )
+
+      let apy = rational.add(rational.mul(passedHoursSoFar, m), secondFactor)
+
+      expect Some(firstPiece) =
+        //rational.mul(principal, rational.mul(passedHoursSoFar, m))
+        rational.div(
+          rational.mul(principal, rational.mul(m, passedHoursSoFarSquared)),
+          rational.from_int(8760),
+        )
+
+      let secondPiece =
+        rational.mul(
+          principal,
+          rational.mul(
+            hourlyInterestRate,
+            passedHoursSinceLastRepaidInstallment,
+          ),
+        )
+
+      // trace passedHoursSoFar
+      // trace m
+      // trace secondFactor
+      // trace rational.mul(passedHoursSoFar, m)
+      // trace apy
+      trace firstPiece
+      trace secondPiece
 
       rational.ceil(
-        rational.add(principal, rational.mul(principal, currentInterestRate)),
+        //rational.mul(principal, rational.add(rational.from_int(1), apy)),
+        rational.add(principal, rational.add(firstPiece, secondPiece)),
       )
     }
+
     _ ->
-      ( totalInstallments - repaidInstallments ) * get_installment_amount(
+      ( totalInstallments - repaidInstallments ) * get_next_installment_amount(
         repaymentMode,
         principal,
         interestRate,
@@ -303,7 +275,7 @@ pub fn get_remaining_debt(
 
 //Installment expressed in principal currency
 //TODO Should we do the subtraction if it's the last installment?
-pub fn get_installment_amount(
+pub fn get_next_installment_amount(
   repaymentMode: RepaymentMode,
   principal: Rational,
   interestRate: Rational,
@@ -359,31 +331,25 @@ pub fn get_installment_amount(
         rational.add(singleInstallmentAmountAsRational, penaltyFeeAsRational),
       )
     }
-    PerpetualLoan {
-      interestRateIncreaseLinearCoefficient,
-      interestRateIncreaseLinearCoefficientDivider,
-      ..
-    } -> {
-      let periodToLatestPaidInstallment =
-        ( repaidInstallments + 1 ) * installmentPeriod
-      let timePassed = initialGracePeriod + periodToLatestPaidInstallment
-      expect Some(currentInterestRateIncrease) =
-        rational.new(
-          interestRateIncreaseLinearCoefficient * timePassed,
-          interestRateIncreaseLinearCoefficientDivider,
-        )
-      let currentInterestRate =
-        rational.add(
-          interestRate,
-          rational.mul(interestRate, currentInterestRateIncrease),
-        )
+    PerpetualLoan { .. } -> {
+      //Borrower repays only the interest, which corresponds to principal*hourlyInterestRate*periodToPayInHours
+      let periodToPayInHours =
+        if repaidInstallments == 0 {
+          initialGracePeriod + installmentPeriod
+        } else {
+          installmentPeriod
+        }
 
-      let installmentAmountAsRational =
-        rational.mul(principal, currentInterestRate)
+      expect Some(hourlyInterestRate) =
+        rational.div(interestRate, rational.from_int(8760))
 
-      rational.ceil(
-        rational.add(installmentAmountAsRational, penaltyFeeAsRational),
-      )
+      let interestRateInPeriod =
+        rational.mul(rational.from_int(periodToPayInHours), hourlyInterestRate)
+
+      //Only pay interest
+      let installmentAmount = rational.mul(principal, interestRateInPeriod)
+
+      rational.ceil(rational.add(installmentAmount, penaltyFeeAsRational))
     }
   }
 }
@@ -395,14 +361,24 @@ pub fn get_equity(
   remainingDebt: Rational,
   principalOraclePriceFeed: OraclePriceFeed,
   collateralOraclePriceFeed: OraclePriceFeed,
+  partialLiquidationPenaltyPerMille: Int,
 ) {
   let remainingDebtInLovelace =
     get_token_amount_in_lovelace(remainingDebt, principalOraclePriceFeed)
   let collateralInLovelace =
     get_token_amount_in_lovelace(collateralAmount, collateralOraclePriceFeed)
 
+  expect Some(partialLiquidationPenaltyAsRational) =
+    rational.new(partialLiquidationPenaltyPerMille, 1000)
+
+  let partialLiquidationPenalty =
+    rational.mul(remainingDebtInLovelace, partialLiquidationPenaltyAsRational)
+
   let equityInLovelace =
-    rational.sub(collateralInLovelace, remainingDebtInLovelace)
+    rational.sub(
+      rational.sub(collateralInLovelace, remainingDebtInLovelace),
+      partialLiquidationPenalty,
+    )
 
   let equity =
     get_lovelace_amount_in_token_currency(
@@ -423,7 +399,9 @@ pub fn is_repayment_late(
 ) {
   let periodToLatestPaidInstallment =
     ( repaidInstallments + 1 ) * installmentPeriod
-  validFrom > lendDate + initialGracePeriod + periodToLatestPaidInstallment + repaymentTimeWindow
+  validFrom > lendDate + (
+    initialGracePeriod + periodToLatestPaidInstallment + repaymentTimeWindow
+  ) * constants.hour_to_millis
 }
 
 pub fn get_due_installments(
@@ -437,7 +415,7 @@ pub fn get_due_installments(
     ( repaidInstallments + 1 ) * installmentPeriod
   let timePassed =
     validFrom - (
-      lendDate + initialGracePeriod + periodToLatestPaidInstallment
+      lendDate + ( initialGracePeriod + periodToLatestPaidInstallment ) * constants.hour_to_millis
     )
   timePassed / installmentPeriod
 }
@@ -457,4 +435,48 @@ pub fn is_recasting_permitted(
       doneRecasts < max_possible_recasts
     _ -> fail
   }
+}
+
+//c = 1000/10000, m = 100/1000000
+test perpetual_installment_amount() {
+  let repaymentMode =
+    PerpetualLoan { apyIncreaseLinearCoefficient: 100, max_possible_recasts: 0 }
+  expect Some(principal) = rational.new(1000000000, 1)
+  expect Some(interestRate) = rational.new(1000, 10000)
+
+  let installmentAmount =
+    get_next_installment_amount(
+      repaymentMode: repaymentMode,
+      principal: principal,
+      interestRate: interestRate,
+      totalInstallments: 8,
+      repaidInstallments: 0,
+      installmentPeriod: 730,
+      initialGracePeriod: 0,
+      isLate: False,
+      penaltyFeeForLateRepayment: 0,
+    )
+  installmentAmount == 8210000
+}
+
+//c = 1000/10000, m = 100/1000000
+test perpetual_remaining_debt() {
+  let repaymentMode =
+    PerpetualLoan { apyIncreaseLinearCoefficient: 100, max_possible_recasts: 0 }
+  expect Some(principal) = rational.new(1000000000, 1)
+  expect Some(interestRate) = rational.new(1000, 10000)
+
+  let debt =
+    get_remaining_debt(
+      repaymentMode: repaymentMode,
+      principal: principal,
+      interestRate: interestRate,
+      totalInstallments: 200,
+      repaidInstallments: 0,
+      installmentPeriod: 730,
+      initialGracePeriod: 0,
+      timeSinceLendDate: 31536000000,
+    )
+
+  debt == 2000000000
 }

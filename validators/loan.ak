@@ -11,7 +11,7 @@ use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/constants
 use fluidtokens/finance.{
   can_liquidate, get_collateral_amount, get_due_installments, get_equity,
-  get_installment_amount, get_remaining_debt, is_recasting_permitted,
+  get_next_installment_amount, get_remaining_debt, is_recasting_permitted,
   is_repayment_late,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
@@ -192,7 +192,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
 
         expect Some(interestRateAsRational) =
-          rational.new(datum.commonData.interestRate, 1000)
+          rational.new(datum.commonData.interestRate, 10000)
 
         when redeemerAction is {
           Claim {
@@ -273,7 +273,11 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                     ),
                   }
                 }
-                Liquidation { lTV, lTVDivider, partialLiquidation } -> {
+                Liquidation {
+                  lTV,
+                  lTVDivider,
+                  partialLiquidationPenaltyPerMille,
+                } -> {
                   let principalAmountAsRational =
                     rational.from_int(datum.principalAmount)
                   expect Some(collateralOracleToken) =
@@ -332,6 +336,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       rational.from_int(remainingDebt),
                       principalOraclePriceFeed,
                       collateralOraclePriceFeed,
+                      partialLiquidationPenaltyPerMille,
                     ),
                     or {
                       isRepaymentLate,
@@ -344,7 +349,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                       ),
                     },
                     or {
-                      partialLiquidation == False,
+                      partialLiquidationPenaltyPerMille < 0,
                       equity <= 0,
                       {
                         expect Some(borrowerCompensationOutput) =
@@ -402,13 +407,13 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 datum.commonData.installmentPeriod,
                 datum.commonData.repaymentTimeWindow,
               )
-            let isPerpetualLoanAndIsFinalRepayment =
+            let isPerpetualLoan =
               when datum.commonData.repaymentMode is {
-                PerpetualLoan { .. } -> isFinalRepayment
+                PerpetualLoan { .. } -> True
                 _ -> False
               }
             let nextRepaymentAmount =
-              if isPerpetualLoanAndIsFinalRepayment {
+              if isPerpetualLoan && isFinalRepayment {
                 get_remaining_debt(
                   datum.commonData.repaymentMode,
                   rational.from_int(datum.principalAmount),
@@ -420,7 +425,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                   validTo - datum.lendDate,
                 )
               } else {
-                get_installment_amount(
+                get_next_installment_amount(
                   datum.commonData.repaymentMode,
                   rational.from_int(datum.principalAmount),
                   interestRateAsRational,
@@ -461,9 +466,10 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               ),
               or {
                 and {
-                  or {
-                    isPerpetualLoanAndIsFinalRepayment,
-                    datum.repaidInstallments == datum.commonData.totalInstallments - 1,
+                  if isPerpetualLoan {
+                    isFinalRepayment
+                  } else {
+                    datum.repaidInstallments == datum.commonData.totalInstallments - 1
                   },
                   quantity_of(self.mint, loanPolicyId, loanId) == -1,
                 },

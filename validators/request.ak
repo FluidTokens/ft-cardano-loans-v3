@@ -259,7 +259,8 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                   givenPrincipalAmount >= get_min_principal_for_collateral_without_oracles(
                     collateralAmount,
                     principalLtvAsRational,
-                  )
+                  ) && givenPrincipalAmount <= datum.maxPrincipal
+
                 validate_output_to_loan(
                   loanOutput,
                   config.loanPolicyId,

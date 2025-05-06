@@ -5,7 +5,7 @@ use aiken/crypto.{
   blake2b_256, verify_ed25519_signature,
 }
 use aiken/interval.{Finite, Interval, IntervalBound}
-use cardano/address.{Credential, Script}
+use cardano/address.{Address, Credential, Script}
 use cardano/transaction.{
   InlineDatum, Input, Output, Transaction, ValidityRange, Withdraw,
 }
@@ -22,6 +22,8 @@ pub type TokenData {
   did: ByteArray,
   //The users public key
   user_key: VerificationKeyHash,
+  //The Address of the pool input
+  origin_input_address: Address,
   //Blake2b-256 hash of the cbor serialized borrow action
   borrow_action_hash: Hash<Blake2b_256, Data>,
   //A valid range
@@ -94,6 +96,8 @@ validator kyc_token(
         expect datum: PoolDatum = inputDatum
         let compliance = safe_list_at(redeemer.complianceForEachInput, index)
 
+        expect
+          compliance.token.origin_input_address == inputAndAction.1st.output.address
         expect Borrow { borrowerAddress, .. } = inputAndAction.2nd
 
         expect Interval {
