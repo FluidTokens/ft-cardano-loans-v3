@@ -12,6 +12,11 @@ use fluidtokens/types/pool.{
 }
 use fluidtokens/utils.{quantity_of_policy_id}
 
+fn rational_safe_div(r1: rational.Rational, r2: rational.Rational) -> Rational {
+  expect Some(result) = rational.div(r1, r2)
+  result
+}
+
 fn rational_pow(r: rational.Rational, exponent: Int) -> Rational {
   if exponent == 1 {
     r
@@ -208,47 +213,36 @@ pub fn get_remaining_debt(
       //which becomes:
       //remainingDebt = principal*(hourlyInterestRate*passedHoursSinceLastRepaidInstallment) + (m*passedHoursSoFar^2/8760)
       expect Some(passedHoursSoFar) = rational.new(timeSinceLendDate, 3600000)
-      expect Some(passedHoursSoFarSquared) =
-        rational.new(timeSinceLendDate * timeSinceLendDate, 12960000000000)
+      // expect Some(passedHoursSoFarSquared) =
+      //   rational.new(timeSinceLendDate * timeSinceLendDate, 12960000000000)
       expect Some(m) = rational.new(apyIncreaseLinearCoefficient, 1000000)
 
-      let passedHoursSinceLastRepaidInstallment =
+      let accumulatedHourseOfRepaidInstallments =
         rational.from_int(
           initialGracePeriod + installmentPeriod * repaidInstallments,
         )
 
-      expect Some(hourlyInterestRate) =
-        rational.div(interestRate, rational.from_int(8760))
+      let passedHoursSinceLastRepaidInstallment =
+        rational.sub(passedHoursSoFar, accumulatedHourseOfRepaidInstallments)
 
-      let secondFactor =
-        rational.mul(
-          rational.mul(hourlyInterestRate, principal),
-          passedHoursSinceLastRepaidInstallment,
-        )
+      let firstPiece =
+        rational.mul(m, rational.mul(principal, passedHoursSoFar))
 
-      let apy = rational.add(rational.mul(passedHoursSoFar, m), secondFactor)
-
-      expect Some(firstPiece) =
-        //rational.mul(principal, rational.mul(passedHoursSoFar, m))
-        rational.div(
-          rational.mul(principal, rational.mul(m, passedHoursSoFarSquared)),
-          rational.from_int(8760),
-        )
-
+      // rational.div(
+      //   rational.mul(principal, rational.mul(m, passedHoursSoFarSquared)),
+      //   rational.from_int(8760),
+      // )
       let secondPiece =
         rational.mul(
-          principal,
           rational.mul(
-            hourlyInterestRate,
+            rational_safe_div(interestRate, rational.from_int(8760)),
             passedHoursSinceLastRepaidInstallment,
           ),
+          principal,
         )
 
-      // trace passedHoursSoFar
-      // trace m
-      // trace secondFactor
-      // trace rational.mul(passedHoursSoFar, m)
-      // trace apy
+      trace accumulatedHourseOfRepaidInstallments
+      trace passedHoursSinceLastRepaidInstallment
       trace firstPiece
       trace secondPiece
 
@@ -472,7 +466,7 @@ test perpetual_remaining_debt() {
       principal: principal,
       interestRate: interestRate,
       totalInstallments: 200,
-      repaidInstallments: 0,
+      repaidInstallments: 2,
       installmentPeriod: 730,
       initialGracePeriod: 0,
       timeSinceLendDate: 31536000000,

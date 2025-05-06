@@ -418,8 +418,6 @@ fn validate_output_to_loan(
     LoanDatum {
       commonData: requestDatum.commonData,
       originId: bytearray.concat("REQUEST", requestId),
-      borrowerAssetName: loanId,
-      lenderAssetName: loanId,
       collateral,
       principalAmount: givenPrincipalAmount,
       lendDate: end,

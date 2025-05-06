@@ -19,8 +19,8 @@ use fluidtokens/types/config.{ConfigDatum}
 use fluidtokens/types/dutch_auction.{DutchAuctionDatum}
 use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
 use fluidtokens/types/loan.{
-  ChangeCollateral, Claim, LoanDatum, LoanMintRedeemer, LoanWithdrawRedeemer,
-  Recast, Repay,
+  ChangeCollateral, Claim, LoanDatum, LoanMintRedeemer, LoanRepaymentData,
+  LoanWithdrawRedeemer, Recast, Repay,
 } as l
 use fluidtokens/types/pool.{
   Borrow, Liquidation, NoLiquidationDutchAuctionClaim,
@@ -228,11 +228,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               liquidationMode == datum.commonData.liquidationMode,
               quantity_of(input.output.value, loanPolicyId, loanId) == 1,
               quantity_of(self.mint, loanPolicyId, loanId) == -1,
-              is_nft_spent(
-                config.lenderBondPolicyId,
-                datum.lenderAssetName,
-                lenderBondInput,
-              ),
+              is_nft_spent(config.lenderBondPolicyId, loanId, lenderBondInput),
               when datum.commonData.liquidationMode is {
                 NoLiquidationFullCollateralClaim -> isRepaymentLate
                 NoLiquidationDutchAuctionClaim -> {
@@ -367,7 +363,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                           equity: equity,
                           borrowerBondAsset: Asset {
                             policyId: config.borrowerBondPolicyId,
-                            assetName: datum.borrowerAssetName,
+                            assetName: loanId,
                           },
                           principalAssetPolicyId: datum.commonData.principalAsset.policyId,
                           principalAssetName: datum.commonData.principalAsset.assetName,
@@ -441,7 +437,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               quantity_of(input.output.value, loanPolicyId, loanId) == 1,
               is_nft_spent(
                 config.borrowerBondPolicyId,
-                datum.borrowerAssetName,
+                loanId,
                 borrowerBondInput,
               ),
               validate_output_to_repayment(
@@ -450,10 +446,17 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 repaymentAmount: nextRepaymentAmount,
                 lenderBondAsset: Asset {
                   policyId: config.lenderBondPolicyId,
-                  assetName: datum.lenderAssetName,
+                  assetName: loanId,
                 },
                 action: constants.repayment_action_installment,
-                extra_data: (loanId, datum.repaidInstallments + 1),
+                extra_data: LoanRepaymentData {
+                  loanId,
+                  principalAmount: datum.principalAmount,
+                  interestRate: datum.commonData.interestRate,
+                  repaidInstallments: datum.repaidInstallments + 1,
+                  totalInstallments: datum.commonData.totalInstallments,
+                  repaymentMode: datum.commonData.repaymentMode,
+                },
                 repaymentPolicyId: config.repaymentPolicyId,
                 repaymentId: utils.hash_output_ref(input.output_reference),
               ),
@@ -557,7 +560,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                   quantity_of(input.output.value, loanPolicyId, loanId) == 1,
                   is_nft_spent(
                     config.borrowerBondPolicyId,
-                    datum.borrowerAssetName,
+                    loanId,
                     borrowerBondInput,
                   ),
                   can_liquidate(
@@ -609,7 +612,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               quantity_of(input.output.value, loanPolicyId, loanId) == 1,
               is_nft_spent(
                 config.borrowerBondPolicyId,
-                datum.borrowerAssetName,
+                loanId,
                 borrowerBondInput,
               ),
               is_recasting_permitted(
@@ -630,7 +633,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 repaymentAmount: principalPaid,
                 lenderBondAsset: Asset {
                   policyId: config.lenderBondPolicyId,
-                  assetName: datum.lenderAssetName,
+                  assetName: loanId,
                 },
                 action: constants.repayment_action_recast,
                 extra_data: loanId,
@@ -769,8 +772,6 @@ fn validate_eventual_output_to_loan_for_repayment(
     LoanDatum {
       commonData: datum.commonData,
       originId: datum.originId,
-      borrowerAssetName: datum.borrowerAssetName,
-      lenderAssetName: datum.lenderAssetName,
       collateral: datum.collateral,
       principalAmount: datum.principalAmount,
       lendDate: datum.lendDate,
@@ -874,8 +875,6 @@ fn validate_eventual_output_to_loan_for_recasting(
     LoanDatum {
       commonData: datum.commonData,
       originId: datum.originId,
-      borrowerAssetName: datum.borrowerAssetName,
-      lenderAssetName: datum.lenderAssetName,
       collateral: datum.collateral,
       principalAmount: datum.principalAmount - principalPaid,
       lendDate: datum.lendDate,
