@@ -1,6 +1,6 @@
 use cardano/assets.{AssetName}
 use fluidtokens/types/general.{AuthorizationMethod, CollateralAsset}
-use fluidtokens/types/pool.{CommonData, LiquidationMode}
+use fluidtokens/types/pool.{CommonData, LiquidationMode, RepaymentMode}
 
 pub type LoanDatum {
   commonData: CommonData,
@@ -72,4 +72,13 @@ pub type LoanAction {
 pub type LoanWithdrawRedeemer {
   configRefInputIndex: Int,
   actionsForEachInput: List<LoanAction>,
+}
+
+pub type LoanRepaymentData {
+  loanId: ByteArray,
+  principalAmount: Int,
+  interestRate: Int,
+  repaidInstallments: Int,
+  totalInstallments: Int,
+  repaymentMode: RepaymentMode,
 }
