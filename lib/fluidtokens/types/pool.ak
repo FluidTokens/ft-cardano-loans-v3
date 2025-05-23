@@ -74,14 +74,14 @@ pub type PoolDatum {
   //Important requirement: if Liquidation is enabled, ALL the collateralOptions must have an oracle NFT
   collateralOptions: List<CollateralAsset>,
   //When oracle is used, this is the LTV for each collateral option (borrower can ask more using an exact multiple). 
-  //This is the ration between principal and collateral when their value is expressed in lovelace.
+  //This is the ratio between principal and collateral when their value is expressed in lovelace.
   //For example, a LTV of 0.123 mean that principalInLovelace / collateralInLovelace = 0.123.
-  //In this case, principalLTV = 123 and principalLTVDivider = 1000 .
+  //In this case, minCollateral = 123 and minCollateralDivider = 1000 .
   //If no oracle is used, then this is the collateral amount expressed in units of the token for each unit of principal.
   //For example, if the principal is lovelace and the collateral unitFLDT and lender wants 0.123 unitFLDT for each lovelace lent: 
-  //principalLTV = 123 and principalLTVDivider = 1000 .
-  principalLTV: List<Int>,
-  principalLTVDivider: List<Int>,
+  //minCollateral = 123 and minCollateralDivider = 1000 .
+  minCollateral: List<Int>,
+  minCollateralDivider: List<Int>,
   //True if borrowable amount of the collateralOptions must be updated through oracles
   dynamicCollateralPrice: Bool,
   //Permissioned pools use this field to specify an extra Withdraw validator to force the conditions of the Borrow action.

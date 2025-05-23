@@ -191,8 +191,8 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
               )
             let outputWithBorrowerToken = safe_list_at(self.outputs, index)
 
-            expect Some(principalLtvAsRational) =
-              rational.new(datum.principalLTV, datum.principalLTVDivider)
+            expect Some(minPrincipal) =
+              rational.new(datum.minPrincipal, datum.minPrincipalDivider)
             let collateralAmount =
               get_collateral_amount(input.output.value, datum.collateral)
             let isLoanOutputValid =
@@ -236,7 +236,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                 expect
                   givenPrincipalAmount >= get_min_principal_for_collateral_with_oracles(
                     collateralAmount,
-                    principalLtvAsRational,
+                    minPrincipal,
                     principalOraclePriceFeed,
                     collateralOraclePriceFeed,
                   ) && givenPrincipalAmount <= datum.maxPrincipal
@@ -258,7 +258,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                 expect
                   givenPrincipalAmount >= get_min_principal_for_collateral_without_oracles(
                     collateralAmount,
-                    principalLtvAsRational,
+                    minPrincipal,
                   ) && givenPrincipalAmount <= datum.maxPrincipal
 
                 validate_output_to_loan(

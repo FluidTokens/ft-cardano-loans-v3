@@ -3,15 +3,20 @@ use cardano/transaction.{OutputReference}
 use fluidtokens/types/general.{AuthorizationMethod, CollateralAsset}
 use fluidtokens/types/pool.{CommonData}
 
+// pub type MinPrincipal {
+//   Exactly { principalAmount: Int }
+//   Dynamic { ltv: Int }
+// }
+
 pub type RequestDatum {
   commonData: CommonData,
   borrowerAuth: AuthorizationMethod,
   borrowerAddress: Address,
   //Same considerations of PoolDatum
   collateral: CollateralAsset,
-  //Same considerations of PoolDatum
-  principalLTV: Int,
-  principalLTVDivider: Int,
+  //Same considerations of PoolDatum minCollateral
+  minPrincipal: Int,
+  minPrincipalDivider: Int,
   //Max principal that the borrower can accept, to avoid an immediate liquidation by a malicious lender that gives too much
   maxPrincipal: Int,
   //Same considerations of PoolDatum

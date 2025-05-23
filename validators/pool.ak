@@ -167,10 +167,10 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 datum.commonData.principalAsset.assetName,
               ) - wantedPrincipalAmount
 
-            expect Some(principalLtvAsRational) =
+            expect Some(minCollateral) =
               rational.new(
-                safe_list_at(datum.principalLTV, chosenCollateralIndex),
-                safe_list_at(datum.principalLTVDivider, chosenCollateralIndex),
+                safe_list_at(datum.minCollateral, chosenCollateralIndex),
+                safe_list_at(datum.minCollateralDivider, chosenCollateralIndex),
               )
             let isLoanOutputValid =
               if datum.dynamicCollateralPrice {
@@ -219,7 +219,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                   chosenCollateral,
                   get_needed_collateral_with_oracles(
                     wantedPrincipalAmount,
-                    principalLtvAsRational,
+                    minCollateral,
                     principalOraclePriceFeed,
                     collateralOraclePriceFeed,
                   ),
@@ -238,7 +238,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                   chosenCollateral,
                   get_needed_collateral_without_oracles(
                     wantedPrincipalAmount,
-                    principalLtvAsRational,
+                    minCollateral,
                   ),
                   inputUtxoId,
                   validTo,
