@@ -51,8 +51,9 @@ pub type CommonData {
   //installmentAmount (hourly) = c/10000/8760
   interestRate: Int,
   //How much time between 2 consecutive installments, expressed in hours
+  //In case of Perpetual loans if it's > 0 it means we have infinite installments otherwise == 0 means no installments
   installmentPeriod: Int,
-  //Total number of installments, in case of Perpetual loans if it's > 0 it means we have infinite installments
+  //Total number of installments, ignored in Perpetual loans
   totalInstallments: Int,
   //Period after starting the loan and before starting repaying (borrower can't be liquidated in this period)
   //Expressed in hours

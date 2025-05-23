@@ -213,25 +213,19 @@ pub fn get_remaining_debt(
       //which becomes:
       //remainingDebt = principal*(hourlyInterestRate*passedHoursSinceLastRepaidInstallment) + (m*passedHoursSoFar^2/8760)
       expect Some(passedHoursSoFar) = rational.new(timeSinceLendDate, 3600000)
-      // expect Some(passedHoursSoFarSquared) =
-      //   rational.new(timeSinceLendDate * timeSinceLendDate, 12960000000000)
       expect Some(m) = rational.new(apyIncreaseLinearCoefficient, 1000000)
 
-      let accumulatedHourseOfRepaidInstallments =
+      let accumulatedHoursOfRepaidInstallments =
         rational.from_int(
           initialGracePeriod + installmentPeriod * repaidInstallments,
         )
 
       let passedHoursSinceLastRepaidInstallment =
-        rational.sub(passedHoursSoFar, accumulatedHourseOfRepaidInstallments)
+        rational.sub(passedHoursSoFar, accumulatedHoursOfRepaidInstallments)
 
       let firstPiece =
         rational.mul(m, rational.mul(principal, passedHoursSoFar))
 
-      // rational.div(
-      //   rational.mul(principal, rational.mul(m, passedHoursSoFarSquared)),
-      //   rational.from_int(8760),
-      // )
       let secondPiece =
         rational.mul(
           rational.mul(
@@ -241,13 +235,12 @@ pub fn get_remaining_debt(
           principal,
         )
 
-      trace accumulatedHourseOfRepaidInstallments
+      trace accumulatedHoursOfRepaidInstallments
       trace passedHoursSinceLastRepaidInstallment
       trace firstPiece
       trace secondPiece
 
       rational.ceil(
-        //rational.mul(principal, rational.add(rational.from_int(1), apy)),
         rational.add(principal, rational.add(firstPiece, secondPiece)),
       )
     }
@@ -384,6 +377,7 @@ pub fn get_equity(
 }
 
 pub fn is_repayment_late(
+  isPerpetualLoan: Bool,
   currentTime: Int,
   lendDate: Int,
   initialGracePeriod: Int,
@@ -393,9 +387,12 @@ pub fn is_repayment_late(
 ) {
   let periodToLatestPaidInstallment =
     ( repaidInstallments + 1 ) * installmentPeriod
-  currentTime > lendDate + (
-    initialGracePeriod + periodToLatestPaidInstallment + repaymentTimeWindow
-  ) * constants.hour_to_millis
+  and {
+    !(isPerpetualLoan && installmentPeriod == 0),
+    currentTime > lendDate + (
+      initialGracePeriod + periodToLatestPaidInstallment + repaymentTimeWindow
+    ) * constants.hour_to_millis,
+  }
 }
 
 pub fn get_due_installments(

@@ -215,8 +215,14 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 list.at(self.inputs, lenderBondInputIndex),
                 list.at(self.reference_inputs, borrowerBondRefInputIndex),
               )
+            let isPerpetualLoan =
+              when datum.commonData.repaymentMode is {
+                PerpetualLoan { .. } -> True
+                _ -> False
+              }
             let isRepaymentLate =
               is_repayment_late(
+                isPerpetualLoan,
                 validFrom,
                 datum.lendDate,
                 datum.commonData.initialGracePeriod,
@@ -394,8 +400,16 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 ),
                 index,
               )
+
+            let isPerpetualLoan =
+              when datum.commonData.repaymentMode is {
+                PerpetualLoan { .. } -> True
+                _ -> False
+              }
+
             let isRepaymentLate =
               is_repayment_late(
+                isPerpetualLoan,
                 validTo,
                 datum.lendDate,
                 datum.commonData.initialGracePeriod,
@@ -403,13 +417,10 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                 datum.commonData.installmentPeriod,
                 datum.commonData.repaymentTimeWindow,
               )
-            let isPerpetualLoan =
-              when datum.commonData.repaymentMode is {
-                PerpetualLoan { .. } -> True
-                _ -> False
-              }
             let nextRepaymentAmount =
-              if isPerpetualLoan && isFinalRepayment {
+              if isPerpetualLoan && (
+                isFinalRepayment || datum.commonData.installmentPeriod == 0
+              ) {
                 get_remaining_debt(
                   datum.commonData.repaymentMode,
                   rational.from_int(datum.principalAmount),
@@ -463,7 +474,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               or {
                 and {
                   if isPerpetualLoan {
-                    isFinalRepayment
+                    isFinalRepayment || datum.commonData.installmentPeriod == 0
                   } else {
                     datum.repaidInstallments == datum.commonData.totalInstallments - 1
                   },
