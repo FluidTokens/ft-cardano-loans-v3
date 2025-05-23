@@ -945,9 +945,9 @@ fn validate_output_to_dutch_auction(
 
   let dosProtection =
     if collateral.policyId == "" {
-      length(flatten(dutchAuctionOutput.value)) <= 2
+      length(flatten(dutchAuctionOutput.value)) == 1
     } else {
-      length(flatten(dutchAuctionOutput.value)) <= 3
+      length(flatten(dutchAuctionOutput.value)) == 2
     }
   and {
     is_output_to_smart_credential(

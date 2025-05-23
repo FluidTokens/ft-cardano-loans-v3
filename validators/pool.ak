@@ -60,7 +60,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
 
           let correctAssetName = and {
               bytearray.at(assetName, 0) == index,
-              bytearray.drop(assetName, 1) == bytearray.drop(inputRefHash, 1),
+              bytearray.drop(assetName, 1) == inputRefHash,
             }
 
           expect Some(output) = list.at(poolOutputs, index)

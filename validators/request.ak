@@ -64,7 +64,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
 
           let correctAssetName = and {
               bytearray.at(assetName, 0) == index,
-              bytearray.drop(assetName, 1) == bytearray.drop(inputRefHash, 1),
+              bytearray.drop(assetName, 1) == inputRefHash,
             }
 
           expect Some(output) = list.at(requestOutputs, index)
@@ -177,7 +177,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
                 self.validity_range.upper_bound.bound_type,
               )
             //Request not expired
-            expect validFrom < datum.requestExpiration
+            expect validTo < datum.requestExpiration
             let inputUtxoId = utils.hash_output_ref(input.output_reference)
             let loanOutput =
               safe_list_at(
@@ -323,14 +323,9 @@ fn validate_collateral_less_penalty_output(
   requestPolicyId: ByteArray,
   requestAssetName: ByteArray,
 ) {
-  let inputValueNoAda = without_lovelace(requestValue)
-  let outputValueNoAda =
-    add(
-      without_lovelace(borrowerOutput.value),
-      requestPolicyId,
-      requestAssetName,
-      -1,
-    )
+  let inputValueNoAda =
+    add(without_lovelace(requestValue), requestPolicyId, requestAssetName, -1)
+  let outputValueNoAda = without_lovelace(borrowerOutput.value)
   let outputAdaCorrect =
     quantity_of(borrowerOutput.value, "", "") >= quantity_of(
       requestValue,

@@ -7,7 +7,8 @@ use aiken/crypto.{
 use aiken/interval.{Finite, Interval, IntervalBound}
 use cardano/address.{Address, Credential, Script}
 use cardano/transaction.{
-  InlineDatum, Input, Output, Transaction, ValidityRange, Withdraw,
+  InlineDatum, Input, Output, OutputReference, Transaction, ValidityRange,
+  Withdraw,
 }
 use fluidtokens/types/pool.{Borrow, PoolDatum, PoolWithdrawRedeemer}
 use fluidtokens/utils.{safe_list_at}
@@ -23,7 +24,7 @@ pub type TokenData {
   //The users public key
   user_key: VerificationKeyHash,
   //The Address of the pool input
-  origin_input_address: Address,
+  origin_output_reference: OutputReference,
   //Blake2b-256 hash of the cbor serialized borrow action
   borrow_action_hash: Hash<Blake2b_256, Data>,
   //A valid range
@@ -97,7 +98,7 @@ validator kyc_token(
         let compliance = safe_list_at(redeemer.complianceForEachInput, index)
 
         expect
-          compliance.token.origin_input_address == inputAndAction.1st.output.address
+          compliance.token.origin_output_reference == inputAndAction.1st.output_reference
         expect Borrow { borrowerAddress, .. } = inputAndAction.2nd
 
         expect Interval {

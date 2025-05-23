@@ -380,11 +380,11 @@ pub fn get_equity(
       principalOraclePriceFeed,
     )
 
-  rational.round(equity)
+  rational.floor(equity)
 }
 
 pub fn is_repayment_late(
-  validFrom: Int,
+  currentTime: Int,
   lendDate: Int,
   initialGracePeriod: Int,
   repaidInstallments: Int,
@@ -393,25 +393,24 @@ pub fn is_repayment_late(
 ) {
   let periodToLatestPaidInstallment =
     ( repaidInstallments + 1 ) * installmentPeriod
-  validFrom > lendDate + (
+  currentTime > lendDate + (
     initialGracePeriod + periodToLatestPaidInstallment + repaymentTimeWindow
   ) * constants.hour_to_millis
 }
 
 pub fn get_due_installments(
-  validFrom: Int,
+  validTo: Int,
   lendDate: Int,
   initialGracePeriod: Int,
   repaidInstallments: Int,
   installmentPeriod: Int,
 ) {
-  let periodToLatestPaidInstallment =
-    ( repaidInstallments + 1 ) * installmentPeriod
+  let periodToLatestPaidInstallment = repaidInstallments * installmentPeriod
   let timePassed =
-    validFrom - (
+    validTo - (
       lendDate + ( initialGracePeriod + periodToLatestPaidInstallment ) * constants.hour_to_millis
     )
-  timePassed / installmentPeriod
+  timePassed / ( installmentPeriod * constants.hour_to_millis )
 }
 
 pub fn is_recasting_permitted(
