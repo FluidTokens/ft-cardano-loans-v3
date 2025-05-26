@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/collection/pairs
@@ -30,9 +31,7 @@ pub fn indexed_filter(list: List<a>, predicate: fn(Int, a) -> Bool) -> List<a> {
 }
 
 pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
-  crypto.blake2b_224(
-    bytearray.push(outputRef.transaction_id, outputRef.output_index),
-  )
+  outputRef |> builtin.serialise_data |> crypto.blake2b_224
 }
 
 pub fn get_config(

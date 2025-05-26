@@ -285,8 +285,8 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
                     remainingPrincipalAmountAfterBorrow,
                     poolPolicyId,
                     poolId,
-                    config.poolSpendScriptHash,
-                    input.output.address.payment_credential,
+                    input.output.address,
+                    length(flatten(input.output.value)),
                   ),
                 },
               },
@@ -377,10 +377,14 @@ fn validate_output_to_loan(
       True
     }
   let dosProtection =
-    if chosenCollateral.policyId == "" {
-      length(flatten(output.value)) <= 2
-    } else {
-      length(flatten(output.value)) <= 3
+    length(flatten(output.value)) == when chosenCollateral.maybeAssetName is {
+      Some(chosenCollateralAssetName) ->
+        if chosenCollateralAssetName == "" {
+          2
+        } else {
+          3
+        }
+      None -> quantity_of_policy_id(output.value, chosenCollateral.policyId) + 2
     }
   and {
     correctDestination,
@@ -398,8 +402,8 @@ fn validate_eventual_output_to_pool(
   remainingPrincipalAmountAfterBorrow: Int,
   poolPolicyId: ByteArray,
   poolId: ByteArray,
-  poolSpendScriptHash: ByteArray,
-  poolInputPaymentCredential: Credential,
+  poolInputOutputAddress: Address,
+  poolInputAssetsLength: Int,
 ) {
   expect InlineDatum(outputDatum) = output.datum
   expect parsedDatum: PoolDatum = outputDatum
@@ -415,22 +419,9 @@ fn validate_eventual_output_to_pool(
 
   let isDatumCorrect = parsedDatum == datum
 
-  let dosProtection =
-    if datum.commonData.principalAsset.policyId == "" {
-      length(flatten(output.value)) <= 2
-    } else {
-      length(flatten(output.value)) <= 3
-    }
+  let dosProtection = length(flatten(output.value)) == poolInputAssetsLength
 
-  let correctDestination = and {
-      output.address.payment_credential == poolInputPaymentCredential,
-      if is_output_to_spend_validator(output, poolSpendScriptHash) {
-        output.address.stake_credential == datum.lenderAddress.stake_credential
-      } else {
-        //outputs have been already filtered at the beginning
-        True
-      },
-    }
+  let correctDestination = poolInputOutputAddress == output.address
 
   and {
     correctDestination,

@@ -822,20 +822,18 @@ fn validate_output_to_loan_for_changing_collateral(
       let newCollateralTokens =
         quantity_of_policy_id(loanOutput.value, datum.collateral.policyId)
       //The Value must be the same as before except for the quantity of tokens with same collateral's policyId
-      let sameValueWithoutCollateralTokens =
+      let oldValueWithoutPolicyId =
         value_without_policy_id_as_list(
           without_lovelace(loanValue),
           datum.collateral.policyId,
-        ) == value_without_policy_id_as_list(
+        )
+      let sameValueWithoutCollateralTokens =
+        oldValueWithoutPolicyId == value_without_policy_id_as_list(
           without_lovelace(loanOutput.value),
           datum.collateral.policyId,
         )
       let dosProtection =
-        if datum.collateral.policyId == "" {
-          length(flatten(loanValue)) <= 2
-        } else {
-          length(flatten(loanValue)) <= 3
-        }
+        length(flatten(loanOutput.value)) == length(oldValueWithoutPolicyId) + newCollateralTokens
       and {
         sameValueWithoutCollateralTokens,
         newCollateralTokens == newCollateralAmount,
@@ -955,11 +953,10 @@ fn validate_output_to_dutch_auction(
     }
 
   let dosProtection =
-    if collateral.policyId == "" {
-      length(flatten(dutchAuctionOutput.value)) == 1
-    } else {
-      length(flatten(dutchAuctionOutput.value)) == 2
-    }
+    length(flatten(dutchAuctionOutput.value)) == length(
+      flatten(loanInput.output.value),
+    ) - 1
+
   and {
     is_output_to_smart_credential(
       dutchAuctionOutput,

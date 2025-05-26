@@ -462,7 +462,7 @@ test perpetual_remaining_debt() {
       principal: principal,
       interestRate: interestRate,
       totalInstallments: 200,
-      repaidInstallments: 2,
+      repaidInstallments: 3,
       installmentPeriod: 730,
       initialGracePeriod: 0,
       timeSinceLendDate: 31536000000,

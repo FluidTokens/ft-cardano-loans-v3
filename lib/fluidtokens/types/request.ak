@@ -3,11 +3,6 @@ use cardano/transaction.{OutputReference}
 use fluidtokens/types/general.{AuthorizationMethod, CollateralAsset}
 use fluidtokens/types/pool.{CommonData}
 
-// pub type MinPrincipal {
-//   Exactly { principalAmount: Int }
-//   Dynamic { ltv: Int }
-// }
-
 pub type RequestDatum {
   commonData: CommonData,
   borrowerAuth: AuthorizationMethod,

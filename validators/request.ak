@@ -24,7 +24,8 @@ use fluidtokens/types/request.{
   RequestWithdrawRedeemer,
 } as r
 use fluidtokens/utils.{
-  is_output_to_spend_validator, safe_list_at, validity_range_within_an_hour,
+  is_output_to_spend_validator, quantity_of_policy_id, safe_list_at,
+  validity_range_within_an_hour,
 }
 use smart_tokens/utils.{
   get_inputs_from_smart_credential, get_outputs_to_smart_credential,
@@ -429,10 +430,14 @@ fn validate_output_to_loan(
       True
     }
   let dosProtection =
-    if collateral.policyId == "" {
-      length(flatten(output.value)) <= 2
-    } else {
-      length(flatten(output.value)) <= 3
+    length(flatten(output.value)) == when collateral.maybeAssetName is {
+      Some(chosenCollateralAssetName) ->
+        if chosenCollateralAssetName == "" {
+          2
+        } else {
+          3
+        }
+      None -> quantity_of_policy_id(output.value, collateral.policyId) + 2
     }
   and {
     correctDestination,
