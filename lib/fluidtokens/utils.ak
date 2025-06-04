@@ -120,6 +120,11 @@ pub fn quantity_of_policy_id(value: Value, policyId: PolicyId) {
   dict.foldl(tokens(value, policyId), 0, fn(_k, v, result) { v + result })
 }
 
+/// Returns the number of different asset names with the policyId
+pub fn asset_names_number_of_policy_id(value: Value, policyId: PolicyId) {
+  dict.foldl(tokens(value, policyId), 0, fn(_k, _v, result) { 1 + result })
+}
+
 pub fn safe_list_at(list: List<a>, index: Int) {
   safe_expect(list.at(list, index))
 }

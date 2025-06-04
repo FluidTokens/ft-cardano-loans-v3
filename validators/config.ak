@@ -24,7 +24,7 @@ validator config(tx0: ByteArray, index0: Int) {
     and {
       //First output goes to this address
       output_parameters.address.payment_credential == contractCredential,
-      //only 1 token of same policy
+      //Only 1 token of same policy
       quantity_of_policy_id(self.mint, policy_id) == 1,
       //I am minting only 1 token (NFT)
       quantity_of(self.mint, policy_id, constants.config_asset_name) == 1,

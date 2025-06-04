@@ -29,7 +29,7 @@ use fluidtokens/types/pool.{
 use fluidtokens/types/repayment.{RepaymentDatum, RepaymentDatumWithToken}
 use fluidtokens/types/request.{Lend, RequestWithdrawRedeemer}
 use fluidtokens/utils.{
-  is_nft_spent, is_output_to_spend_validator, quantity_of_policy_id,
+  asset_names_number_of_policy_id, is_nft_spent, is_output_to_spend_validator,
   safe_list_at, value_without_policy_id_as_list,
 }
 use smart_tokens/utils.{
@@ -820,7 +820,10 @@ fn validate_output_to_loan_for_changing_collateral(
   let correctValue =
     if datum.collateral.maybeAssetName == None {
       let newCollateralTokens =
-        quantity_of_policy_id(loanOutput.value, datum.collateral.policyId)
+        asset_names_number_of_policy_id(
+          loanOutput.value,
+          datum.collateral.policyId,
+        )
       //The Value must be the same as before except for the quantity of tokens with same collateral's policyId
       let oldValueWithoutPolicyId =
         value_without_policy_id_as_list(
@@ -833,7 +836,7 @@ fn validate_output_to_loan_for_changing_collateral(
           datum.collateral.policyId,
         )
       let dosProtection =
-        length(flatten(loanOutput.value)) == length(oldValueWithoutPolicyId) + newCollateralTokens
+        length(flatten(loanOutput.value)) == length(oldValueWithoutPolicyId) + newCollateralTokens + 1
       and {
         sameValueWithoutCollateralTokens,
         newCollateralTokens == newCollateralAmount,
@@ -939,7 +942,10 @@ fn validate_output_to_dutch_auction(
 
   let correctValue =
     if collateral.maybeAssetName == None {
-      quantity_of_policy_id(dutchAuctionOutput.value, collateral.policyId) == quantity_of_policy_id(
+      asset_names_number_of_policy_id(
+        dutchAuctionOutput.value,
+        collateral.policyId,
+      ) == asset_names_number_of_policy_id(
         loanInput.output.value,
         collateral.policyId,
       )

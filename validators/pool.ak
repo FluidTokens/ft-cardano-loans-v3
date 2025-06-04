@@ -19,7 +19,7 @@ use fluidtokens/types/pool.{
   Borrow, Cancel, Liquidation, PoolDatum, PoolMintRedeemer, PoolWithdrawRedeemer,
 } as p
 use fluidtokens/utils.{
-  is_output_to_spend_validator, quantity_of_policy_id, safe_list_at,
+  asset_names_number_of_policy_id, is_output_to_spend_validator, safe_list_at,
   validity_range_within_an_hour,
 }
 use smart_tokens/utils.{
@@ -345,7 +345,7 @@ fn validate_output_to_loan(
           chosenCollateralAssetName,
         ) >= minNeededCollateralAmount
       None ->
-        quantity_of_policy_id(output.value, chosenCollateral.policyId) >= minNeededCollateralAmount
+        asset_names_number_of_policy_id(output.value, chosenCollateral.policyId) >= minNeededCollateralAmount
     }
 
   let containsLoanNFT = quantity_of(output.value, loanPolicyId, loanId) == 1
@@ -384,7 +384,8 @@ fn validate_output_to_loan(
         } else {
           3
         }
-      None -> quantity_of_policy_id(output.value, chosenCollateral.policyId) + 2
+      None ->
+        asset_names_number_of_policy_id(output.value, chosenCollateral.policyId) + 2
     }
   and {
     correctDestination,

@@ -211,7 +211,7 @@ pub fn get_remaining_debt(
       //The formula is:
       //remainingDebt = principal*hourlyInterestRate*passedHoursSinceLastRepaidInstallment + principal*m*passedHoursSoFar/8760*passedHoursSoFar
       //which becomes:
-      //remainingDebt = principal*(hourlyInterestRate*passedHoursSinceLastRepaidInstallment) + (m*passedHoursSoFar^2/8760)
+      //remainingDebt = principal*((hourlyInterestRate*passedHoursSinceLastRepaidInstallment) + (m*passedHoursSoFar^2/8760))
       expect Some(passedHoursSoFar) = rational.new(timeSinceLendDate, 3600000)
       expect Some(m) = rational.new(apyIncreaseLinearCoefficient, 1000000)
 
@@ -235,11 +235,10 @@ pub fn get_remaining_debt(
           principal,
         )
 
-      trace accumulatedHoursOfRepaidInstallments
-      trace passedHoursSinceLastRepaidInstallment
-      trace firstPiece
-      trace secondPiece
-
+      // trace accumulatedHoursOfRepaidInstallments
+      // trace passedHoursSinceLastRepaidInstallment
+      // trace firstPiece
+      // trace secondPiece
       rational.ceil(
         rational.add(principal, rational.add(firstPiece, secondPiece)),
       )
