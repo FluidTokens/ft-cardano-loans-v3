@@ -68,12 +68,20 @@ pub fn is_nft_burnt(policyId: PolicyId, assetName: AssetName, mints: Value) {
   quantity_of(mints, policyId, assetName) == -1
 }
 
-pub fn is_nft_spent(
+pub fn is_nft_in_input(
   policyId: PolicyId,
   assetName: AssetName,
   inputWithToken: Input,
 ) {
   quantity_of(inputWithToken.output.value, policyId, assetName) == 1
+}
+
+pub fn is_nft_in_output(
+  policyId: PolicyId,
+  assetName: AssetName,
+  outputWithToken: Output,
+) {
+  quantity_of(outputWithToken.value, policyId, assetName) == 1
 }
 
 pub fn validity_range_within_an_hour(tx: Transaction) {

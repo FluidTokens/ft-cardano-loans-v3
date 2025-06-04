@@ -8,7 +8,9 @@ use cardano/address.{Address, Credential, Script}
 use cardano/assets.{
   PolicyId, Value, add, flatten, quantity_of, reduce, tokens, without_lovelace,
 }
-use cardano/transaction.{InlineDatum, NoDatum, Output, Transaction, find_input}
+use cardano/transaction.{
+  InlineDatum, Input, NoDatum, Output, Transaction, find_input,
+}
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/constants
 use fluidtokens/finance.{
@@ -16,7 +18,8 @@ use fluidtokens/finance.{
   get_min_principal_for_collateral_without_oracles,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
-use fluidtokens/types/general.{Asset, CollateralAsset}
+use fluidtokens/types/config.{ConfigDatum}
+use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
 use fluidtokens/types/loan.{LoanDatum}
 use fluidtokens/types/pool.{CommonData, Liquidation}
 use fluidtokens/types/request.{
@@ -33,70 +36,7 @@ use smart_tokens/utils.{
 
 validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
   mint(redeemer: RequestMintRedeemer, policy_id: PolicyId, self: Transaction) {
-    let config =
-      utils.get_config(
-        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
-        configNFTPolicyId,
-        configNFTAssetName,
-      )
-    let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
-    let requestOutputs =
-      st_utils.get_outputs_to_smart_credential(
-        self.outputs,
-        Script(config.requestSpendScriptHash),
-        Script(policy_id),
-        config.smartTokensSpendScriptHash,
-      )
-    let isInputRefSpent =
-      option.is_some(find_input(self.inputs, redeemer.inputRef))
-
-    let mintedTokens =
-      list.filter(
-        dict.to_pairs(tokens(self.mint, policy_id)),
-        fn(Pair(_assetName, quantity)) { quantity > 0 },
-      )
-
-    let isEachMintedTokenAccountedFor =
-      list.indexed_foldr(
-        mintedTokens,
-        True,
-        fn(index, Pair(assetName, quantity), result) {
-          expect result
-
-          let correctAssetName = and {
-              bytearray.at(assetName, 0) == index,
-              bytearray.drop(assetName, 1) == inputRefHash,
-            }
-
-          expect Some(output) = list.at(requestOutputs, index)
-          let outputHasUniqueToken = and {
-              dict.size(assets.tokens(output.value, policy_id)) == 1,
-              assets.quantity_of(output.value, policy_id, assetName) == 1,
-            }
-          and {
-            quantity == 1,
-            correctAssetName,
-            outputHasUniqueToken,
-          }
-        },
-      )
-    let mintedTokensQuantity =
-      reduce(
-        self.mint,
-        0,
-        fn(policyId, _assetName, amount, result) {
-          if policyId == policy_id {
-            result + amount
-          } else {
-            result
-          }
-        },
-      )
-    and {
-      isInputRefSpent,
-      isEachMintedTokenAccountedFor,
-      mintedTokensQuantity <= 255,
-    }
+    check_mint(self, redeemer, policy_id)
   }
 
   withdraw(
@@ -133,179 +73,43 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
 
         when redeemerAction is {
-          Cancel(requestId) -> and {
-              quantity_of(input.output.value, requestPolicyId, requestId) == 1,
-              quantity_of(self.mint, requestPolicyId, requestId) == -1,
-              authorize_action(
-                create_auth(
-                  datum.borrowerAuth,
-                  self.inputs,
-                  self.withdrawals,
-                  self.extra_signatories,
-                  self.mint,
-                ),
-              ),
-            }
-          CancelAfterExpiration(requestId) -> {
-            expect Finite(validFrom) =
-              self.validity_range.lower_bound.bound_type
-            let requestExpired = validFrom > datum.requestExpiration
-            let borrowerOutput = safe_list_at(self.outputs, index)
-            and {
-              quantity_of(input.output.value, requestPolicyId, requestId) == 1,
-              quantity_of(self.mint, requestPolicyId, requestId) == -1,
-              requestExpired,
-              validate_collateral_less_penalty_output(
-                input.output.value,
-                borrowerOutput,
-                datum.borrowerAddress,
-                datum.requestExpirationPenalty,
-                requestPolicyId,
-                requestId,
-              ),
-            }
-          }
+          Cancel(requestId) ->
+            check_cancel(
+              input.output.value,
+              requestPolicyId,
+              requestId,
+              self,
+              datum.borrowerAuth,
+            )
+          CancelAfterExpiration(requestId) ->
+            check_cancel_after_expiration(
+              input.output.value,
+              requestPolicyId,
+              requestId,
+              self,
+              datum,
+              index,
+            )
           Lend(
             principalOracleRefInputIndex,
             collateralOracleRefInputIndex,
             givenPrincipalAmount,
             requestId,
             permissionedConditionWithdrawIndex,
-          ) -> {
-            expect (Finite(validFrom), Finite(validTo)) =
-              (
-                self.validity_range.lower_bound.bound_type,
-                self.validity_range.upper_bound.bound_type,
-              )
-            //Request not expired
-            expect validTo < datum.requestExpiration
-            let inputUtxoId = utils.hash_output_ref(input.output_reference)
-            let loanOutput =
-              safe_list_at(
-                get_outputs_to_smart_credential(
-                  self.outputs,
-                  Script(config.loanSpendScriptHash),
-                  Script(config.loanPolicyId),
-                  config.smartTokensSpendScriptHash,
-                ),
-                index,
-              )
-            let outputWithBorrowerToken = safe_list_at(self.outputs, index)
-
-            expect Some(minPrincipal) =
-              rational.new(datum.minPrincipal, datum.minPrincipalDivider)
-            let collateralAmount =
-              get_collateral_amount(input.output.value, datum.collateral)
-            let isLoanOutputValid =
-              if datum.dynamicCollateralPrice {
-                let collateralOracleRefInput =
-                  safe_list_at(
-                    self.reference_inputs,
-                    collateralOracleRefInputIndex,
-                  )
-                expect Some(collateralOracleToken) =
-                  datum.collateral.maybeOracleTokenAsset
-                expect Some(collateralOraclePriceFeed) =
-                  retrieve_oracle_data(
-                    collateralOracleRefInput.output.address.payment_credential,
-                    collateralOracleRefInput.output.value,
-                    self.redeemers,
-                    validFrom,
-                    validTo,
-                    collateralOracleToken.policyId,
-                    collateralOracleToken.assetName,
-                    datum.collateral.policyId,
-                    datum.collateral.maybeAssetName,
-                  )
-                let principalOracleRefInput =
-                  safe_list_at(
-                    self.reference_inputs,
-                    principalOracleRefInputIndex,
-                  )
-                expect Some(principalOraclePriceFeed) =
-                  retrieve_oracle_data(
-                    principalOracleRefInput.output.address.payment_credential,
-                    principalOracleRefInput.output.value,
-                    self.redeemers,
-                    validFrom,
-                    validTo,
-                    datum.commonData.principalOracleAsset.policyId,
-                    datum.commonData.principalOracleAsset.assetName,
-                    datum.commonData.principalAsset.policyId,
-                    Some(datum.commonData.principalAsset.assetName),
-                  )
-                expect
-                  givenPrincipalAmount >= get_min_principal_for_collateral_with_oracles(
-                    collateralAmount,
-                    minPrincipal,
-                    principalOraclePriceFeed,
-                    collateralOraclePriceFeed,
-                  ) && givenPrincipalAmount <= datum.maxPrincipal
-                validate_output_to_loan(
-                  loanOutput,
-                  config.loanPolicyId,
-                  config.loanSpendScriptHash,
-                  datum,
-                  input.output.value,
-                  givenPrincipalAmount,
-                  datum.collateral,
-                  inputUtxoId,
-                  validTo,
-                  datum.borrowerAddress,
-                  requestPolicyId,
-                  requestId,
-                )
-              } else {
-                expect
-                  givenPrincipalAmount >= get_min_principal_for_collateral_without_oracles(
-                    collateralAmount,
-                    minPrincipal,
-                  ) && givenPrincipalAmount <= datum.maxPrincipal
-
-                validate_output_to_loan(
-                  loanOutput,
-                  config.loanPolicyId,
-                  config.loanSpendScriptHash,
-                  datum,
-                  input.output.value,
-                  givenPrincipalAmount,
-                  datum.collateral,
-                  inputUtxoId,
-                  validTo,
-                  datum.borrowerAddress,
-                  requestPolicyId,
-                  requestId,
-                )
-              }
-            and {
-              or {
-                datum.permissionedConditionScriptHash == constants.no_permissioned_condition,
-                {
-                  expect Pair(Script(scriptHash), _amnt) =
-                    safe_list_at(
-                      self.withdrawals,
-                      permissionedConditionWithdrawIndex,
-                    )
-
-                  datum.permissionedConditionScriptHash == scriptHash
-                },
-              },
-              quantity_of(input.output.value, requestPolicyId, requestId) == 1,
-              quantity_of(self.mint, requestPolicyId, requestId) == -1,
-              validity_range_within_an_hour(self),
-              isLoanOutputValid,
-              bonds_sent_to_both_parties_and_principal_sent_to_borrower(
-                self.mint,
-                outputWithBorrowerToken,
-                config.borrowerBondPolicyId,
-                config.lenderBondPolicyId,
-                inputUtxoId,
-                datum.borrowerAddress,
-                givenPrincipalAmount,
-                datum.commonData.principalAsset,
-              ),
-            }
-          }
+          ) ->
+            check_lend(
+              self,
+              input,
+              datum,
+              config,
+              index,
+              principalOracleRefInputIndex,
+              collateralOracleRefInputIndex,
+              givenPrincipalAmount,
+              requestId,
+              requestPolicyId,
+              permissionedConditionWithdrawIndex,
+            )
         }
       },
     )
@@ -313,6 +117,264 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
 
   else(_) {
     fail
+  }
+}
+
+fn check_mint(
+  self: Transaction,
+  redeemer: RequestMintRedeemer,
+  policy_id: PolicyId,
+) -> Bool {
+  let config =
+    utils.get_config(
+      safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
+      configNFTPolicyId,
+      configNFTAssetName,
+    )
+  let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
+  let requestOutputs =
+    st_utils.get_outputs_to_smart_credential(
+      self.outputs,
+      Script(config.requestSpendScriptHash),
+      Script(policy_id),
+      config.smartTokensSpendScriptHash,
+    )
+  let isInputRefSpent =
+    option.is_some(find_input(self.inputs, redeemer.inputRef))
+
+  let mintedTokens =
+    list.filter(
+      dict.to_pairs(tokens(self.mint, policy_id)),
+      fn(Pair(_assetName, quantity)) { quantity > 0 },
+    )
+
+  let isEachMintedTokenAccountedFor =
+    list.indexed_foldr(
+      mintedTokens,
+      True,
+      fn(index, Pair(assetName, quantity), result) {
+        expect result
+
+        let correctAssetName = and {
+            bytearray.at(assetName, 0) == index,
+            bytearray.drop(assetName, 1) == inputRefHash,
+          }
+
+        expect Some(output) = list.at(requestOutputs, index)
+        let outputHasUniqueToken = and {
+            dict.size(assets.tokens(output.value, policy_id)) == 1,
+            assets.quantity_of(output.value, policy_id, assetName) == 1,
+          }
+        and {
+          quantity == 1,
+          correctAssetName,
+          outputHasUniqueToken,
+        }
+      },
+    )
+  let mintedTokensQuantity =
+    reduce(
+      self.mint,
+      0,
+      fn(policyId, _assetName, amount, result) {
+        if policyId == policy_id {
+          result + amount
+        } else {
+          result
+        }
+      },
+    )
+  and {
+    isInputRefSpent,
+    isEachMintedTokenAccountedFor,
+    mintedTokensQuantity <= 255,
+  }
+}
+
+fn check_cancel(
+  inputValue: Value,
+  requestPolicyId: ByteArray,
+  requestId: ByteArray,
+  self: Transaction,
+  borrowerAuth: AuthorizationMethod,
+) {
+  and {
+    quantity_of(inputValue, requestPolicyId, requestId) == 1,
+    quantity_of(self.mint, requestPolicyId, requestId) == -1,
+    authorize_action(
+      create_auth(
+        borrowerAuth,
+        self.inputs,
+        self.withdrawals,
+        self.extra_signatories,
+        self.mint,
+      ),
+    ),
+  }
+}
+
+fn check_cancel_after_expiration(
+  inputValue: Value,
+  requestPolicyId: ByteArray,
+  requestId: ByteArray,
+  self: Transaction,
+  datum: RequestDatum,
+  index: Int,
+) {
+  expect Finite(validFrom) = self.validity_range.lower_bound.bound_type
+  let requestExpired = validFrom > datum.requestExpiration
+  let borrowerOutput = safe_list_at(self.outputs, index)
+  and {
+    quantity_of(inputValue, requestPolicyId, requestId) == 1,
+    quantity_of(self.mint, requestPolicyId, requestId) == -1,
+    requestExpired,
+    validate_collateral_less_penalty_output(
+      inputValue,
+      borrowerOutput,
+      datum.borrowerAddress,
+      datum.requestExpirationPenalty,
+      requestPolicyId,
+      requestId,
+    ),
+  }
+}
+
+fn check_lend(
+  self: Transaction,
+  input: Input,
+  datum: RequestDatum,
+  config: ConfigDatum,
+  index: Int,
+  principalOracleRefInputIndex: Int,
+  collateralOracleRefInputIndex: Int,
+  givenPrincipalAmount: Int,
+  requestId: ByteArray,
+  requestPolicyId: ByteArray,
+  permissionedConditionWithdrawIndex: Int,
+) {
+  expect (Finite(validFrom), Finite(validTo)) =
+    (
+      self.validity_range.lower_bound.bound_type,
+      self.validity_range.upper_bound.bound_type,
+    )
+  //Request not expired
+  expect validTo < datum.requestExpiration
+  let inputUtxoId = utils.hash_output_ref(input.output_reference)
+  let loanOutput =
+    safe_list_at(
+      get_outputs_to_smart_credential(
+        self.outputs,
+        Script(config.loanSpendScriptHash),
+        Script(config.loanPolicyId),
+        config.smartTokensSpendScriptHash,
+      ),
+      index,
+    )
+  let outputWithBorrowerToken = safe_list_at(self.outputs, index)
+
+  expect Some(minPrincipal) =
+    rational.new(datum.minPrincipal, datum.minPrincipalDivider)
+  let collateralAmount =
+    get_collateral_amount(input.output.value, datum.collateral)
+  let isLoanOutputValid =
+    if datum.dynamicCollateralPrice {
+      let collateralOracleRefInput =
+        safe_list_at(self.reference_inputs, collateralOracleRefInputIndex)
+      expect Some(collateralOracleToken) =
+        datum.collateral.maybeOracleTokenAsset
+      expect Some(collateralOraclePriceFeed) =
+        retrieve_oracle_data(
+          collateralOracleRefInput.output.address.payment_credential,
+          collateralOracleRefInput.output.value,
+          self.redeemers,
+          validFrom,
+          validTo,
+          collateralOracleToken.policyId,
+          collateralOracleToken.assetName,
+          datum.collateral.policyId,
+          datum.collateral.maybeAssetName,
+        )
+      let principalOracleRefInput =
+        safe_list_at(self.reference_inputs, principalOracleRefInputIndex)
+      expect Some(principalOraclePriceFeed) =
+        retrieve_oracle_data(
+          principalOracleRefInput.output.address.payment_credential,
+          principalOracleRefInput.output.value,
+          self.redeemers,
+          validFrom,
+          validTo,
+          datum.commonData.principalOracleAsset.policyId,
+          datum.commonData.principalOracleAsset.assetName,
+          datum.commonData.principalAsset.policyId,
+          Some(datum.commonData.principalAsset.assetName),
+        )
+      expect
+        givenPrincipalAmount >= get_min_principal_for_collateral_with_oracles(
+          collateralAmount,
+          minPrincipal,
+          principalOraclePriceFeed,
+          collateralOraclePriceFeed,
+        ) && givenPrincipalAmount <= datum.maxPrincipal
+      validate_output_to_loan(
+        loanOutput,
+        config.loanPolicyId,
+        config.loanSpendScriptHash,
+        datum,
+        input.output.value,
+        givenPrincipalAmount,
+        datum.collateral,
+        inputUtxoId,
+        validTo,
+        datum.borrowerAddress,
+        requestPolicyId,
+        requestId,
+      )
+    } else {
+      expect
+        givenPrincipalAmount >= get_min_principal_for_collateral_without_oracles(
+          collateralAmount,
+          minPrincipal,
+        ) && givenPrincipalAmount <= datum.maxPrincipal
+
+      validate_output_to_loan(
+        loanOutput,
+        config.loanPolicyId,
+        config.loanSpendScriptHash,
+        datum,
+        input.output.value,
+        givenPrincipalAmount,
+        datum.collateral,
+        inputUtxoId,
+        validTo,
+        datum.borrowerAddress,
+        requestPolicyId,
+        requestId,
+      )
+    }
+  and {
+    or {
+      datum.permissionedConditionScriptHash == constants.no_permissioned_condition,
+      {
+        expect Pair(Script(scriptHash), _amnt) =
+          safe_list_at(self.withdrawals, permissionedConditionWithdrawIndex)
+
+        datum.permissionedConditionScriptHash == scriptHash
+      },
+    },
+    quantity_of(input.output.value, requestPolicyId, requestId) == 1,
+    quantity_of(self.mint, requestPolicyId, requestId) == -1,
+    validity_range_within_an_hour(self),
+    isLoanOutputValid,
+    bonds_sent_to_both_parties_and_principal_sent_to_borrower(
+      self.mint,
+      outputWithBorrowerToken,
+      config.borrowerBondPolicyId,
+      config.lenderBondPolicyId,
+      inputUtxoId,
+      datum.borrowerAddress,
+      givenPrincipalAmount,
+      datum.commonData.principalAsset,
+    ),
   }
 }
 

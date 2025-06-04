@@ -43,15 +43,15 @@ pub type LoanAction {
   }
   //Borrower action
   Repay {
-    //This is the absolute input index that contains the borrower bond
-    borrowerBondInputIndex: Int,
+    //This is the absolute output index that contains the borrower bond
+    borrowerBondOutputIndex: Int,
     loanId: ByteArray,
     //Used only in Perpetual Loans to signal the last repayment that will close the loan
     isFinalRepayment: Bool,
   }
   //Borrower action
   ChangeCollateral {
-    borrowerBondInputIndex: Int,
+    borrowerBondOutputIndex: Int,
     //Units of collateral that remain in the loan after the change
     newCollateralAmount: Int,
     loanId: ByteArray,
@@ -60,7 +60,7 @@ pub type LoanAction {
   }
   //Borrower action
   Recast {
-    borrowerBondInputIndex: Int,
+    borrowerBondOutputIndex: Int,
     //In principal units
     principalPaid: Int,
     loanId: ByteArray,
