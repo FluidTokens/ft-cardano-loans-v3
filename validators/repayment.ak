@@ -24,47 +24,7 @@ validator repayment(
   //Repayment outputs are already checked by the loan validator, here we just ensure we don't mint additional undesired tokens
   //Burning is always allowed
   //Each output has a unique NFT
-  mint(redeemer: RepaymentMintRedeemer, policy_id: PolicyId, self: Transaction) {
-    let config =
-      utils.get_config(
-        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
-        configNFTPolicyId,
-        configNFTAssetName,
-      )
-    let loanWithdrawRedeemer =
-      safe_list_at(self.redeemers, redeemer.loanWithdrawRedeemerIndex)
-    expect loanWithdrawRedeemer.1st == Withdraw(Script(config.loanPolicyId))
-    expect loanRedeemer: LoanWithdrawRedeemer = loanWithdrawRedeemer.2nd
-    let loanInputs =
-      utils.indexed_filter(
-        st_utils.get_inputs_from_smart_credential(
-          self.inputs,
-          Script(config.loanSpendScriptHash),
-          Script(config.loanPolicyId),
-          config.smartTokensSpendScriptHash,
-        ),
-        fn(index, _loan) {
-          let loanRedeemerAction =
-            safe_list_at(loanRedeemer.actionsForEachInput, index)
-          when loanRedeemerAction is {
-            Claim { liquidationMode, equity, .. } -> {
-              expect Liquidation { partialLiquidationPenaltyPerMille, .. } =
-                liquidationMode
-              partialLiquidationPenaltyPerMille >= 0 && equity > 0
-            }
-            Repay { .. } -> True
-            Recast { .. } -> True
-            _ -> False
-          }
-        },
-      )
-    let repaymentOutputs =
-      st_utils.get_outputs_to_smart_credential(
-        self.outputs,
-        Script(config.repaymentSpendScriptHash),
-        Script(policy_id),
-        config.smartTokensSpendScriptHash,
-      )
+  mint(redeemer: Data, policy_id: PolicyId, self: Transaction) {
     //We exclude the burnt tokens (quantity < 0) as they are always allowed
     let mintedNFTs =
       list.filter(
@@ -73,6 +33,48 @@ validator repayment(
       )
 
     if list.length(mintedNFTs) > 0 {
+      expect redeemer: RepaymentMintRedeemer = redeemer
+
+      let config =
+        utils.get_config(
+          safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
+          configNFTPolicyId,
+          configNFTAssetName,
+        )
+      let loanWithdrawRedeemer =
+        safe_list_at(self.redeemers, redeemer.loanWithdrawRedeemerIndex)
+      expect loanWithdrawRedeemer.1st == Withdraw(Script(config.loanPolicyId))
+      expect loanRedeemer: LoanWithdrawRedeemer = loanWithdrawRedeemer.2nd
+      let loanInputs =
+        utils.indexed_filter(
+          st_utils.get_inputs_from_smart_credential(
+            self.inputs,
+            Script(config.loanSpendScriptHash),
+            Script(config.loanPolicyId),
+            config.smartTokensSpendScriptHash,
+          ),
+          fn(index, _loan) {
+            let loanRedeemerAction =
+              safe_list_at(loanRedeemer.actionsForEachInput, index)
+            when loanRedeemerAction is {
+              Claim { liquidationMode, equity, .. } -> {
+                expect Liquidation { partialLiquidationPenaltyPerMille, .. } =
+                  liquidationMode
+                partialLiquidationPenaltyPerMille >= 0 && equity > 0
+              }
+              Repay { .. } -> True
+              Recast { .. } -> True
+              _ -> False
+            }
+          },
+        )
+      let repaymentOutputs =
+        st_utils.get_outputs_to_smart_credential(
+          self.outputs,
+          Script(config.repaymentSpendScriptHash),
+          Script(policy_id),
+          config.smartTokensSpendScriptHash,
+        )
       let expectedMintedNFTs =
         list.indexed_foldr(
           loanInputs,
