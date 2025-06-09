@@ -1,3 +1,5 @@
+use fluidtokens/types/general.{Asset}
+
 pub const config_asset_name = "parameters"
 
 pub const max_oracle_validity_range = 3600000
@@ -21,3 +23,5 @@ pub const orcfax_identifier_feed_asset_name = ""
 pub const max_orcfax_tolerance = 25200000
 
 pub const hour_to_millis = 3600000
+
+pub const no_oracle_token_asset = Asset { policyId: "NONE", assetName: "NONE" }

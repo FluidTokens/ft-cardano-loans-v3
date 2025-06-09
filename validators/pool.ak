@@ -244,8 +244,7 @@ fn check_borrow(
     if datum.dynamicCollateralPrice {
       let collateralOracleRefInput =
         safe_list_at(self.reference_inputs, chosenCollateralOracleRefInputIndex)
-      expect Some(chosenCollateralOracleToken) =
-        chosenCollateral.maybeOracleTokenAsset
+      let chosenCollateralOracleToken = chosenCollateral.oracleTokenAsset
       expect Some(collateralOraclePriceFeed) =
         retrieve_oracle_data(
           collateralOracleRefInput.output.address.payment_credential,
@@ -414,7 +413,8 @@ fn validate_output_to_loan(
 
   let isLiquidationCorrectlySet =
     when newDatum.commonData.liquidationMode is {
-      Liquidation { .. } -> newDatum.collateral.maybeOracleTokenAsset != None
+      Liquidation { .. } ->
+        newDatum.collateral.oracleTokenAsset != constants.no_oracle_token_asset
       _ -> True
     }
   let isDatumCorrect = parsedDatum == newDatum && isLiquidationCorrectlySet

@@ -379,8 +379,7 @@ fn check_claim(
       }
       Liquidation { lTV, lTVDivider, partialLiquidationPenaltyPerMille } -> {
         let principalAmountAsRational = rational.from_int(datum.principalAmount)
-        expect Some(collateralOracleToken) =
-          datum.collateral.maybeOracleTokenAsset
+        let collateralOracleToken = datum.collateral.oracleTokenAsset
         let collateralOracleRefInput =
           safe_list_at(self.reference_inputs, collateralOracleRefInputIndex)
         expect Some(collateralOraclePriceFeed) =
@@ -635,8 +634,7 @@ fn check_change_collateral(
         )
       let principalAmountAsRational = rational.from_int(datum.principalAmount)
       expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
-      expect Some(collateralOracleToken) =
-        datum.collateral.maybeOracleTokenAsset
+      let collateralOracleToken = datum.collateral.oracleTokenAsset
       let collateralOracleRefInput =
         safe_list_at(self.reference_inputs, collateralOracleRefInputIndex)
       expect Some(collateralOraclePriceFeed) =

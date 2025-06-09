@@ -11,7 +11,8 @@ pub type Asset {
 pub type CollateralAsset {
   policyId: PolicyId,
   maybeAssetName: Option<AssetName>,
-  maybeOracleTokenAsset: Option<Asset>,
+  //Put the dummy value Asset{"NONE","NONE"} if you are  NOT using an oracle token
+  oracleTokenAsset: Asset,
 }
 
 pub type AuthorizationMethod {
