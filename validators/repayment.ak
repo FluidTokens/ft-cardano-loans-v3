@@ -31,33 +31,14 @@ validator repayment(
         configNFTPolicyId,
         configNFTAssetName,
       )
-    let loanWithdrawRedeemer =
-      safe_list_at(self.redeemers, redeemer.loanWithdrawRedeemerIndex)
-    expect loanWithdrawRedeemer.1st == Withdraw(Script(config.loanPolicyId))
-    expect loanRedeemer: LoanWithdrawRedeemer = loanWithdrawRedeemer.2nd
     let loanInputs =
-      utils.indexed_filter(
-        st_utils.get_inputs_from_smart_credential(
-          self.inputs,
-          Script(config.loanSpendScriptHash),
-          Script(config.loanPolicyId),
-          config.smartTokensSpendScriptHash,
-        ),
-        fn(index, _loan) {
-          let loanRedeemerAction =
-            safe_list_at(loanRedeemer.actionsForEachInput, index)
-          when loanRedeemerAction is {
-            Claim { liquidationMode, equity, .. } -> {
-              expect Liquidation { partialLiquidationPenaltyPerMille, .. } =
-                liquidationMode
-              partialLiquidationPenaltyPerMille >= 0 && equity > 0
-            }
-            Repay { .. } -> True
-            Recast { .. } -> True
-            _ -> False
-          }
-        },
+      st_utils.get_inputs_from_smart_credential(
+        self.inputs,
+        Script(config.loanSpendScriptHash),
+        Script(config.loanPolicyId),
+        config.smartTokensSpendScriptHash,
       )
+
     let repaymentOutputs =
       st_utils.get_outputs_to_smart_credential(
         self.outputs,
@@ -65,6 +46,7 @@ validator repayment(
         Script(policy_id),
         config.smartTokensSpendScriptHash,
       )
+
     //We exclude the burnt tokens (quantity < 0) as they are always allowed
     let mintedNFTs =
       list.filter(
@@ -73,25 +55,63 @@ validator repayment(
       )
 
     if list.length(mintedNFTs) > 0 {
-      let expectedMintedNFTs =
+      let expectedMintedNFTs = {
+        let loanWithdrawRedeemer =
+          safe_list_at(self.redeemers, redeemer.loanWithdrawRedeemerIndex)
+        expect loanWithdrawRedeemer.1st == Withdraw(Script(config.loanPolicyId))
+        expect loanRedeemer: LoanWithdrawRedeemer = loanWithdrawRedeemer.2nd
+
         list.indexed_foldr(
           loanInputs,
           [],
           fn(index, input, result) {
+            let loanRedeemerAction =
+              safe_list_at(loanRedeemer.actionsForEachInput, index)
             let repaymentAssetName =
               utils.hash_output_ref(input.output_reference)
             let repaymentOutput = safe_list_at(repaymentOutputs, index)
-            expect and {
-                dict.size(assets.tokens(repaymentOutput.value, policy_id)) == 1,
-                assets.quantity_of(
-                  repaymentOutput.value,
-                  policy_id,
-                  repaymentAssetName,
-                ) == 1,
+            when loanRedeemerAction is {
+              Claim { liquidationMode, equity, .. } -> {
+                expect Liquidation { partialLiquidationPenaltyPerMille, .. } =
+                  liquidationMode
+                expect and {
+                    partialLiquidationPenaltyPerMille >= 0 && equity > 0,
+                    dict.size(assets.tokens(repaymentOutput.value, policy_id)) == 1,
+                    assets.quantity_of(
+                      repaymentOutput.value,
+                      policy_id,
+                      repaymentAssetName,
+                    ) == 1,
+                  }
+                list.push(result, Pair(repaymentAssetName, 1))
               }
-            list.push(result, Pair(repaymentAssetName, 1))
+              Repay { .. } -> {
+                expect and {
+                    dict.size(assets.tokens(repaymentOutput.value, policy_id)) == 1,
+                    assets.quantity_of(
+                      repaymentOutput.value,
+                      policy_id,
+                      repaymentAssetName,
+                    ) == 1,
+                  }
+                list.push(result, Pair(repaymentAssetName, 1))
+              }
+              Recast { .. } -> {
+                expect and {
+                    dict.size(assets.tokens(repaymentOutput.value, policy_id)) == 1,
+                    assets.quantity_of(
+                      repaymentOutput.value,
+                      policy_id,
+                      repaymentAssetName,
+                    ) == 1,
+                  }
+                list.push(result, Pair(repaymentAssetName, 1))
+              }
+              _ -> result
+            }
           },
         )
+      }
 
       list.sort(expectedMintedNFTs, utils.pairs_ordering) == mintedNFTs
     } else {

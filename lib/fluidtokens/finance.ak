@@ -1,3 +1,4 @@
+use aiken/math.{pow}
 use aiken/math/rational.{Rational}
 use cardano/assets.{Value, quantity_of}
 use fluidtokens/constants
@@ -209,10 +210,15 @@ pub fn get_remaining_debt(
   when repaymentMode is {
     PerpetualLoan { apyIncreaseLinearCoefficient, .. } -> {
       //The formula is:
-      //remainingDebt = principal*hourlyInterestRate*passedHoursSinceLastRepaidInstallment + principal*m*passedHoursSoFar/8760*passedHoursSoFar
-      //which becomes:
-      //remainingDebt = principal*((hourlyInterestRate*passedHoursSinceLastRepaidInstallment) + (m*passedHoursSoFar^2/8760))
+      //c = interestRate
+      //remainginInterestToPay = principal(hourlyInterestRate*passedHoursSinceLastRepaidInstallment)+principal(m*passedHoursSoFar/8760*passedHoursSoFar)
+      //remainginInterestToPay = principal(c/8760*passedHoursSinceLastRepaidInstallment)+principal(m*passedHoursSoFar^2/8760)
+      //remainginInterestToPay = principal(c/8760*passedHoursSinceLastRepaidInstallment+m*passedHoursSoFar^2/8760)
+      //remainginInterestToPay = principal*(c*passedHoursSinceLastRepaidInstallment+m*passedHoursSoFar^2)/8760
+      //remainingDebt = principal + remainginInterestToPay
       expect Some(passedHoursSoFar) = rational.new(timeSinceLendDate, 3600000)
+      expect Some(passedHoursSoFarSquared) =
+        rational.new(pow(timeSinceLendDate, 2), 12960000000000)
       expect Some(m) = rational.new(apyIncreaseLinearCoefficient, 1000000)
 
       let accumulatedHoursOfRepaidInstallments =
@@ -223,25 +229,20 @@ pub fn get_remaining_debt(
       let passedHoursSinceLastRepaidInstallment =
         rational.sub(passedHoursSoFar, accumulatedHoursOfRepaidInstallments)
 
-      let firstPiece =
-        rational.mul(m, rational.mul(principal, passedHoursSoFar))
-
-      let secondPiece =
-        rational.mul(
+      let c = interestRate
+      let remainginInterestToPay =
+        rational_safe_div(
           rational.mul(
-            rational_safe_div(interestRate, rational.from_int(8760)),
-            passedHoursSinceLastRepaidInstallment,
+            principal,
+            rational.add(
+              rational.mul(c, passedHoursSinceLastRepaidInstallment),
+              rational.mul(m, passedHoursSoFarSquared),
+            ),
           ),
-          principal,
+          rational.from_int(8760),
         )
 
-      // trace accumulatedHoursOfRepaidInstallments
-      // trace passedHoursSinceLastRepaidInstallment
-      // trace firstPiece
-      // trace secondPiece
-      rational.ceil(
-        rational.add(principal, rational.add(firstPiece, secondPiece)),
-      )
+      rational.ceil(rational.add(principal, remainginInterestToPay))
     }
 
     _ ->
@@ -260,7 +261,6 @@ pub fn get_remaining_debt(
 }
 
 //Installment expressed in principal currency
-//TODO Should we do the subtraction if it's the last installment?
 pub fn get_next_installment_amount(
   repaymentMode: RepaymentMode,
   principal: Rational,
