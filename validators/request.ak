@@ -426,7 +426,11 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
       principalAsset.policyId,
       principalAsset.assetName,
     ) >= givenPrincipalAmount,
-    length(flatten(outputWithBorrowerToken.value)) <= 5,
+    length(flatten(outputWithBorrowerToken.value)) == if principalAsset.policyId == "" {
+      2
+    } else {
+      3
+    },
     quantity_of(mintedValue, lenderBondPolicyId, bondId) == 1,
   }
 }
