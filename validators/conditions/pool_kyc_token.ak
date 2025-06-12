@@ -2,7 +2,7 @@ use aiken/cbor.{serialise}
 use aiken/collection/list
 use aiken/crypto.{
   Blake2b_256, Hash, Signature, VerificationKey, VerificationKeyHash,
-  blake2b_256, verify_ed25519_signature,
+  blake2b_224, blake2b_256, verify_ed25519_signature,
 }
 use aiken/interval.{Finite, Interval, IntervalBound}
 use cardano/address.{Address, Credential, Script}
@@ -112,7 +112,7 @@ validator kyc_token(
         } = compliance.token.validity_range
 
         expect PermissionedDatum { whitelisted_oracles } = datum.extraData
-        let oracle_key_hash = blake2b_256(compliance.token.oracle_key)
+        let oracle_key_hash = blake2b_224(compliance.token.oracle_key)
         //The oracle public key is one of those listed in the approved oracles
         expect Some(..) =
           list.find(whitelisted_oracles, fn(o) { o == oracle_key_hash })
