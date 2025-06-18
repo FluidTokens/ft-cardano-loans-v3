@@ -2,7 +2,9 @@ use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use cardano/address.{Address, Credential, Inline, Script}
 use cardano/assets.{flatten, quantity_of}
-use cardano/transaction.{InlineDatum, Input, NoDatum, Output, Transaction}
+use cardano/transaction.{
+  InlineDatum, Input, NoDatum, Output, OutputReference, Transaction,
+}
 use fluidtokens/authorizer
 use fluidtokens/types/dutch_auction.{
   Buy, Cancel, DutchAuctionDatum, DutchAuctionRedeemer,
@@ -92,6 +94,7 @@ validator dutch_auction(
                   list.at(self.outputs, index * 2 + 1)
                 and {
                   correctAmountSentToUser(
+                    input.output_reference,
                     datum.currency,
                     datum.debtAmount,
                     datum.ownerAddress,
@@ -99,6 +102,7 @@ validator dutch_auction(
                     config.smartTokensSpendScriptHash,
                   ),
                   correctAmountSentToUser(
+                    input.output_reference,
                     datum.currency,
                     currentPrice - datum.debtAmount,
                     borrowerAddress,
@@ -108,6 +112,7 @@ validator dutch_auction(
                 }
               } else {
                 correctAmountSentToUser(
+                  input.output_reference,
                   datum.currency,
                   currentPrice,
                   datum.ownerAddress,
@@ -138,6 +143,7 @@ fn get_current_price(
 }
 
 fn correctAmountSentToUser(
+  auctionRef: OutputReference,
   currency: Asset,
   amount: Int,
   userAddress: Address,
@@ -154,7 +160,8 @@ fn correctAmountSentToUser(
       smartTokensSpendScriptHash,
     )
 
-  let noDatum = userOutput.datum == NoDatum
+  let crossScriptDoubleSpendProtectionDatum =
+    userOutput.datum == InlineDatum(auctionRef)
 
   let correctValue = and {
       quantity_of(userOutput.value, currency.policyId, currency.assetName) >= amount,
@@ -162,7 +169,7 @@ fn correctAmountSentToUser(
     }
   and {
     correctDestination,
-    noDatum,
+    crossScriptDoubleSpendProtectionDatum,
     correctValue,
   }
 }

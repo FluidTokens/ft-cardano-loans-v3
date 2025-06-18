@@ -9,7 +9,7 @@ use cardano/assets.{
   PolicyId, Value, add, flatten, quantity_of, reduce, tokens, without_lovelace,
 }
 use cardano/transaction.{
-  InlineDatum, Input, NoDatum, Output, Transaction, find_input,
+  InlineDatum, Input, NoDatum, Output, OutputReference, Transaction, find_input,
 }
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/constants
@@ -83,6 +83,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
             )
           CancelAfterExpiration(requestId) ->
             check_cancel_after_expiration(
+              input.output_reference,
               input.output.value,
               requestPolicyId,
               requestId,
@@ -214,6 +215,7 @@ fn check_cancel(
 }
 
 fn check_cancel_after_expiration(
+  inputRef: OutputReference,
   inputValue: Value,
   requestPolicyId: ByteArray,
   requestId: ByteArray,
@@ -229,6 +231,7 @@ fn check_cancel_after_expiration(
     quantity_of(self.mint, requestPolicyId, requestId) == -1,
     requestExpired,
     validate_collateral_less_penalty_output(
+      inputRef,
       inputValue,
       borrowerOutput,
       datum.borrowerAddress,
@@ -365,6 +368,7 @@ fn check_lend(
     validity_range_within_an_hour(self),
     isLoanOutputValid,
     bonds_sent_to_both_parties_and_principal_sent_to_borrower(
+      input.output_reference,
       self.mint,
       outputWithBorrowerToken,
       config.borrowerBondPolicyId,
@@ -378,6 +382,7 @@ fn check_lend(
 }
 
 fn validate_collateral_less_penalty_output(
+  requestRef: OutputReference,
   requestValue: Value,
   borrowerOutput: Output,
   borrowerAddress: Address,
@@ -397,7 +402,7 @@ fn validate_collateral_less_penalty_output(
 
   and {
     borrowerOutput.address == borrowerAddress,
-    borrowerOutput.datum == NoDatum,
+    borrowerOutput.datum == InlineDatum(requestRef),
     inputValueNoAda == outputValueNoAda,
     outputAdaCorrect,
   }
@@ -408,6 +413,7 @@ fn validate_collateral_less_penalty_output(
 //- the quantity is strictly 1
 //We force that the borrower output contains a InlineDatum to allow PlutusV2 contracts to use it
 fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
+  requestRef: OutputReference,
   mintedValue: Value,
   outputWithBorrowerToken: Output,
   borrowerBondPolicyId: ByteArray,
@@ -420,6 +426,7 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
   expect InlineDatum(_) = outputWithBorrowerToken.datum
   and {
     outputWithBorrowerToken.address == borrowerAddress,
+    outputWithBorrowerToken.datum == InlineDatum(requestRef),
     quantity_of(outputWithBorrowerToken.value, borrowerBondPolicyId, bondId) == 1,
     quantity_of(
       outputWithBorrowerToken.value,
