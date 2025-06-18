@@ -17,7 +17,7 @@ pub type RepaymentMintRedeemer {
 }
 
 pub type RepaymentAction {
-  WithdrawWithToken { tokenInputIndex: Int }
+  WithdrawWithToken { tokenOutputIndex: Int }
   WithdrawWithHash
 }
 

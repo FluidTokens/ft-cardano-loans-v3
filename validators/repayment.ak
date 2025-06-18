@@ -14,7 +14,7 @@ use fluidtokens/types/repayment.{
   RepaymentMintRedeemer, RepaymentWithdrawRedeemer, WithdrawWithHash,
   WithdrawWithToken,
 } as r
-use fluidtokens/utils.{is_nft_in_input, quantity_of_policy_id, safe_list_at}
+use fluidtokens/utils.{is_nft_in_output, quantity_of_policy_id, safe_list_at}
 use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 
 validator repayment(
@@ -164,13 +164,13 @@ validator repayment(
         and {
           eventualRepaymentTokenBurnt,
           when redeemerAction.1st is {
-            WithdrawWithToken(tokenInputIndex) -> {
+            WithdrawWithToken(tokenOutputIndex) -> {
               expect RepaymentDatumWithToken { ownerAsset, .. } = datum
-              expect Some(tokenInput) = list.at(self.inputs, tokenInputIndex)
-              is_nft_in_input(
+              expect Some(tokenOutput) = list.at(self.outputs, tokenOutputIndex)
+              is_nft_in_output(
                 ownerAsset.policyId,
                 ownerAsset.assetName,
-                tokenInput,
+                tokenOutput,
               )
             }
             WithdrawWithHash -> {
