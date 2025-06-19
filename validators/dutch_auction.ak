@@ -3,7 +3,7 @@ use aiken/interval.{Finite, Interval}
 use cardano/address.{Address, Credential, Inline, Script}
 use cardano/assets.{flatten, quantity_of}
 use cardano/transaction.{
-  InlineDatum, Input, NoDatum, Output, OutputReference, Transaction,
+  InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use fluidtokens/authorizer
 use fluidtokens/types/dutch_auction.{

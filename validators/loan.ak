@@ -2,12 +2,14 @@ use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
-use cardano/address.{Address, Credential, Script, StakeCredential}
+use cardano/address.{Address, Credential, Inline, Script, StakeCredential}
 use cardano/assets.{
   AssetName, PolicyId, Value, add, flatten, quantity_of, tokens,
   without_lovelace,
 }
-use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Transaction, Withdraw,
+}
 use fluidtokens/constants
 use fluidtokens/finance.{
   can_liquidate, get_collateral_amount, get_due_installments, get_equity,
@@ -30,7 +32,7 @@ use fluidtokens/types/pool.{
 use fluidtokens/types/repayment.{RepaymentDatum, RepaymentDatumWithToken}
 use fluidtokens/types/request.{Lend, RequestWithdrawRedeemer}
 use fluidtokens/utils.{
-  asset_names_number_of_policy_id, is_nft_in_input, is_nft_in_output,
+  asset_names_number_of_policy_id, is_nft_in_output,
   is_output_to_spend_validator, quantity_of_policy_id, safe_list_at,
   value_without_policy_id_as_list,
 }
@@ -96,35 +98,41 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
           } ->
             check_claim(
               self,
+              input,
               lenderBondInputIndex,
               borrowerBondRefInputIndex,
-              datum,
               index,
+              config,
+              datum,
               liquidationMode,
+              principalOracleRefInputIndex,
               collateralOracleRefInputIndex,
-              input,
               loanPolicyId,
               loanId,
-              principalOracleRefInputIndex,
               lenderAuth,
-              config,
               interestRateAsRational,
               equity,
             )
 
-          Repay { borrowerBondOutputIndex, loanId, isFinalRepayment } ->
+          Repay {
+            borrowerBondOutputIndex,
+            lenderBondRefInputIndex,
+            loanId,
+            isFinalRepayment,
+          } ->
             check_repay(
               self,
-              borrowerBondOutputIndex,
-              config,
-              index,
-              datum,
-              interestRateAsRational,
+              credential,
               input,
+              borrowerBondOutputIndex,
+              lenderBondRefInputIndex,
+              index,
+              config,
+              datum,
               loanPolicyId,
               loanId,
+              interestRateAsRational,
               isFinalRepayment,
-              credential,
             )
           ChangeCollateral {
             borrowerBondOutputIndex,
@@ -134,32 +142,38 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
             principalOracleRefInputIndex,
           } ->
             check_change_collateral(
-              datum,
               self,
-              newCollateralAmount,
-              borrowerBondOutputIndex,
-              collateralOracleRefInputIndex,
-              principalOracleRefInputIndex,
-              index,
-              input,
-              config,
               credential,
+              input,
+              borrowerBondOutputIndex,
+              index,
+              config,
+              datum,
+              principalOracleRefInputIndex,
+              collateralOracleRefInputIndex,
+              newCollateralAmount,
               loanPolicyId,
               loanId,
             )
-          Recast { borrowerBondOutputIndex, principalPaid, loanId } ->
+          Recast {
+            borrowerBondOutputIndex,
+            lenderBondRefInputIndex,
+            principalPaid,
+            loanId,
+          } ->
             check_recast(
               self,
-              borrowerBondOutputIndex,
-              principalPaid,
-              loanId,
-              index,
-              datum,
-              interestRateAsRational,
-              input,
-              config,
               credential,
+              input,
+              borrowerBondOutputIndex,
+              lenderBondRefInputIndex,
+              index,
+              config,
+              datum,
+              principalPaid,
               loanPolicyId,
+              loanId,
+              interestRateAsRational,
             )
         }
       },
@@ -293,18 +307,18 @@ fn check_mint(
 
 fn check_claim(
   self: Transaction,
-  lenderBondInputIndex: Int,
-  borrowerBondRefInputIndex: Int,
-  datum: LoanDatum,
-  index: Int,
-  liquidationMode: LiquidationMode,
-  collateralOracleRefInputIndex: Int,
   input: Input,
+  lenderBondOutputIndex: Int,
+  borrowerBondRefInputIndex: Int,
+  loanInputIndex: Int,
+  config: ConfigDatum,
+  datum: LoanDatum,
+  liquidationMode: LiquidationMode,
+  principalOracleRefInputIndex: Int,
+  collateralOracleRefInputIndex: Int,
   loanPolicyId: PolicyId,
   loanId: ByteArray,
-  principalOracleRefInputIndex: Int,
   lenderAuth: AuthorizationMethod,
-  config: ConfigDatum,
   interestRateAsRational: rational.Rational,
   equity: Int,
 ) {
@@ -313,9 +327,9 @@ fn check_claim(
       self.validity_range.lower_bound.bound_type,
       self.validity_range.upper_bound.bound_type,
     )
-  expect (Some(lenderBondInput), Some(borrowerBondInput)) =
+  expect (Some(lenderBondOutput), Some(borrowerBondRefInput)) =
     (
-      list.at(self.inputs, lenderBondInputIndex),
+      list.at(self.outputs, lenderBondOutputIndex),
       list.at(self.reference_inputs, borrowerBondRefInputIndex),
     )
   let isPerpetualLoan =
@@ -337,7 +351,7 @@ fn check_claim(
     liquidationMode == datum.commonData.liquidationMode,
     quantity_of(input.output.value, loanPolicyId, loanId) == 1,
     quantity_of(self.mint, loanPolicyId, loanId) == -1,
-    is_nft_in_input(config.lenderBondPolicyId, loanId, lenderBondInput),
+    is_nft_in_output(config.lenderBondPolicyId, loanId, lenderBondOutput),
     when datum.commonData.liquidationMode is {
       NoLiquidationFullCollateralClaim -> isRepaymentLate
       NoLiquidationDutchAuctionClaim -> {
@@ -349,7 +363,7 @@ fn check_claim(
               Script(config.dutchAuctionWithdrawScriptHash),
               config.smartTokensSpendScriptHash,
             ),
-            index,
+            loanInputIndex,
           )
         let remainingDebt =
           get_remaining_debt(
@@ -367,11 +381,11 @@ fn check_claim(
           validate_output_to_dutch_auction(
             dutchAuctionOutput,
             input,
-            borrowerBondInput.output.address,
+            borrowerBondRefInput.output.address,
             validTo,
             datum.collateral,
             lenderAuth,
-            lenderBondInput.output.address,
+            lenderBondOutput.address,
             datum.commonData.principalAsset,
             remainingDebt,
             config,
@@ -380,7 +394,6 @@ fn check_claim(
       }
       Liquidation { lTV, lTVDivider, partialLiquidationPenaltyPerMille } -> {
         let principalAmountAsRational = rational.from_int(datum.principalAmount)
-        let collateralOracleToken = datum.collateral.oracleTokenAsset
         let collateralOracleRefInput =
           safe_list_at(self.reference_inputs, collateralOracleRefInputIndex)
         expect Some(collateralOraclePriceFeed) =
@@ -390,8 +403,8 @@ fn check_claim(
             self.redeemers,
             validFrom,
             validTo,
-            collateralOracleToken.policyId,
-            collateralOracleToken.assetName,
+            datum.collateral.oracleTokenAsset.policyId,
+            datum.collateral.oracleTokenAsset.assetName,
             datum.collateral.policyId,
             datum.collateral.maybeAssetName,
           )
@@ -423,6 +436,9 @@ fn check_claim(
         let collateralAmount =
           get_collateral_amount(input.output.value, datum.collateral)
         expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
+        let borrowerBondAddress = borrowerBondRefInput.output.address
+        expect Some(Inline(borrowerBondStakeCredential)) =
+          borrowerBondAddress.stake_credential
         and {
           equity == get_equity(
             collateralAmount,
@@ -442,20 +458,21 @@ fn check_claim(
             ),
           },
           or {
-            partialLiquidationPenaltyPerMille < 0,
+            partialLiquidationPenaltyPerMille <= 0,
             equity <= 0,
             {
               expect Some(borrowerCompensationOutput) =
                 list.at(
                   get_outputs_to_smart_credential(
                     self.outputs,
-                    Script(config.repaymentSpendScriptHash),
-                    Script(config.repaymentPolicyId),
+                    borrowerBondAddress.payment_credential,
+                    borrowerBondStakeCredential,
                     config.smartTokensSpendScriptHash,
                   ),
-                  index,
+                  loanInputIndex,
                 )
               equity_sent_to_borrower(
+                loanInputOutputReference: input.output_reference,
                 equityOutput: borrowerCompensationOutput,
                 equity: equity,
                 borrowerBondAsset: Asset {
@@ -464,8 +481,8 @@ fn check_claim(
                 },
                 principalAssetPolicyId: datum.commonData.principalAsset.policyId,
                 principalAssetName: datum.commonData.principalAsset.assetName,
+                repaymentReceipts: datum.commonData.repaymentReceipts,
                 repaymentPolicyId: config.repaymentPolicyId,
-                repaymentId: utils.hash_output_ref(input.output_reference),
               )
             },
           },
@@ -477,29 +494,33 @@ fn check_claim(
 
 fn check_repay(
   self: Transaction,
-  borrowerBondOutputIndex: Int,
-  config: ConfigDatum,
-  index: Int,
-  datum: LoanDatum,
-  interestRateAsRational: rational.Rational,
+  credential: Credential,
   input: Input,
+  borrowerBondOutputIndex: Int,
+  lenderBondRefInputIndex: Int,
+  loanInputIndex: Int,
+  config: ConfigDatum,
+  datum: LoanDatum,
   loanPolicyId: PolicyId,
   loanId: ByteArray,
+  interestRateAsRational: rational.Rational,
   isFinalRepayment: Bool,
-  credential: Credential,
 ) {
   expect Finite(validTo) = self.validity_range.upper_bound.bound_type
-  expect Some(borrowerBondOutput) =
-    list.at(self.outputs, borrowerBondOutputIndex)
+  let borrowerBondOutput = safe_list_at(self.outputs, borrowerBondOutputIndex)
+  let lenderBondAddress =
+    safe_list_at(self.reference_inputs, lenderBondRefInputIndex).output.address
+  expect Some(Inline(lenderBondStakeCredential)) =
+    lenderBondAddress.stake_credential
   expect Some(repaymentOutput) =
     list.at(
       get_outputs_to_smart_credential(
         self.outputs,
-        Script(config.repaymentSpendScriptHash),
-        Script(config.repaymentPolicyId),
+        lenderBondAddress.payment_credential,
+        lenderBondStakeCredential,
         config.smartTokensSpendScriptHash,
       ),
-      index,
+      loanInputIndex,
     )
 
   let isPerpetualLoan =
@@ -548,7 +569,8 @@ fn check_repay(
   and {
     quantity_of(input.output.value, loanPolicyId, loanId) == 1,
     is_nft_in_output(config.borrowerBondPolicyId, loanId, borrowerBondOutput),
-    validate_output_to_repayment(
+    validate_repayment_output(
+      loanInputOutputReference: input.output_reference,
       repaymentOutput: repaymentOutput,
       loanAsset: datum.commonData.principalAsset,
       repaymentAmount: nextRepaymentAmount,
@@ -565,8 +587,8 @@ fn check_repay(
         totalInstallments: datum.commonData.totalInstallments,
         repaymentMode: datum.commonData.repaymentMode,
       },
+      repaymentReceipts: datum.commonData.repaymentReceipts,
       repaymentPolicyId: config.repaymentPolicyId,
-      repaymentId: utils.hash_output_ref(input.output_reference),
     ),
     or {
       and {
@@ -586,7 +608,7 @@ fn check_repay(
               credential,
               config.smartTokensSpendScriptHash,
             ),
-            index,
+            loanInputIndex,
           )
         validate_eventual_output_to_loan_for_repayment(
           loanOutput,
@@ -601,16 +623,16 @@ fn check_repay(
 }
 
 fn check_change_collateral(
-  datum: LoanDatum,
   self: Transaction,
-  newCollateralAmount: Int,
-  borrowerBondOutputIndex: Int,
-  collateralOracleRefInputIndex: Int,
-  principalOracleRefInputIndex: Int,
-  index: Int,
-  input: Input,
-  config: ConfigDatum,
   credential: Credential,
+  input: Input,
+  borrowerBondOutputIndex: Int,
+  loanInputIndex: Int,
+  config: ConfigDatum,
+  datum: LoanDatum,
+  principalOracleRefInputIndex: Int,
+  collateralOracleRefInputIndex: Int,
+  newCollateralAmount: Int,
   loanPolicyId: PolicyId,
   loanId: ByteArray,
 ) {
@@ -621,8 +643,8 @@ fn check_change_collateral(
           self.validity_range.lower_bound.bound_type,
           self.validity_range.upper_bound.bound_type,
         )
-      expect Some(borrowerBondOutput) =
-        list.at(self.outputs, borrowerBondOutputIndex)
+      let borrowerBondOutput =
+        safe_list_at(self.outputs, borrowerBondOutputIndex)
       expect Some(loanOutput) =
         list.at(
           get_outputs_to_smart_credential(
@@ -631,11 +653,9 @@ fn check_change_collateral(
             credential,
             config.smartTokensSpendScriptHash,
           ),
-          index,
+          loanInputIndex,
         )
-      let principalAmountAsRational = rational.from_int(datum.principalAmount)
       expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
-      let collateralOracleToken = datum.collateral.oracleTokenAsset
       let collateralOracleRefInput =
         safe_list_at(self.reference_inputs, collateralOracleRefInputIndex)
       expect Some(collateralOraclePriceFeed) =
@@ -645,8 +665,8 @@ fn check_change_collateral(
           self.redeemers,
           validFrom,
           validTo,
-          collateralOracleToken.policyId,
-          collateralOracleToken.assetName,
+          datum.collateral.oracleTokenAsset.policyId,
+          datum.collateral.oracleTokenAsset.assetName,
           datum.collateral.policyId,
           datum.collateral.maybeAssetName,
         )
@@ -672,7 +692,7 @@ fn check_change_collateral(
           borrowerBondOutput,
         ),
         can_liquidate(
-          principalAmountAsRational,
+          rational.from_int(datum.principalAmount),
           rational.from_int(newCollateralAmount),
           ltvAsRational,
           principalOraclePriceFeed,
@@ -694,29 +714,33 @@ fn check_change_collateral(
 
 fn check_recast(
   self: Transaction,
-  borrowerBondOutputIndex: Int,
-  principalPaid: Int,
-  loanId: ByteArray,
-  index: Int,
-  datum: LoanDatum,
-  interestRateAsRational: rational.Rational,
-  input: Input,
-  config: ConfigDatum,
   credential: Credential,
+  input: Input,
+  borrowerBondOutputIndex: Int,
+  lenderBondRefInputIndex: Int,
+  loanInputIndex: Int,
+  config: ConfigDatum,
+  datum: LoanDatum,
+  principalPaid: Int,
   loanPolicyId: PolicyId,
+  loanId: ByteArray,
+  interestRateAsRational: rational.Rational,
 ) {
   expect Finite(validTo) = self.validity_range.upper_bound.bound_type
-  expect Some(borrowerBondOutput) =
-    list.at(self.outputs, borrowerBondOutputIndex)
+  let borrowerBondOutput = safe_list_at(self.outputs, borrowerBondOutputIndex)
+  let lenderBondAddress =
+    safe_list_at(self.reference_inputs, lenderBondRefInputIndex).output.address
+  expect Some(Inline(lenderBondStakeCredential)) =
+    lenderBondAddress.stake_credential
   expect Some(repaymentOutput) =
     list.at(
       get_outputs_to_smart_credential(
         self.outputs,
-        Script(config.repaymentSpendScriptHash),
-        Script(config.repaymentPolicyId),
+        lenderBondAddress.payment_credential,
+        lenderBondStakeCredential,
         config.smartTokensSpendScriptHash,
       ),
-      index,
+      loanInputIndex,
     )
   let debtAfterRecasting =
     get_remaining_debt(
@@ -745,7 +769,8 @@ fn check_recast(
         datum.commonData.installmentPeriod,
       ),
     ),
-    validate_output_to_repayment(
+    validate_repayment_output(
+      loanInputOutputReference: input.output_reference,
       repaymentOutput: repaymentOutput,
       loanAsset: datum.commonData.principalAsset,
       repaymentAmount: principalPaid,
@@ -755,8 +780,8 @@ fn check_recast(
       },
       action: constants.repayment_action_recast,
       extra_data: loanId,
+      repaymentReceipts: datum.commonData.repaymentReceipts,
       repaymentPolicyId: config.repaymentPolicyId,
-      repaymentId: utils.hash_output_ref(input.output_reference),
     ),
     or {
       and {
@@ -774,7 +799,7 @@ fn check_recast(
                 credential,
                 config.smartTokensSpendScriptHash,
               ),
-              index,
+              loanInputIndex,
             )
           validate_eventual_output_to_loan_for_recasting(
             loanOutput,
@@ -791,18 +816,20 @@ fn check_recast(
 }
 
 fn equity_sent_to_borrower(
+  loanInputOutputReference: OutputReference,
   equityOutput: Output,
   equity: Int,
   borrowerBondAsset: Asset,
   principalAssetPolicyId: ByteArray,
   principalAssetName: AssetName,
+  repaymentReceipts: Bool,
   repaymentPolicyId: ByteArray,
-  repaymentId: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = equityOutput.datum
   expect parsedDatum: RepaymentDatum = outputDatum
   let newDatum =
     RepaymentDatumWithToken {
+      inputOutputReference: loanInputOutputReference,
       action: constants.repayment_action_partial_liquidation,
       data: None,
       ownerAsset: borrowerBondAsset,
@@ -811,57 +838,81 @@ fn equity_sent_to_borrower(
   let containsCorrectAmount =
     quantity_of(equityOutput.value, principalAssetPolicyId, principalAssetName) >= equity
 
+  let receiptCondition =
+    repaymentReceipts == False || quantity_of(
+      equityOutput.value,
+      repaymentPolicyId,
+      utils.hash_output_ref(loanInputOutputReference),
+    ) == 1
+
   let isDatumCorrect = parsedDatum == newDatum
-  let containsRepaymentNFT =
-    quantity_of(equityOutput.value, repaymentPolicyId, repaymentId) == 1
+  let receiptAssetCount =
+    if receiptCondition {
+      1
+    } else {
+      0
+    }
   let dosProtection =
     if principalAssetPolicyId == "" {
-      length(flatten(equityOutput.value)) <= 2
+      length(flatten(equityOutput.value)) == 1 + receiptAssetCount
     } else {
-      length(flatten(equityOutput.value)) <= 3
+      length(flatten(equityOutput.value)) == 2 + receiptAssetCount
     }
   and {
     //No staking check here
     isDatumCorrect,
-    containsRepaymentNFT,
     containsCorrectAmount,
+    receiptCondition,
     dosProtection,
   }
 }
 
-fn validate_output_to_repayment(
+fn validate_repayment_output(
+  loanInputOutputReference: OutputReference,
   repaymentOutput: Output,
   loanAsset: Asset,
   repaymentAmount: Int,
   lenderBondAsset: Asset,
   action: ByteArray,
   extra_data: Data,
+  repaymentReceipts: Bool,
   repaymentPolicyId: ByteArray,
-  repaymentId: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = repaymentOutput.datum
   expect parsedDatum: RepaymentDatum = outputDatum
   let newDatum =
     RepaymentDatumWithToken {
+      inputOutputReference: loanInputOutputReference,
       action,
       data: extra_data,
       ownerAsset: lenderBondAsset,
     }
   let containsCorrectAmount =
     quantity_of(repaymentOutput.value, loanAsset.policyId, loanAsset.assetName) >= repaymentAmount
-  let containsRepaymentNFT =
-    quantity_of(repaymentOutput.value, repaymentPolicyId, repaymentId) == 1
+  let receiptCondition =
+    repaymentReceipts == False || quantity_of(
+      repaymentOutput.value,
+      repaymentPolicyId,
+      utils.hash_output_ref(loanInputOutputReference),
+    ) == 1
+
   let isDatumCorrect = parsedDatum == newDatum
+  let receiptAssetCount =
+    if receiptCondition {
+      1
+    } else {
+      0
+    }
   let dosProtection =
     if loanAsset.policyId == "" {
-      length(flatten(repaymentOutput.value)) <= 2
+      length(flatten(repaymentOutput.value)) == 1 + receiptAssetCount
     } else {
-      length(flatten(repaymentOutput.value)) <= 3
+      length(flatten(repaymentOutput.value)) == 2 + receiptAssetCount
     }
   and {
     //No staking check here
     isDatumCorrect,
-    containsRepaymentNFT,
+    receiptCondition,
     containsCorrectAmount,
     dosProtection,
   }

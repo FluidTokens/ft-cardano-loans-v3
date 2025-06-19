@@ -2,8 +2,14 @@ use cardano/transaction.{OutputReference}
 use fluidtokens/types/general.{Asset, AuthorizationMethod}
 
 pub type RepaymentDatum {
-  RepaymentDatumWithToken { action: ByteArray, data: Data, ownerAsset: Asset }
+  RepaymentDatumWithToken {
+    inputOutputReference: OutputReference,
+    action: ByteArray,
+    data: Data,
+    ownerAsset: Asset,
+  }
   RepaymentDatumWithHash {
+    inputOutputReference: OutputReference,
     action: ByteArray,
     data: Data,
     ownerAuth: AuthorizationMethod,

@@ -9,7 +9,7 @@ use cardano/assets.{
   PolicyId, Value, add, flatten, quantity_of, reduce, tokens, without_lovelace,
 }
 use cardano/transaction.{
-  InlineDatum, Input, NoDatum, Output, OutputReference, Transaction, find_input,
+  InlineDatum, Input, Output, OutputReference, Transaction, find_input,
 }
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/constants

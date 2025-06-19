@@ -65,6 +65,8 @@ pub type CommonData {
   repaymentTimeWindow: Int,
   //Fee borrower pays when he could be liquidated but he repays, <= 0 means no penalty
   penaltyFeeForLateRepayment: Int,
+  //If true, each payment for claim, recast and repay must be accompanied by a minted repayment receipt NFT
+  repaymentReceipts: Bool,
 }
 
 pub type PoolDatum {
