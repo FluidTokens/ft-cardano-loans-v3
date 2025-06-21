@@ -39,19 +39,14 @@ validator repayment(
         config.smartTokensSpendScriptHash,
       )
 
-    let repaymentOutputs =
-      st_utils.get_outputs_to_smart_credential(
-        self.outputs,
-        Script(config.repaymentSpendScriptHash),
-        Script(policy_id),
-        config.smartTokensSpendScriptHash,
-      )
-
     //We exclude the burnt tokens (quantity < 0) as they are always allowed
     let mintedNFTs =
       list.filter(
         dict.to_pairs(tokens(self.mint, policy_id)),
-        fn(tokenPair) { tokenPair.2nd > 0 },
+        fn(tokenPair) {
+          expect tokenPair.2nd < 0 || tokenPair.2nd == 1
+          tokenPair.2nd > 0
+        },
       )
 
     if list.length(mintedNFTs) > 0 {
@@ -69,44 +64,15 @@ validator repayment(
               safe_list_at(loanRedeemer.actionsForEachInput, index)
             let repaymentAssetName =
               utils.hash_output_ref(input.output_reference)
-            let repaymentOutput = safe_list_at(repaymentOutputs, index)
             when loanRedeemerAction is {
               Claim { liquidationMode, equity, .. } -> {
                 expect Liquidation { partialLiquidationPenaltyPerMille, .. } =
                   liquidationMode
-                expect and {
-                    partialLiquidationPenaltyPerMille >= 0 && equity > 0,
-                    dict.size(assets.tokens(repaymentOutput.value, policy_id)) == 1,
-                    assets.quantity_of(
-                      repaymentOutput.value,
-                      policy_id,
-                      repaymentAssetName,
-                    ) == 1,
-                  }
+                expect partialLiquidationPenaltyPerMille >= 0 && equity > 0
                 list.push(result, Pair(repaymentAssetName, 1))
               }
-              Repay { .. } -> {
-                expect and {
-                    dict.size(assets.tokens(repaymentOutput.value, policy_id)) == 1,
-                    assets.quantity_of(
-                      repaymentOutput.value,
-                      policy_id,
-                      repaymentAssetName,
-                    ) == 1,
-                  }
-                list.push(result, Pair(repaymentAssetName, 1))
-              }
-              Recast { .. } -> {
-                expect and {
-                    dict.size(assets.tokens(repaymentOutput.value, policy_id)) == 1,
-                    assets.quantity_of(
-                      repaymentOutput.value,
-                      policy_id,
-                      repaymentAssetName,
-                    ) == 1,
-                  }
-                list.push(result, Pair(repaymentAssetName, 1))
-              }
+              Repay { .. } -> list.push(result, Pair(repaymentAssetName, 1))
+              Recast { .. } -> list.push(result, Pair(repaymentAssetName, 1))
               _ -> result
             }
           },
@@ -119,6 +85,7 @@ validator repayment(
     }
   }
 
+  //TODO: This is OLD, the repayment doesn't need to go here anymore
   withdraw(
     redeemer: RepaymentWithdrawRedeemer,
     credential: Credential,
