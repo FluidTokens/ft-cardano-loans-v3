@@ -428,8 +428,8 @@ fn validate_output_to_loan(
     }
   let dosProtection =
     length(flatten(output.value)) == when chosenCollateral.maybeAssetName is {
-      Some(chosenCollateralAssetName) ->
-        if chosenCollateralAssetName == "" {
+      Some(_chosenCollateralAssetName) ->
+        if chosenCollateral.policyId == "" {
           2
         } else {
           3
