@@ -379,16 +379,16 @@ fn check_claim(
         and {
           isRepaymentLate,
           validate_output_to_dutch_auction(
-            dutchAuctionOutput,
             input,
+            dutchAuctionOutput,
             borrowerBondRefInput.output.address,
-            validTo,
-            datum.collateral,
-            lenderAuth,
             lenderBondOutput.address,
-            datum.commonData.principalAsset,
-            remainingDebt,
+            lenderAuth,
             config,
+            validTo,
+            datum.commonData.principalAsset,
+            datum.collateral,
+            remainingDebt,
           ),
         }
       }
@@ -572,12 +572,12 @@ fn check_repay(
     validate_repayment_output(
       loanInputOutputReference: input.output_reference,
       repaymentOutput: repaymentOutput,
-      loanAsset: datum.commonData.principalAsset,
-      repaymentAmount: nextRepaymentAmount,
       lenderBondAsset: Asset {
         policyId: config.lenderBondPolicyId,
         assetName: loanId,
       },
+      repaymentAsset: datum.commonData.principalAsset,
+      repaymentAmount: nextRepaymentAmount,
       action: constants.repayment_action_installment,
       extra_data: LoanRepaymentData {
         loanId,
@@ -772,12 +772,12 @@ fn check_recast(
     validate_repayment_output(
       loanInputOutputReference: input.output_reference,
       repaymentOutput: repaymentOutput,
-      loanAsset: datum.commonData.principalAsset,
-      repaymentAmount: principalPaid,
       lenderBondAsset: Asset {
         policyId: config.lenderBondPolicyId,
         assetName: loanId,
       },
+      repaymentAsset: datum.commonData.principalAsset,
+      repaymentAmount: principalPaid,
       action: constants.repayment_action_recast,
       extra_data: loanId,
       repaymentReceipts: datum.commonData.repaymentReceipts,
@@ -870,9 +870,9 @@ fn equity_sent_to_borrower(
 fn validate_repayment_output(
   loanInputOutputReference: OutputReference,
   repaymentOutput: Output,
-  loanAsset: Asset,
-  repaymentAmount: Int,
   lenderBondAsset: Asset,
+  repaymentAsset: Asset,
+  repaymentAmount: Int,
   action: ByteArray,
   extra_data: Data,
   repaymentReceipts: Bool,
@@ -888,7 +888,11 @@ fn validate_repayment_output(
       ownerAsset: lenderBondAsset,
     }
   let containsCorrectAmount =
-    quantity_of(repaymentOutput.value, loanAsset.policyId, loanAsset.assetName) >= repaymentAmount
+    quantity_of(
+      repaymentOutput.value,
+      repaymentAsset.policyId,
+      repaymentAsset.assetName,
+    ) >= repaymentAmount
   let receiptCondition =
     repaymentReceipts == False || quantity_of(
       repaymentOutput.value,
@@ -904,7 +908,7 @@ fn validate_repayment_output(
       0
     }
   let dosProtection =
-    if loanAsset.policyId == "" {
+    if repaymentAsset.policyId == "" {
       length(flatten(repaymentOutput.value)) == 1 + receiptAssetCount
     } else {
       length(flatten(repaymentOutput.value)) == 2 + receiptAssetCount
@@ -1063,16 +1067,16 @@ fn validate_eventual_output_to_loan_for_recasting(
 }
 
 fn validate_output_to_dutch_auction(
-  dutchAuctionOutput: Output,
   loanInput: Input,
+  dutchAuctionOutput: Output,
   borrowerAddress: Address,
-  validTo: Int,
-  collateral: CollateralAsset,
-  lenderAuth: AuthorizationMethod,
   lenderAddress: Address,
-  principalAsset: Asset,
-  remainingDebt: Int,
+  lenderAuth: AuthorizationMethod,
   config: ConfigDatum,
+  validTo: Int,
+  principalAsset: Asset,
+  collateral: CollateralAsset,
+  remainingDebt: Int,
 ) {
   expect InlineDatum(outputDatum) = dutchAuctionOutput.datum
   expect parsedDatum: DutchAuctionDatum = outputDatum
@@ -1091,6 +1095,9 @@ fn validate_output_to_dutch_auction(
       debtAmount: remainingDebt,
     }
   let isDatumCorrect = parsedDatum == newDatum
+
+  //No other type of stake credential should be allowed
+  expect Some(Inline(_lenderStakeCredential)) = lenderAddress.stake_credential
 
   let correctValue =
     if collateral.maybeAssetName == None {
@@ -1116,8 +1123,7 @@ fn validate_output_to_dutch_auction(
     is_output_to_smart_credential(
       dutchAuctionOutput,
       Script(config.dutchAuctionSpendScriptHash),
-      Script(config.dutchAuctionWithdrawScriptHash),
-      None,
+      Some(Inline(Script(config.dutchAuctionWithdrawScriptHash))),
       config.smartTokensSpendScriptHash,
     ),
     isDatumCorrect,

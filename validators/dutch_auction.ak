@@ -1,6 +1,6 @@
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
-use cardano/address.{Address, Credential, Inline, Script}
+use cardano/address.{Address, Credential, Script}
 use cardano/assets.{flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
@@ -150,12 +150,10 @@ fn correctAmountSentToUser(
   userOutput: Output,
   smartTokensSpendScriptHash: ByteArray,
 ) {
-  expect Some(Inline(userStakeCredential)) = userAddress.stake_credential
   let correctDestination =
     is_output_to_smart_credential(
       userOutput,
       userAddress.payment_credential,
-      userStakeCredential,
       userAddress.stake_credential,
       smartTokensSpendScriptHash,
     )
@@ -165,7 +163,11 @@ fn correctAmountSentToUser(
 
   let correctValue = and {
       quantity_of(userOutput.value, currency.policyId, currency.assetName) >= amount,
-      length(flatten(userOutput.value)) <= 21,
+      if currency.policyId == "" {
+        length(flatten(userOutput.value)) == 1
+      } else {
+        length(flatten(userOutput.value)) == 2
+      },
     }
   and {
     correctDestination,
