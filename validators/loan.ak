@@ -12,9 +12,8 @@ use cardano/transaction.{
 }
 use fluidtokens/constants
 use fluidtokens/finance.{
-  can_liquidate, get_collateral_amount, get_due_installments, get_equity,
-  get_next_installment_amount, get_remaining_debt, is_recasting_permitted,
-  is_repayment_late,
+  can_liquidate, get_collateral_amount, get_equity, get_next_installment_amount,
+  get_remaining_debt, is_repayment_late,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/config.{ConfigDatum}
@@ -25,7 +24,7 @@ use fluidtokens/types/loan.{
   LoanWithdrawRedeemer, Recast, Repay,
 } as l
 use fluidtokens/types/pool.{
-  Borrow, CommonData, Liquidation, LiquidationMode,
+  Borrow, CommonData, InterestOnRemainingPrincipal, Liquidation, LiquidationMode,
   NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
   PerpetualLoan, PoolWithdrawRedeemer,
 }
@@ -742,6 +741,7 @@ fn check_recast(
       ),
       loanInputIndex,
     )
+
   let debtAfterRecasting =
     get_remaining_debt(
       datum.commonData.repaymentMode,
@@ -753,22 +753,35 @@ fn check_recast(
       datum.commonData.initialGracePeriod,
       validTo - datum.lendDate,
     )
+
+  let periodToLatestPaidInstallment =
+    datum.repaidInstallments * datum.commonData.installmentPeriod
+  let timePassed =
+    validTo - (
+      datum.lendDate + (
+        datum.commonData.initialGracePeriod + periodToLatestPaidInstallment
+      ) * constants.hour_to_millis
+    )
+  let dueInstallments =
+    timePassed / (
+      datum.commonData.installmentPeriod * constants.hour_to_millis
+    )
   and {
     principalPaid > 0,
     quantity_of(input.output.value, loanPolicyId, loanId) == 1,
     is_nft_in_output(config.borrowerBondPolicyId, loanId, borrowerBondOutput),
-    is_recasting_permitted(
-      datum.commonData.repaymentMode,
-      datum.doneRecasts,
-      datum.repaidInstallments,
-      get_due_installments(
-        validTo,
-        datum.lendDate,
-        datum.commonData.initialGracePeriod,
-        datum.repaidInstallments,
-        datum.commonData.installmentPeriod,
-      ),
-    ),
+    //A recast is permitted only if the loan has installments
+    datum.commonData.installmentPeriod > 0,
+    //A recast is permitted only when all due installments + 1 are paid, otherwise the borrower avoids paying what is due
+    datum.repaidInstallments >= dueInstallments + 1,
+    //A recast must be within the number of recasts allowed
+    when datum.commonData.repaymentMode is {
+      InterestOnRemainingPrincipal { max_possible_recasts } ->
+        datum.doneRecasts < max_possible_recasts
+      PerpetualLoan { max_possible_recasts, .. } ->
+        datum.doneRecasts < max_possible_recasts
+      _ -> fail
+    },
     validate_repayment_output(
       loanInputOutputReference: input.output_reference,
       repaymentOutput: repaymentOutput,

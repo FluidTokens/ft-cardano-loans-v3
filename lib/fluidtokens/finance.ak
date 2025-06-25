@@ -394,38 +394,6 @@ pub fn is_repayment_late(
   }
 }
 
-pub fn get_due_installments(
-  validTo: Int,
-  lendDate: Int,
-  initialGracePeriod: Int,
-  repaidInstallments: Int,
-  installmentPeriod: Int,
-) {
-  let periodToLatestPaidInstallment = repaidInstallments * installmentPeriod
-  let timePassed =
-    validTo - (
-      lendDate + ( initialGracePeriod + periodToLatestPaidInstallment ) * constants.hour_to_millis
-    )
-  timePassed / ( installmentPeriod * constants.hour_to_millis )
-}
-
-pub fn is_recasting_permitted(
-  repaymentMode: RepaymentMode,
-  doneRecasts: Int,
-  repaidInstallments: Int,
-  dueInstallments: Int,
-) {
-  //A Recast is permitted only when all due installments + 1 are paid, otherwise the borrower avoids paying what is due
-  expect repaidInstallments >= dueInstallments + 1
-  when repaymentMode is {
-    InterestOnRemainingPrincipal { max_possible_recasts } ->
-      doneRecasts < max_possible_recasts
-    PerpetualLoan { max_possible_recasts, .. } ->
-      doneRecasts < max_possible_recasts
-    _ -> fail
-  }
-}
-
 //c = 1000/10000, m = 100/1000000
 test perpetual_installment_amount() {
   let repaymentMode =
