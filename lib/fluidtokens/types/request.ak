@@ -5,6 +5,8 @@ use fluidtokens/types/pool.{CommonData}
 
 pub type RequestDatum {
   commonData: CommonData,
+  //Total number of installments, ignored in Perpetual loans
+  totalInstallments: Int,
   borrowerAuth: AuthorizationMethod,
   borrowerAddress: Address,
   //Same considerations of PoolDatum

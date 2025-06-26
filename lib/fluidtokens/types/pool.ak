@@ -53,8 +53,6 @@ pub type CommonData {
   //How much time between 2 consecutive installments, expressed in hours
   //In case of Perpetual loans if it's > 0 it means we have infinite installments otherwise == 0 means no installments
   installmentPeriod: Int,
-  //Total number of installments, ignored in Perpetual loans
-  totalInstallments: Int,
   //Period after starting the loan and before starting repaying (borrower can't be liquidated in this period)
   //Expressed in hours
   initialGracePeriod: Int,
@@ -71,6 +69,8 @@ pub type CommonData {
 
 pub type PoolDatum {
   commonData: CommonData,
+  //Total number of installments, ignored in Perpetual loans
+  totalInstallments: Int,
   lenderAuth: AuthorizationMethod,
   lenderAddress: Address,
   //This pool can cover multiple collections/token, but only one of them can be chosen for each loan (ie. no mixed bundle loans).

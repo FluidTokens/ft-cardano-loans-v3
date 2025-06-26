@@ -479,6 +479,7 @@ fn validate_output_to_loan(
   let newDatum =
     LoanDatum {
       commonData: requestDatum.commonData,
+      totalInstallments: requestDatum.totalInstallments,
       originId: bytearray.concat("REQUEST", requestId),
       collateral,
       principalAmount: givenPrincipalAmount,

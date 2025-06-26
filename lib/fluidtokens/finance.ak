@@ -211,11 +211,11 @@ pub fn get_remaining_debt(
     PerpetualLoan { apyIncreaseLinearCoefficient, .. } -> {
       //The formula is:
       //c = interestRate
-      //remainginInterestToPay = principal(hourlyInterestRate*passedHoursSinceLastRepaidInstallment)+principal(m*passedHoursSoFar/8760*passedHoursSoFar)
-      //remainginInterestToPay = principal(c/8760*passedHoursSinceLastRepaidInstallment)+principal(m*passedHoursSoFar^2/8760)
-      //remainginInterestToPay = principal(c/8760*passedHoursSinceLastRepaidInstallment+m*passedHoursSoFar^2/8760)
-      //remainginInterestToPay = principal*(c*passedHoursSinceLastRepaidInstallment+m*passedHoursSoFar^2)/8760
-      //remainingDebt = principal + remainginInterestToPay
+      //remainingInterestToPay = principal(hourlyInterestRate*passedHoursSinceLastRepaidInstallment)+principal(m*passedHoursSoFar/8760*passedHoursSoFar)
+      //remainingInterestToPay = principal(c/8760*passedHoursSinceLastRepaidInstallment)+principal(m*passedHoursSoFar^2/8760)
+      //remainingInterestToPay = principal(c/8760*passedHoursSinceLastRepaidInstallment+m*passedHoursSoFar^2/8760)
+      //remainingInterestToPay = principal*(c*passedHoursSinceLastRepaidInstallment+m*passedHoursSoFar^2)/8760
+      //remainingDebt = principal + remainingInterestToPay
       expect Some(passedHoursSoFar) = rational.new(timeSinceLendDate, 3600000)
       expect Some(passedHoursSoFarSquared) =
         rational.new(pow(timeSinceLendDate, 2), 12960000000000)
@@ -230,7 +230,7 @@ pub fn get_remaining_debt(
         rational.sub(passedHoursSoFar, accumulatedHoursOfRepaidInstallments)
 
       let c = interestRate
-      let remainginInterestToPay =
+      let remainingInterestToPay =
         rational_safe_div(
           rational.mul(
             principal,
@@ -242,7 +242,7 @@ pub fn get_remaining_debt(
           rational.from_int(8760),
         )
 
-      rational.ceil(rational.add(principal, remainginInterestToPay))
+      rational.ceil(rational.add(principal, remainingInterestToPay))
     }
 
     _ ->

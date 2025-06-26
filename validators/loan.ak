@@ -1,6 +1,7 @@
 use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
+use aiken/math.{pow}
 use aiken/math/rational
 use cardano/address.{Address, Credential, Inline, Script, StakeCredential}
 use cardano/assets.{
@@ -172,7 +173,6 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               principalPaid,
               loanPolicyId,
               loanId,
-              interestRateAsRational,
             )
         }
       },
@@ -369,7 +369,7 @@ fn check_claim(
             datum.commonData.repaymentMode,
             rational.from_int(datum.principalAmount),
             interestRateAsRational,
-            datum.commonData.totalInstallments,
+            datum.totalInstallments,
             datum.repaidInstallments,
             datum.commonData.installmentPeriod,
             datum.commonData.initialGracePeriod,
@@ -426,7 +426,7 @@ fn check_claim(
             datum.commonData.repaymentMode,
             principalAmountAsRational,
             interestRateAsRational,
-            datum.commonData.totalInstallments,
+            datum.totalInstallments,
             datum.repaidInstallments,
             datum.commonData.installmentPeriod,
             datum.commonData.initialGracePeriod,
@@ -546,7 +546,7 @@ fn check_repay(
         datum.commonData.repaymentMode,
         rational.from_int(datum.principalAmount),
         interestRateAsRational,
-        datum.commonData.totalInstallments,
+        datum.totalInstallments,
         datum.repaidInstallments,
         datum.commonData.installmentPeriod,
         datum.commonData.initialGracePeriod,
@@ -557,7 +557,7 @@ fn check_repay(
         datum.commonData.repaymentMode,
         rational.from_int(datum.principalAmount),
         interestRateAsRational,
-        datum.commonData.totalInstallments,
+        datum.totalInstallments,
         datum.repaidInstallments,
         datum.commonData.installmentPeriod,
         datum.commonData.initialGracePeriod,
@@ -583,7 +583,7 @@ fn check_repay(
         principalAmount: datum.principalAmount,
         interestRate: datum.commonData.interestRate,
         repaidInstallments: datum.repaidInstallments + 1,
-        totalInstallments: datum.commonData.totalInstallments,
+        totalInstallments: datum.totalInstallments,
         repaymentMode: datum.commonData.repaymentMode,
       },
       repaymentReceipts: datum.commonData.repaymentReceipts,
@@ -594,7 +594,7 @@ fn check_repay(
         if isPerpetualLoan {
           isFinalRepayment || datum.commonData.installmentPeriod == 0
         } else {
-          datum.repaidInstallments == datum.commonData.totalInstallments - 1
+          datum.repaidInstallments == datum.totalInstallments - 1
         },
         quantity_of(self.mint, loanPolicyId, loanId) == -1,
       },
@@ -723,7 +723,6 @@ fn check_recast(
   principalPaid: Int,
   loanPolicyId: PolicyId,
   loanId: ByteArray,
-  interestRateAsRational: rational.Rational,
 ) {
   expect Finite(validTo) = self.validity_range.upper_bound.bound_type
   let borrowerBondOutput = safe_list_at(self.outputs, borrowerBondOutputIndex)
@@ -741,31 +740,39 @@ fn check_recast(
       ),
       loanInputIndex,
     )
-
-  let debtAfterRecasting =
-    get_remaining_debt(
-      datum.commonData.repaymentMode,
-      rational.from_int(datum.principalAmount - principalPaid),
-      interestRateAsRational,
-      datum.commonData.totalInstallments,
-      datum.repaidInstallments,
-      datum.commonData.installmentPeriod,
-      datum.commonData.initialGracePeriod,
-      validTo - datum.lendDate,
-    )
-
   let periodToLatestPaidInstallment =
     datum.repaidInstallments * datum.commonData.installmentPeriod
-  let timePassed =
+  let timePassedSinceLastRepaidInstallment =
     validTo - (
       datum.lendDate + (
         datum.commonData.initialGracePeriod + periodToLatestPaidInstallment
       ) * constants.hour_to_millis
     )
   let dueInstallments =
-    timePassed / (
+    timePassedSinceLastRepaidInstallment / (
       datum.commonData.installmentPeriod * constants.hour_to_millis
     )
+
+  let principalAfterRecasting =
+    when datum.commonData.repaymentMode is {
+      InterestOnRemainingPrincipal { .. } -> {
+        //Formula is: P * (1 - ((1+r)^n - (1+r)^k)/((1+r)^n - 1))
+        //where P = principal amount, r = interest rate per installment, n = total installments and k = repaid installments
+        let interestPerInstallment =
+          datum.commonData.interestRate / datum.totalInstallments
+        let onePlusRToN =
+          pow(1 + interestPerInstallment, datum.totalInstallments)
+        let onePlusRToK =
+          pow(1 + interestPerInstallment, datum.repaidInstallments)
+        let principalPaidSoFar =
+          datum.principalAmount * (
+            1 - ( onePlusRToN - onePlusRToK ) / ( onePlusRToN - 1 )
+          )
+        datum.principalAmount - principalPaidSoFar - principalPaid
+      }
+      _ -> datum.principalAmount - principalPaid
+    }
+
   and {
     principalPaid > 0,
     quantity_of(input.output.value, loanPolicyId, loanId) == 1,
@@ -798,11 +805,13 @@ fn check_recast(
     ),
     or {
       and {
-        debtAfterRecasting == 0,
+        //If principal becomes 0, then the loan is closed (there can't be outstanding interest to pay)
+        principalAfterRecasting == 0,
         quantity_of(self.mint, loanPolicyId, loanId) == -1,
       },
       and {
-        debtAfterRecasting > 0,
+        principalAfterRecasting > 0,
+        //Loan output is correct
         {
           let loanOutput =
             safe_list_at(
@@ -814,14 +823,54 @@ fn check_recast(
               ),
               loanInputIndex,
             )
-          validate_eventual_output_to_loan_for_recasting(
-            loanOutput,
-            datum,
-            principalPaid,
+          expect InlineDatum(outputDatum) = loanOutput.datum
+          expect parsedDatum: LoanDatum = outputDatum
+          let newLoanExpectedDatum =
+            when datum.commonData.repaymentMode is {
+              InterestOnRemainingPrincipal { .. } -> {
+                let newTotalInstallments =
+                  datum.totalInstallments - datum.repaidInstallments
+                let newRepaidIntstallments = 0
+
+                LoanDatum {
+                  commonData: datum.commonData,
+                  totalInstallments: newTotalInstallments,
+                  originId: datum.originId,
+                  collateral: datum.collateral,
+                  principalAmount: principalAfterRecasting,
+                  lendDate: datum.lendDate,
+                  repaidInstallments: newRepaidIntstallments,
+                  doneRecasts: datum.doneRecasts + 1,
+                }
+              }
+              _ ->
+                LoanDatum {
+                  commonData: datum.commonData,
+                  totalInstallments: datum.totalInstallments,
+                  originId: datum.originId,
+                  collateral: datum.collateral,
+                  principalAmount: principalAfterRecasting,
+                  lendDate: datum.lendDate,
+                  repaidInstallments: datum.repaidInstallments,
+                  doneRecasts: datum.doneRecasts + 1,
+                }
+            }
+          let correctDestination =
+            if is_output_to_spend_validator(
+              loanOutput,
+              config.loanSpendScriptHash,
+            ) {
+              loanOutput.address.stake_credential == input.output.address.stake_credential
+            } else {
+              //outputs have been already filtered at the beginning
+              True
+            }
+          and {
+            correctDestination,
+            parsedDatum == newLoanExpectedDatum,
+            //loanNFT is already included in the value
             input.output.value == loanOutput.value,
-            input.output.address.stake_credential,
-            config.loanSpendScriptHash,
-          )
+          }
         },
       },
     },
@@ -948,6 +997,7 @@ fn validate_eventual_output_to_loan_for_repayment(
   let newDatum =
     LoanDatum {
       commonData: datum.commonData,
+      totalInstallments: datum.totalInstallments,
       originId: datum.originId,
       collateral: datum.collateral,
       principalAmount: datum.principalAmount,
@@ -1038,44 +1088,6 @@ fn validate_output_to_loan_for_changing_collateral(
     parsedDatum == datum,
     //loanNFT is already included in the value
     correctValue,
-  }
-}
-
-fn validate_eventual_output_to_loan_for_recasting(
-  loanOutput: Output,
-  datum: LoanDatum,
-  principalPaid: Int,
-  outputValueSameOfInputValue: Bool,
-  prevStakeCredential: Option<StakeCredential>,
-  loanSpendScriptHash: ByteArray,
-) {
-  expect InlineDatum(outputDatum) = loanOutput.datum
-  expect parsedDatum: LoanDatum = outputDatum
-
-  let newDatum =
-    LoanDatum {
-      commonData: datum.commonData,
-      originId: datum.originId,
-      collateral: datum.collateral,
-      principalAmount: datum.principalAmount - principalPaid,
-      lendDate: datum.lendDate,
-      repaidInstallments: datum.repaidInstallments,
-      doneRecasts: datum.doneRecasts + 1,
-    }
-
-  let correctDestination =
-    if is_output_to_spend_validator(loanOutput, loanSpendScriptHash) {
-      loanOutput.address.stake_credential == prevStakeCredential
-    } else {
-      //outputs have been already filtered at the beginning
-      True
-    }
-
-  and {
-    correctDestination,
-    parsedDatum == newDatum,
-    //loanNFT is already included in the value
-    outputValueSameOfInputValue,
   }
 }
 

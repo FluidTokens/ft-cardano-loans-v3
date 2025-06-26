@@ -4,6 +4,8 @@ use fluidtokens/types/pool.{CommonData, LiquidationMode, RepaymentMode}
 
 pub type LoanDatum {
   commonData: CommonData,
+  //Total number of installments, ignored in Perpetual loans
+  totalInstallments: Int,
   //Either the poolId or the requestId
   originId: AssetName,
   collateral: CollateralAsset,

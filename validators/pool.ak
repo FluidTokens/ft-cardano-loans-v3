@@ -403,6 +403,7 @@ fn validate_output_to_loan(
   let newDatum =
     LoanDatum {
       commonData: poolDatum.commonData,
+      totalInstallments: poolDatum.totalInstallments,
       originId: bytearray.concat("POOL", poolId),
       collateral: chosenCollateral,
       principalAmount: wantedPrincipalAmount,
