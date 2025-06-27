@@ -20,6 +20,8 @@ pub type RepaymentMintRedeemer {
   configRefInputIndex: Int,
   inputRef: OutputReference,
   loanWithdrawRedeemerIndex: Int,
+  //This is used only if the loan action is Claim, otherwise it is ignored
+  loanClaimActionWithdrawRedeemerIndex: Int,
 }
 
 pub type RepaymentAction {

@@ -7,7 +7,10 @@ use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/types/general.{Asset}
-use fluidtokens/types/loan.{Claim, LoanWithdrawRedeemer, Recast, Repay}
+use fluidtokens/types/loan.{
+  ChangeCollateral, Claim, ClaimData, LoanClaimActionWithdrawRedeemer,
+  LoanWithdrawRedeemer, Recast, Repay,
+}
 use fluidtokens/types/pool.{Liquidation}
 use fluidtokens/types/repayment.{
   RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
@@ -56,27 +59,56 @@ validator repayment(
         expect loanWithdrawRedeemer.1st == Withdraw(Script(config.loanPolicyId))
         expect loanRedeemer: LoanWithdrawRedeemer = loanWithdrawRedeemer.2nd
 
-        list.indexed_foldr(
-          loanInputs,
-          [],
-          fn(index, input, result) {
-            let loanRedeemerAction =
-              safe_list_at(loanRedeemer.actionsForEachInput, index)
-            let repaymentAssetName =
-              utils.hash_output_ref(input.output_reference)
-            when loanRedeemerAction is {
-              Claim { liquidationMode, equity, .. } -> {
+        when loanRedeemer.actionType is {
+          Claim -> {
+            let loanClaimActionWithdrawRedeemer =
+              safe_list_at(
+                self.redeemers,
+                redeemer.loanClaimActionWithdrawRedeemerIndex,
+              )
+            expect
+              loanClaimActionWithdrawRedeemer.1st == Withdraw(
+                Script(config.loanClaimActionScriptHash),
+              )
+            expect loanClaimActionRedeemer: LoanClaimActionWithdrawRedeemer =
+              loanClaimActionWithdrawRedeemer.2nd
+            list.indexed_foldr(
+              loanInputs,
+              [],
+              fn(index, input, result) {
+                let ClaimData { liquidationMode, equity, .. } =
+                  safe_list_at(loanClaimActionRedeemer.action, index)
+                let repaymentAssetName =
+                  utils.hash_output_ref(input.output_reference)
                 expect Liquidation { partialLiquidationPenaltyPerMille, .. } =
                   liquidationMode
                 expect partialLiquidationPenaltyPerMille >= 0 && equity > 0
                 list.push(result, Pair(repaymentAssetName, 1))
-              }
-              Repay { .. } -> list.push(result, Pair(repaymentAssetName, 1))
-              Recast { .. } -> list.push(result, Pair(repaymentAssetName, 1))
-              _ -> result
-            }
-          },
-        )
+              },
+            )
+          }
+          Repay ->
+            list.foldr(
+              loanInputs,
+              [],
+              fn(input, result) {
+                let repaymentAssetName =
+                  utils.hash_output_ref(input.output_reference)
+                list.push(result, Pair(repaymentAssetName, 1))
+              },
+            )
+          ChangeCollateral -> fail
+          Recast ->
+            list.foldr(
+              loanInputs,
+              [],
+              fn(input, result) {
+                let repaymentAssetName =
+                  utils.hash_output_ref(input.output_reference)
+                list.push(result, Pair(repaymentAssetName, 1))
+              },
+            )
+        }
       }
 
       list.sort(expectedMintedNFTs, utils.pairs_ordering) == mintedNFTs

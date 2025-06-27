@@ -24,56 +24,84 @@ pub type LoanMintRedeemer {
   originWithdrawRedeemerIndex: Int,
 }
 
-pub type LoanAction {
+pub type ActionType {
   //Lender action (or anyone who has the permission to spend the lender's bond)
-  Claim {
-    //Must be the same value of the one contained in the datum, used by repayment validator
-    liquidationMode: LiquidationMode,
-    //This is the absolute input index that contains the lender bond
-    lenderBondInputIndex: Int,
-    //This is the absolute ref input index that contains the borrower bond
-    borrowerBondRefInputIndex: Int,
-    //If loan doesn't use oracle, this is not used
-    collateralOracleRefInputIndex: Int,
-    //If loan doesn't use oracle, this is not used
-    principalOracleRefInputIndex: Int,
-    //Used only when an auction must start as part of liquidation
-    lenderAuth: AuthorizationMethod,
-    //Only for partialLiquidation, it's collateralValue - remainingDebt expressed in principal currency
-    equity: Int,
-    loanId: ByteArray,
-  }
+  Claim
   //Borrower action
-  Repay {
-    //This is the absolute output index that contains the borrower bond
-    borrowerBondOutputIndex: Int,
-    lenderBondRefInputIndex: Int,
-    loanId: ByteArray,
-    //Used only in Perpetual Loans to signal the last repayment that will close the loan
-    isFinalRepayment: Bool,
-  }
+  Repay
   //Borrower action
-  ChangeCollateral {
-    borrowerBondOutputIndex: Int,
-    //Units of collateral that remain in the loan after the change
-    newCollateralAmount: Int,
-    loanId: ByteArray,
-    collateralOracleRefInputIndex: Int,
-    principalOracleRefInputIndex: Int,
-  }
+  ChangeCollateral
   //Borrower action
-  Recast {
-    borrowerBondOutputIndex: Int,
-    lenderBondRefInputIndex: Int,
-    //In principal units
-    principalPaid: Int,
-    loanId: ByteArray,
-  }
+  Recast
 }
 
 pub type LoanWithdrawRedeemer {
   configRefInputIndex: Int,
-  actionsForEachInput: List<LoanAction>,
+  actionType: ActionType,
+}
+
+pub type ClaimData {
+  //Must be the same value of the one contained in the datum, used by repayment validator
+  liquidationMode: LiquidationMode,
+  //This is the absolute input index that contains the lender bond
+  lenderBondInputIndex: Int,
+  //This is the absolute ref input index that contains the borrower bond
+  borrowerBondRefInputIndex: Int,
+  //If loan doesn't use oracle, this is not used
+  collateralOracleRefInputIndex: Int,
+  //If loan doesn't use oracle, this is not used
+  principalOracleRefInputIndex: Int,
+  //Used only when an auction must start as part of liquidation
+  lenderAuth: AuthorizationMethod,
+  //Only for partialLiquidation, it's collateralValue - remainingDebt expressed in principal currency
+  equity: Int,
+  loanId: ByteArray,
+}
+
+pub type RepayData {
+  //This is the absolute output index that contains the borrower bond
+  borrowerBondOutputIndex: Int,
+  lenderBondRefInputIndex: Int,
+  loanId: ByteArray,
+  //Used only in Perpetual Loans to signal the last repayment that will close the loan
+  isFinalRepayment: Bool,
+}
+
+pub type ChangeCollateralData {
+  borrowerBondOutputIndex: Int,
+  //Units of collateral that remain in the loan after the change
+  newCollateralAmount: Int,
+  loanId: ByteArray,
+  collateralOracleRefInputIndex: Int,
+  principalOracleRefInputIndex: Int,
+}
+
+pub type RecastData {
+  borrowerBondOutputIndex: Int,
+  lenderBondRefInputIndex: Int,
+  //In principal units
+  principalPaid: Int,
+  loanId: ByteArray,
+}
+
+pub type LoanClaimActionWithdrawRedeemer {
+  configRefInputIndex: Int,
+  action: List<ClaimData>,
+}
+
+pub type LoanRepayActionWithdrawRedeemer {
+  configRefInputIndex: Int,
+  action: List<RepayData>,
+}
+
+pub type LoanChangeCollateralActionWithdrawRedeemer {
+  configRefInputIndex: Int,
+  action: List<ChangeCollateralData>,
+}
+
+pub type LoanRecastActionWithdrawRedeemer {
+  configRefInputIndex: Int,
+  action: List<RecastData>,
 }
 
 pub type LoanRepaymentData {
