@@ -427,7 +427,7 @@
       "hash": "869fe0b88dfbe773ae0fcb907511e00e01e698c732bd4830f065d721"
     },
     {
-      "title": "loan_change_collateral_action.loan_claim_action.withdraw",
+      "title": "loan_change_collateral_action.loan_change_collateral_action.withdraw",
       "redeemer": {
         "title": "redeemer",
         "schema": {
@@ -452,7 +452,7 @@
       "hash": "8ca41fbe585fcc3d327b1ef132bbb7ae90055ed91ebeee3fe86f9096"
     },
     {
-      "title": "loan_change_collateral_action.loan_claim_action.else",
+      "title": "loan_change_collateral_action.loan_change_collateral_action.else",
       "redeemer": {
         "schema": {}
       },
@@ -521,7 +521,7 @@
       "hash": "78ed785f4eb1c238b81986d445dacc994271176e86306baf3878d236"
     },
     {
-      "title": "loan_recast_action.loan_claim_action.withdraw",
+      "title": "loan_recast_action.loan_recast_action.withdraw",
       "redeemer": {
         "title": "redeemer",
         "schema": {
@@ -546,7 +546,7 @@
       "hash": "fabbbef54ede297347084bc85c78966f018db97a1cb2ea9d5e6a2e98"
     },
     {
-      "title": "loan_recast_action.loan_claim_action.else",
+      "title": "loan_recast_action.loan_recast_action.else",
       "redeemer": {
         "schema": {}
       },
@@ -568,7 +568,7 @@
       "hash": "fabbbef54ede297347084bc85c78966f018db97a1cb2ea9d5e6a2e98"
     },
     {
-      "title": "loan_repay_action.loan_claim_action.withdraw",
+      "title": "loan_repay_action.loan_repay_action.withdraw",
       "redeemer": {
         "title": "redeemer",
         "schema": {
@@ -593,7 +593,7 @@
       "hash": "bf8f2643767094c95ec6a2d09a6f60cbce1d985fe24a2dc236ffd7d9"
     },
     {
-      "title": "loan_repay_action.loan_claim_action.else",
+      "title": "loan_repay_action.loan_repay_action.else",
       "redeemer": {
         "schema": {}
       },

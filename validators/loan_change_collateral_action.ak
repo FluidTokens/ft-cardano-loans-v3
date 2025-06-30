@@ -22,7 +22,7 @@ use smart_tokens/utils.{
   get_inputs_from_smart_credential, get_outputs_to_smart_credential,
 } as st_utils
 
-validator loan_claim_action(
+validator loan_change_collateral_action(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
 ) {
