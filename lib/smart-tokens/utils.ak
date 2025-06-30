@@ -5,20 +5,20 @@ use cardano/transaction.{Input, Output}
 //Ensures that the output is to a smart credential, either native tokens or smart tokens, both for wallets and smart contracts
 pub fn is_output_to_smart_credential(
   output: Output,
-  spendScriptCredential: Credential,
+  spendCredential: Credential,
   stakeCredential: Option<StakeCredential>,
   smartTokensSpendScriptHash: ByteArray,
 ) {
   or {
     //Native tokens
     and {
-      output.address.payment_credential == spendScriptCredential,
+      output.address.payment_credential == spendCredential,
       output.address.stake_credential == stakeCredential,
     },
     //Smart tokens or native tokens accidentally sent to the smart account
     and {
       output.address.payment_credential == Script(smartTokensSpendScriptHash),
-      output.address.stake_credential == Some(Inline(spendScriptCredential)),
+      output.address.stake_credential == Some(Inline(spendCredential)),
     },
   }
 }

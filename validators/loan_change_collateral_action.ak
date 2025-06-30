@@ -53,7 +53,7 @@ validator loan_claim_action(
         //As all inputs must return True, if any of previous input returned False, then fail
         //The last input is not checked but will return its value at the end, so if False withdraw will fail
         expect result
-        let inputAction = safe_list_at(redeemer.action, index)
+        let inputAction = safe_list_at(redeemer.actionsForEachInput, index)
 
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: LoanDatum = inputDatum

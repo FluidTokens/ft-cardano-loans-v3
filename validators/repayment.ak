@@ -77,7 +77,10 @@ validator repayment(
               [],
               fn(index, input, result) {
                 let ClaimData { liquidationMode, equity, .. } =
-                  safe_list_at(loanClaimActionRedeemer.action, index)
+                  safe_list_at(
+                    loanClaimActionRedeemer.actionsForEachInput,
+                    index,
+                  )
                 let repaymentAssetName =
                   utils.hash_output_ref(input.output_reference)
                 expect Liquidation { partialLiquidationPenaltyPerMille, .. } =

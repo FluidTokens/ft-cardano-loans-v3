@@ -1888,7 +1888,7 @@
               "$ref": "#/definitions/Int"
             },
             {
-              "title": "action",
+              "title": "actionsForEachInput",
               "$ref": "#/definitions/List$fluidtokens~1types~1loan~1ChangeCollateralData"
             }
           ]
@@ -1908,7 +1908,7 @@
               "$ref": "#/definitions/Int"
             },
             {
-              "title": "action",
+              "title": "actionsForEachInput",
               "$ref": "#/definitions/List$fluidtokens~1types~1loan~1ClaimData"
             }
           ]
@@ -1952,7 +1952,7 @@
               "$ref": "#/definitions/Int"
             },
             {
-              "title": "action",
+              "title": "actionsForEachInput",
               "$ref": "#/definitions/List$fluidtokens~1types~1loan~1RecastData"
             }
           ]
@@ -1972,7 +1972,7 @@
               "$ref": "#/definitions/Int"
             },
             {
-              "title": "action",
+              "title": "actionsForEachInput",
               "$ref": "#/definitions/List$fluidtokens~1types~1loan~1RepayData"
             }
           ]

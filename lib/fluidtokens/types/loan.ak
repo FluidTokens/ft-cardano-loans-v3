@@ -86,22 +86,22 @@ pub type RecastData {
 
 pub type LoanClaimActionWithdrawRedeemer {
   configRefInputIndex: Int,
-  action: List<ClaimData>,
+  actionsForEachInput: List<ClaimData>,
 }
 
 pub type LoanRepayActionWithdrawRedeemer {
   configRefInputIndex: Int,
-  action: List<RepayData>,
+  actionsForEachInput: List<RepayData>,
 }
 
 pub type LoanChangeCollateralActionWithdrawRedeemer {
   configRefInputIndex: Int,
-  action: List<ChangeCollateralData>,
+  actionsForEachInput: List<ChangeCollateralData>,
 }
 
 pub type LoanRecastActionWithdrawRedeemer {
   configRefInputIndex: Int,
-  action: List<RecastData>,
+  actionsForEachInput: List<RecastData>,
 }
 
 pub type LoanRepaymentData {
