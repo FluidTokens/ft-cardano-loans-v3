@@ -30,7 +30,7 @@ validator loan_repay_action(
 ) {
   withdraw(
     redeemer: LoanRepayActionWithdrawRedeemer,
-    credential: Credential,
+    _credential: Credential,
     self: Transaction,
   ) {
     let config =
@@ -43,7 +43,7 @@ validator loan_repay_action(
       get_inputs_from_smart_credential(
         self.inputs,
         Script(config.loanSpendScriptHash),
-        credential,
+        Script(config.loanPolicyId),
         config.smartTokensSpendScriptHash,
       )
 
@@ -65,7 +65,6 @@ validator loan_repay_action(
 
         check_repay(
           self,
-          credential,
           input,
           inputAction.borrowerBondOutputIndex,
           inputAction.lenderBondRefInputIndex,
@@ -88,7 +87,6 @@ validator loan_repay_action(
 
 fn check_repay(
   self: Transaction,
-  credential: Credential,
   input: Input,
   borrowerBondOutputIndex: Int,
   lenderBondRefInputIndex: Int,
@@ -102,12 +100,13 @@ fn check_repay(
 ) {
   expect Finite(validTo) = self.validity_range.upper_bound.bound_type
   let borrowerBondOutput = safe_list_at(self.outputs, borrowerBondOutputIndex)
-  let lenderBondAddress =
-    safe_list_at(self.reference_inputs, lenderBondRefInputIndex).output.address
+  let lenderBondRefInput =
+    safe_list_at(self.reference_inputs, lenderBondRefInputIndex)
+  let lenderBondAddress = lenderBondRefInput.output.address
   expect Some(Inline(lenderBondStakeCredential)) =
     lenderBondAddress.stake_credential
-  expect Some(repaymentOutput) =
-    list.at(
+  let repaymentOutput =
+    utils.safe_list_at(
       get_outputs_to_smart_credential(
         self.outputs,
         lenderBondAddress.payment_credential,
@@ -162,6 +161,11 @@ fn check_repay(
     }
   and {
     quantity_of(input.output.value, loanPolicyId, loanId) == 1,
+    quantity_of(
+      lenderBondRefInput.output.value,
+      config.lenderBondPolicyId,
+      loanId,
+    ) == 1,
     is_nft_in_output(config.borrowerBondPolicyId, loanId, borrowerBondOutput),
     validate_repayment_output(
       loanInputOutputReference: input.output_reference,
@@ -199,7 +203,7 @@ fn check_repay(
             get_outputs_to_smart_credential(
               self.outputs,
               Script(config.loanSpendScriptHash),
-              credential,
+              Script(config.loanPolicyId),
               config.smartTokensSpendScriptHash,
             ),
             loanInputIndex,
@@ -251,7 +255,7 @@ fn validate_repayment_output(
 
   let isDatumCorrect = parsedDatum == newDatum
   let receiptAssetCount =
-    if receiptCondition {
+    if repaymentReceipts {
       1
     } else {
       0

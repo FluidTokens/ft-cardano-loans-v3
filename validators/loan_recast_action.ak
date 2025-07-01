@@ -1,12 +1,14 @@
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use aiken/math.{pow}
+use aiken/math/rational
 use cardano/address.{Address, Credential, Inline, Script}
 use cardano/assets.{PolicyId, flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use fluidtokens/constants
+use fluidtokens/finance.{get_next_installment_amount}
 use fluidtokens/types/config.{ConfigDatum}
 use fluidtokens/types/general.{Asset}
 use fluidtokens/types/loan.{LoanDatum, LoanRecastActionWithdrawRedeemer} as l
@@ -27,7 +29,7 @@ validator loan_recast_action(
 ) {
   withdraw(
     redeemer: LoanRecastActionWithdrawRedeemer,
-    credential: Credential,
+    _credential: Credential,
     self: Transaction,
   ) {
     let config =
@@ -40,7 +42,7 @@ validator loan_recast_action(
       get_inputs_from_smart_credential(
         self.inputs,
         Script(config.loanSpendScriptHash),
-        credential,
+        Script(config.loanPolicyId),
         config.smartTokensSpendScriptHash,
       )
 
@@ -60,7 +62,6 @@ validator loan_recast_action(
 
         check_recast(
           self,
-          credential,
           input,
           inputAction.borrowerBondOutputIndex,
           inputAction.lenderBondRefInputIndex,
@@ -82,7 +83,6 @@ validator loan_recast_action(
 
 fn check_recast(
   self: Transaction,
-  credential: Credential,
   input: Input,
   borrowerBondOutputIndex: Int,
   lenderBondRefInputIndex: Int,
@@ -95,12 +95,13 @@ fn check_recast(
 ) {
   expect Finite(validTo) = self.validity_range.upper_bound.bound_type
   let borrowerBondOutput = safe_list_at(self.outputs, borrowerBondOutputIndex)
-  let lenderBondAddress =
-    safe_list_at(self.reference_inputs, lenderBondRefInputIndex).output.address
+  let lenderBondRefInput =
+    safe_list_at(self.reference_inputs, lenderBondRefInputIndex)
+  let lenderBondAddress = lenderBondRefInput.output.address
   expect Some(Inline(lenderBondStakeCredential)) =
     lenderBondAddress.stake_credential
-  expect Some(repaymentOutput) =
-    list.at(
+  let repaymentOutput =
+    utils.safe_list_at(
       get_outputs_to_smart_credential(
         self.outputs,
         lenderBondAddress.payment_credential,
@@ -125,19 +126,34 @@ fn check_recast(
   let principalAfterRecasting =
     when datum.commonData.repaymentMode is {
       InterestOnRemainingPrincipal { .. } -> {
-        //Formula is: P * (1 - ((1+r)^n - (1+r)^k)/((1+r)^n - 1))
-        //where P = principal amount, r = interest rate per installment, n = total installments and k = repaid installments
+        //Formula is: remainingPrincipal = P*r^t - A*(r^t - 1)/(r - 1)
+        //where P = principal amount, r = interest rate per installment, t = latest paid installment and A = installment amount
+        expect Some(interestRateAsRational) =
+          rational.new(datum.commonData.interestRate, 10000)
+        let a =
+          get_next_installment_amount(
+            datum.commonData.repaymentMode,
+            rational.from_int(datum.principalAmount),
+            interestRateAsRational,
+            datum.totalInstallments,
+            datum.repaidInstallments,
+            datum.commonData.installmentPeriod,
+            datum.commonData.initialGracePeriod,
+            False,
+            datum.commonData.penaltyFeeForLateRepayment,
+          )
+
         let interestPerInstallment =
           datum.commonData.interestRate / datum.totalInstallments
-        let onePlusRToN =
-          pow(1 + interestPerInstallment, datum.totalInstallments)
-        let onePlusRToK =
-          pow(1 + interestPerInstallment, datum.repaidInstallments)
-        let principalPaidSoFar =
-          datum.principalAmount * (
-            1 - ( onePlusRToN - onePlusRToK ) / ( onePlusRToN - 1 )
+
+        let rToTheT = pow(interestPerInstallment, datum.repaidInstallments)
+
+        let remainingPrincipalToPay =
+          datum.principalAmount * rToTheT - a * ( rToTheT - 1 ) / (
+            interestPerInstallment - 1
           )
-        datum.principalAmount - principalPaidSoFar - principalPaid
+
+        remainingPrincipalToPay - principalPaid
       }
       _ -> datum.principalAmount - principalPaid
     }
@@ -145,6 +161,11 @@ fn check_recast(
   and {
     principalPaid > 0,
     quantity_of(input.output.value, loanPolicyId, loanId) == 1,
+    quantity_of(
+      lenderBondRefInput.output.value,
+      config.lenderBondPolicyId,
+      loanId,
+    ) == 1,
     is_nft_in_output(config.borrowerBondPolicyId, loanId, borrowerBondOutput),
     //A recast is permitted only if the loan has installments
     datum.commonData.installmentPeriod > 0,
@@ -187,7 +208,7 @@ fn check_recast(
               get_outputs_to_smart_credential(
                 self.outputs,
                 Script(config.loanSpendScriptHash),
-                credential,
+                Script(config.loanPolicyId),
                 config.smartTokensSpendScriptHash,
               ),
               loanInputIndex,
@@ -199,7 +220,7 @@ fn check_recast(
               InterestOnRemainingPrincipal { .. } -> {
                 let newTotalInstallments =
                   datum.totalInstallments - datum.repaidInstallments
-                let newRepaidIntstallments = 0
+                let newRepaidInstallments = 0
 
                 LoanDatum {
                   commonData: datum.commonData,
@@ -208,7 +229,7 @@ fn check_recast(
                   collateral: datum.collateral,
                   principalAmount: principalAfterRecasting,
                   lendDate: datum.lendDate,
-                  repaidInstallments: newRepaidIntstallments,
+                  repaidInstallments: newRepaidInstallments,
                   doneRecasts: datum.doneRecasts + 1,
                 }
               }
@@ -281,7 +302,7 @@ fn validate_repayment_output(
 
   let isDatumCorrect = parsedDatum == newDatum
   let receiptAssetCount =
-    if receiptCondition {
+    if repaymentReceipts {
       1
     } else {
       0

@@ -57,8 +57,8 @@ validator oracle(
       } -> {
         //Charlie 3 provides a utxo that keeps refreshing his value price and expiration, so we check that the redeemer that we are passing 
         //is parsing correct information from the main feed, in this way we can use the same withdraw oracle contract to read from our oracles or charlie3
-        expect Some(charlie_input) =
-          list.at(self.reference_inputs, provider_ref_input_index)
+        let charlie_input =
+          utils.safe_list_at(self.reference_inputs, provider_ref_input_index)
         expect InlineDatum(referenceDatum) = charlie_input.output.datum
         expect oracleDatum: OracleDatum = referenceDatum
 
@@ -106,13 +106,13 @@ validator oracle(
         price_in_lovelaces,
         price_denominator,
       ) -> {
-        expect Some(orcfax_pointer_input) =
-          list.at(self.reference_inputs, pointer_ref_input_index)
+        let orcfax_pointer_input =
+          utils.safe_list_at(self.reference_inputs, pointer_ref_input_index)
         expect InlineDatum(referenceDatum) = orcfax_pointer_input.output.datum
         expect pointerDatum: FspDat = referenceDatum
 
-        expect Some(orcfax_price_input) =
-          list.at(self.reference_inputs, provider_ref_input_index)
+        let orcfax_price_input =
+          utils.safe_list_at(self.reference_inputs, provider_ref_input_index)
         expect InlineDatum(referenceDatum) = orcfax_price_input.output.datum
         expect oracleDatum: RationalDatum = referenceDatum
 
@@ -170,8 +170,8 @@ validator oracle(
             unique_signatures,
             0,
             fn(redem, valid_signatures) -> Int {
-              expect Some(verification_key) =
-                list.at(verification_keys, redem.key_position)
+              let verification_key =
+                utils.safe_list_at(verification_keys, redem.key_position)
               expect
                 builtin.verify_ed25519_signature(
                   verification_key,

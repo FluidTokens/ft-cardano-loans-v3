@@ -21,7 +21,7 @@ validator bond(_bondType: Int) {
           expect result
 
           if quantity > 0 {
-            expect Some(inputRef) = list.at(redeemer.inputRefs, index)
+            let inputRef = utils.safe_list_at(redeemer.inputRefs, index)
             let inputRefHash = utils.hash_output_ref(inputRef)
             let isInputRefSpent =
               option.is_some(find_input(self.inputs, inputRef))

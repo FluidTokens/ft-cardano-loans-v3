@@ -223,7 +223,11 @@ pub fn get_remaining_debt(
 
       let accumulatedHoursOfRepaidInstallments =
         rational.from_int(
-          initialGracePeriod + installmentPeriod * repaidInstallments,
+          if repaidInstallments == 0 {
+            0
+          } else {
+            initialGracePeriod + installmentPeriod * repaidInstallments
+          },
         )
 
       let passedHoursSinceLastRepaidInstallment =

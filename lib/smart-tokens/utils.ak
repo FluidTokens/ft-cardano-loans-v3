@@ -2,8 +2,8 @@ use aiken/collection/list
 use cardano/address.{Address, Credential, Inline, Script, StakeCredential}
 use cardano/transaction.{Input, Output}
 
-//Ensures that the output is to a smart credential, either native tokens or smart tokens, both for wallets and smart contracts
-pub fn is_output_to_smart_credential(
+//Ensures that the output is to a smart credential, either native tokens or smart tokens, for wallets
+pub fn is_output_to_user_smart_credential(
   output: Output,
   spendCredential: Credential,
   stakeCredential: Option<StakeCredential>,
@@ -19,6 +19,24 @@ pub fn is_output_to_smart_credential(
     and {
       output.address.payment_credential == Script(smartTokensSpendScriptHash),
       output.address.stake_credential == Some(Inline(spendCredential)),
+    },
+  }
+}
+
+//Ensures that the output is to a smart credential, either native tokens or smart tokens, for smart contracts
+pub fn is_output_to_script_smart_credential(
+  output: Output,
+  spendCredential: Credential,
+  withdrawScriptCredential: Credential,
+  smartTokensSpendScriptHash: ByteArray,
+) {
+  or {
+    //Native tokens
+    output.address.payment_credential == spendCredential,
+    //Smart tokens or native tokens accidentally sent to the smart account
+    and {
+      output.address.payment_credential == Script(smartTokensSpendScriptHash),
+      output.address.stake_credential == Some(Inline(withdrawScriptCredential)),
     },
   }
 }

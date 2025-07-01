@@ -28,7 +28,7 @@ validator loan_change_collateral_action(
 ) {
   withdraw(
     redeemer: LoanChangeCollateralActionWithdrawRedeemer,
-    credential: Credential,
+    _credential: Credential,
     self: Transaction,
   ) {
     let config =
@@ -41,7 +41,7 @@ validator loan_change_collateral_action(
       get_inputs_from_smart_credential(
         self.inputs,
         Script(config.loanSpendScriptHash),
-        credential,
+        Script(config.loanPolicyId),
         config.smartTokensSpendScriptHash,
       )
 
@@ -60,7 +60,6 @@ validator loan_change_collateral_action(
 
         check_change_collateral(
           self,
-          credential,
           input,
           inputAction.borrowerBondOutputIndex,
           index,
@@ -83,7 +82,6 @@ validator loan_change_collateral_action(
 
 fn check_change_collateral(
   self: Transaction,
-  credential: Credential,
   input: Input,
   borrowerBondOutputIndex: Int,
   loanInputIndex: Int,
@@ -104,12 +102,12 @@ fn check_change_collateral(
         )
       let borrowerBondOutput =
         safe_list_at(self.outputs, borrowerBondOutputIndex)
-      expect Some(loanOutput) =
-        list.at(
+      let loanOutput =
+        utils.safe_list_at(
           get_outputs_to_smart_credential(
             self.outputs,
             Script(config.loanSpendScriptHash),
-            credential,
+            Script(config.loanPolicyId),
             config.smartTokensSpendScriptHash,
           ),
           loanInputIndex,

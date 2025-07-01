@@ -168,7 +168,8 @@ validator repayment(
           when redeemerAction.1st is {
             WithdrawWithToken(tokenOutputIndex) -> {
               expect RepaymentDatumWithToken { ownerAsset, .. } = datum
-              expect Some(tokenOutput) = list.at(self.outputs, tokenOutputIndex)
+              let tokenOutput =
+                utils.safe_list_at(self.outputs, tokenOutputIndex)
               is_nft_in_output(
                 ownerAsset.policyId,
                 ownerAsset.assetName,

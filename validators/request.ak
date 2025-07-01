@@ -161,7 +161,7 @@ fn check_mint(
             bytearray.drop(assetName, 1) == inputRefHash,
           }
 
-        expect Some(output) = list.at(requestOutputs, index)
+        let output = utils.safe_list_at(requestOutputs, index)
         let outputHasUniqueToken = and {
             dict.size(assets.tokens(output.value, policy_id)) == 1,
             assets.quantity_of(output.value, policy_id, assetName) == 1,

@@ -19,7 +19,7 @@ validator config(tx0: ByteArray, index0: Int) {
     let one_time_utxo = OutputReference(tx0, index0)
     //we won't use input_present, we just need it to be there, otherwise error
     expect Some(_input_present) = find_input(self.inputs, one_time_utxo)
-    expect Some(output_parameters) = list.at(self.outputs, 0)
+    let output_parameters = utils.safe_list_at(self.outputs, 0)
 
     and {
       //First output goes to this address
@@ -45,7 +45,7 @@ validator config(tx0: ByteArray, index0: Int) {
   ) {
     expect Some(datum) = datumOpt
     expect Some(input_contract) = find_input(self.inputs, own_ref)
-    expect Some(output_contract) = list.at(self.outputs, 0)
+    let output_contract = utils.safe_list_at(self.outputs, 0)
     expect InlineDatum(outputDatum) = output_contract.datum
     //value can be anything but the type must be of correct type
     expect _casted_datum: ConfigDatum = outputDatum

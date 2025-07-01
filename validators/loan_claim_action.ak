@@ -24,7 +24,7 @@ use fluidtokens/types/repayment.{RepaymentDatum, RepaymentDatumWithToken}
 use fluidtokens/utils.{is_nft_in_output, quantity_of_policy_id, safe_list_at}
 use smart_tokens/utils.{
   get_inputs_from_smart_credential, get_outputs_to_smart_credential,
-  is_output_to_smart_credential,
+  is_output_to_script_smart_credential,
 } as st_utils
 
 validator loan_claim_action(
@@ -33,7 +33,7 @@ validator loan_claim_action(
 ) {
   withdraw(
     redeemer: LoanClaimActionWithdrawRedeemer,
-    credential: Credential,
+    _credential: Credential,
     self: Transaction,
   ) {
     let config =
@@ -46,7 +46,7 @@ validator loan_claim_action(
       get_inputs_from_smart_credential(
         self.inputs,
         Script(config.loanSpendScriptHash),
-        credential,
+        Script(config.loanPolicyId),
         config.smartTokensSpendScriptHash,
       )
 
@@ -68,7 +68,7 @@ validator loan_claim_action(
         check_claim(
           self,
           input,
-          inputAction.lenderBondInputIndex,
+          inputAction.lenderBondOutputIndex,
           inputAction.borrowerBondRefInputIndex,
           index,
           config,
@@ -113,10 +113,10 @@ fn check_claim(
       self.validity_range.lower_bound.bound_type,
       self.validity_range.upper_bound.bound_type,
     )
-  expect (Some(lenderBondOutput), Some(borrowerBondRefInput)) =
+  let (lenderBondOutput, borrowerBondRefInput) =
     (
-      list.at(self.outputs, lenderBondOutputIndex),
-      list.at(self.reference_inputs, borrowerBondRefInputIndex),
+      utils.safe_list_at(self.outputs, lenderBondOutputIndex),
+      utils.safe_list_at(self.reference_inputs, borrowerBondRefInputIndex),
     )
   let isPerpetualLoan =
     when datum.commonData.repaymentMode is {
@@ -136,13 +136,18 @@ fn check_claim(
   and {
     liquidationMode == datum.commonData.liquidationMode,
     quantity_of(input.output.value, loanPolicyId, loanId) == 1,
+    quantity_of(
+      borrowerBondRefInput.output.value,
+      config.borrowerBondPolicyId,
+      loanId,
+    ) == 1,
     quantity_of(self.mint, loanPolicyId, loanId) == -1,
     is_nft_in_output(config.lenderBondPolicyId, loanId, lenderBondOutput),
     when datum.commonData.liquidationMode is {
       NoLiquidationFullCollateralClaim -> isRepaymentLate
       NoLiquidationDutchAuctionClaim -> {
-        expect Some(dutchAuctionOutput) =
-          list.at(
+        let dutchAuctionOutput =
+          utils.safe_list_at(
             get_outputs_to_smart_credential(
               self.outputs,
               Script(config.dutchAuctionSpendScriptHash),
@@ -244,11 +249,11 @@ fn check_claim(
             ),
           },
           or {
-            partialLiquidationPenaltyPerMille <= 0,
+            partialLiquidationPenaltyPerMille < 0,
             equity <= 0,
             {
-              expect Some(borrowerCompensationOutput) =
-                list.at(
+              let borrowerCompensationOutput =
+                utils.safe_list_at(
                   get_outputs_to_smart_credential(
                     self.outputs,
                     borrowerBondAddress.payment_credential,
@@ -332,10 +337,10 @@ fn validate_output_to_dutch_auction(
     ) - 1
 
   and {
-    is_output_to_smart_credential(
+    is_output_to_script_smart_credential(
       dutchAuctionOutput,
       Script(config.dutchAuctionSpendScriptHash),
-      Some(Inline(Script(config.dutchAuctionWithdrawScriptHash))),
+      Script(config.dutchAuctionWithdrawScriptHash),
       config.smartTokensSpendScriptHash,
     ),
     isDatumCorrect,
@@ -376,7 +381,7 @@ fn equity_sent_to_borrower(
 
   let isDatumCorrect = parsedDatum == newDatum
   let receiptAssetCount =
-    if receiptCondition {
+    if repaymentReceipts {
       1
     } else {
       0

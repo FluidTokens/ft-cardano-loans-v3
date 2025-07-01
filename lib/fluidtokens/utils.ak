@@ -133,11 +133,20 @@ pub fn asset_names_number_of_policy_id(value: Value, policyId: PolicyId) {
   dict.foldl(tokens(value, policyId), 0, fn(_k, _v, result) { 1 + result })
 }
 
-pub fn safe_list_at(list: List<a>, index: Int) {
-  safe_expect(list.at(list, index))
+pub fn safe_list_at(self: List<a>, index: Int) -> a {
+  expect index >= 0
+  do_list_at(self, index)
 }
 
-pub fn safe_expect(maybeElem: Option<a>) {
+fn do_list_at(self: List<a>, index: Int) -> a {
+  if index == 0 {
+    builtin.head_list(self)
+  } else {
+    do_list_at(builtin.tail_list(self), index - 1)
+  }
+}
+
+pub fn safe_expect(maybeElem: Option<a>) -> a {
   expect Some(elem) = maybeElem
   elem
 }

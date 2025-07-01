@@ -12,7 +12,7 @@ use fluidtokens/types/dutch_auction.{
 use fluidtokens/types/general.{Asset}
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{
-  get_inputs_from_smart_credential, is_output_to_smart_credential,
+  get_inputs_from_smart_credential, is_output_to_user_smart_credential,
 } as st_utils
 
 validator dutch_auction(
@@ -85,13 +85,13 @@ validator dutch_auction(
               },
             }
           Buy -> {
-            expect Some(ownerOutput) = list.at(self.outputs, index * 2)
+            let ownerOutput = utils.safe_list_at(self.outputs, index * 2)
             and {
               datum.startDate <= validFrom,
               if datum.borrowerAddress != None && currentPrice > datum.debtAmount {
                 expect Some(borrowerAddress) = datum.borrowerAddress
-                expect Some(borrowerOutput) =
-                  list.at(self.outputs, index * 2 + 1)
+                let borrowerOutput =
+                  utils.safe_list_at(self.outputs, index * 2 + 1)
                 and {
                   correctAmountSentToUser(
                     input.output_reference,
@@ -151,7 +151,7 @@ fn correctAmountSentToUser(
   smartTokensSpendScriptHash: ByteArray,
 ) {
   let correctDestination =
-    is_output_to_smart_credential(
+    is_output_to_user_smart_credential(
       userOutput,
       userAddress.payment_credential,
       userAddress.stake_credential,
