@@ -1,9 +1,10 @@
+use aiken/builtin
 use aiken/collection/list
 use cardano/address.{Credential, Script}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/types/general.{AuthorizationMethod}
-use fluidtokens/types/request.{Lend, RequestDatum, RequestWithdrawRedeemer}
+use fluidtokens/types/request.{Lend, RequestWithdrawRedeemer}
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 
@@ -49,9 +50,15 @@ validator specific_lenders(
         requestInputsAndActions,
         fn(inputAndAction) {
           expect InlineDatum(inputDatum) = inputAndAction.1st.output.datum
-          expect datum: RequestDatum = inputDatum
           when inputAndAction.2nd is {
-            Lend { .. } -> datum.permissionedConditionScriptHash == scriptHash
+            Lend { .. } ->
+              //First field of datum is permissionedConditionScriptHash
+              (
+                inputDatum
+                  |> builtin.un_list_data
+                  |> builtin.head_list
+                  |> builtin.un_b_data
+              ) == scriptHash
             _ -> False
           }
         },
@@ -67,8 +74,13 @@ validator specific_lenders(
         expect result
 
         expect InlineDatum(inputDatum) = inputAndAction.1st.output.datum
-        expect datum: RequestDatum = inputDatum
-        expect permissionedDatum: PermissionedDatum = datum.extraData
+        //Second field of datum is extraData
+        let extraData =
+          inputDatum
+            |> builtin.un_list_data
+            |> builtin.tail_list
+            |> builtin.head_list
+        expect permissionedDatum: PermissionedDatum = extraData
         let authorizationMethodIndex =
           safe_list_at(redeemer.authorizationMethodIndexes, index)
 

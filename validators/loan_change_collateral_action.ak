@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
@@ -7,12 +8,10 @@ use cardano/assets.{PolicyId,
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/finance.{can_liquidate}
 use fluidtokens/oracle.{retrieve_oracle_data}
-use fluidtokens/types/config.{ConfigDatum}
-use fluidtokens/types/general.{Asset, CollateralAsset}
+use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
 use fluidtokens/types/loan.{
   LoanChangeCollateralActionWithdrawRedeemer, LoanDatum,
 } as l
-use fluidtokens/types/pool.{CommonData, Liquidation}
 use fluidtokens/utils.{
   asset_names_number_of_policy_id, is_nft_in_output,
   is_output_to_spend_validator, quantity_of_policy_id, safe_list_at,
@@ -32,17 +31,25 @@ validator loan_change_collateral_action(
     self: Transaction,
   ) {
     let config =
-      utils.get_config(
+      utils.get_config_as_data(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
+    let smartTokensSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
+    let loanSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 10))
+    let loanPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 2))
+    let borrowerBondPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 4))
     let loanInputs =
       get_inputs_from_smart_credential(
         self.inputs,
-        Script(config.loanSpendScriptHash),
-        Script(config.loanPolicyId),
-        config.smartTokensSpendScriptHash,
+        Script(loanSpendScriptHash),
+        Script(loanPolicyId),
+        smartTokensSpendScriptHash,
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
@@ -63,12 +70,14 @@ validator loan_change_collateral_action(
           input,
           inputAction.borrowerBondOutputIndex,
           index,
-          config,
           datum,
           inputAction.principalOracleRefInputIndex,
           inputAction.collateralOracleRefInputIndex,
           inputAction.newCollateralAmount,
-          config.loanPolicyId,
+          loanSpendScriptHash,
+          smartTokensSpendScriptHash,
+          borrowerBondPolicyId,
+          loanPolicyId,
           inputAction.loanId,
         )
       },
@@ -85,15 +94,17 @@ fn check_change_collateral(
   input: Input,
   borrowerBondOutputIndex: Int,
   loanInputIndex: Int,
-  config: ConfigDatum,
   datum: LoanDatum,
   principalOracleRefInputIndex: Int,
   collateralOracleRefInputIndex: Int,
   newCollateralAmount: Int,
+  loanSpendScriptHash: ByteArray,
+  smartTokensSpendScriptHash: ByteArray,
+  borrowerBondPolicyId: PolicyId,
   loanPolicyId: PolicyId,
   loanId: ByteArray,
 ) {
-  when datum.commonData.liquidationMode is {
+  when datum.liquidationMode is {
     Liquidation { lTV, lTVDivider, .. } -> {
       expect (Finite(validFrom), Finite(validTo)) =
         (
@@ -106,9 +117,9 @@ fn check_change_collateral(
         utils.safe_list_at(
           get_outputs_to_smart_credential(
             self.outputs,
-            Script(config.loanSpendScriptHash),
-            Script(config.loanPolicyId),
-            config.smartTokensSpendScriptHash,
+            Script(loanSpendScriptHash),
+            Script(loanPolicyId),
+            smartTokensSpendScriptHash,
           ),
           loanInputIndex,
         )
@@ -136,18 +147,14 @@ fn check_change_collateral(
           self.redeemers,
           validFrom,
           validTo,
-          datum.commonData.principalOracleAsset.policyId,
-          datum.commonData.principalOracleAsset.assetName,
-          datum.commonData.principalAsset.policyId,
-          Some(datum.commonData.principalAsset.assetName),
+          datum.principalOracleAsset.policyId,
+          datum.principalOracleAsset.assetName,
+          datum.principalAsset.policyId,
+          Some(datum.principalAsset.assetName),
         )
       and {
         quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-        is_nft_in_output(
-          config.borrowerBondPolicyId,
-          loanId,
-          borrowerBondOutput,
-        ),
+        is_nft_in_output(borrowerBondPolicyId, loanId, borrowerBondOutput),
         can_liquidate(
           rational.from_int(datum.principalAmount),
           rational.from_int(newCollateralAmount),
@@ -161,7 +168,7 @@ fn check_change_collateral(
           newCollateralAmount,
           input.output.value,
           input.output.address.stake_credential,
-          config.loanSpendScriptHash,
+          loanSpendScriptHash,
         ),
       }
     }
@@ -178,7 +185,6 @@ fn validate_output_to_loan_for_changing_collateral(
   loanSpendScriptHash: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = loanOutput.datum
-  expect parsedDatum: LoanDatum = outputDatum
 
   let correctValue =
     if datum.collateral.maybeAssetName == None {
@@ -232,7 +238,7 @@ fn validate_output_to_loan_for_changing_collateral(
 
   and {
     correctDestination,
-    parsedDatum == datum,
+    builtin.un_list_data(outputDatum) == builtin.un_list_data(datum),
     //loanNFT is already included in the value
     correctValue,
   }

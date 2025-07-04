@@ -1,9 +1,9 @@
+use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use cardano/address.{Credential, Script}
 use cardano/assets.{PolicyId, tokens}
 use cardano/transaction.{Input, Output, OutputReference, Transaction, Withdraw}
-use fluidtokens/types/config.{ConfigDatum}
 use fluidtokens/types/loan.{
   ChangeCollateral, Claim, LoanMintRedeemer, LoanWithdrawRedeemer, Recast, Repay,
 } as l
@@ -26,18 +26,26 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
     self: Transaction,
   ) {
     let config =
-      utils.get_config(
+      utils.get_config_as_data(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
+    let loanClaimActionScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 11))
+    let loanRepayActionScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 12))
+    let loanChangeCollateralActionScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 13))
+    let loanRecastActionScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 14))
 
     let actionWithdrawScriptHash =
       when redeemer.actionType is {
-        Claim { .. } -> config.loanClaimActionScriptHash
-        Repay { .. } -> config.loanRepayActionScriptHash
-        ChangeCollateral { .. } -> config.loanChangeCollateralActionScriptHash
-        Recast { .. } -> config.loanRecastActionScriptHash
+        Claim { .. } -> loanClaimActionScriptHash
+        Repay { .. } -> loanRepayActionScriptHash
+        ChangeCollateral { .. } -> loanChangeCollateralActionScriptHash
+        Recast { .. } -> loanRecastActionScriptHash
       }
 
     list.any(
@@ -63,34 +71,46 @@ fn check_mint(
   policy_id: PolicyId,
 ) {
   let config =
-    utils.get_config(
+    utils.get_config_as_data(
       safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
       configNFTPolicyId,
       configNFTAssetName,
     )
+  let smartTokensSpendScriptHash =
+    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
+  let loanSpendScriptHash =
+    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 10))
+  let poolSpendScriptHash =
+    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 8))
+  let poolPolicyId =
+    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 2))
+  let requestSpendScriptHash =
+    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 9))
+  let requestPolicyId =
+    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 3))
 
   let originInputs =
     if redeemer.isPoolOrigin {
       st_utils.get_inputs_from_smart_credential(
         self.inputs,
-        Script(config.poolSpendScriptHash),
-        Script(config.poolPolicyId),
-        config.smartTokensSpendScriptHash,
+        Script(poolSpendScriptHash),
+        Script(poolPolicyId),
+        smartTokensSpendScriptHash,
       )
     } else {
       st_utils.get_inputs_from_smart_credential(
         self.inputs,
-        Script(config.requestSpendScriptHash),
-        Script(config.requestPolicyId),
-        config.smartTokensSpendScriptHash,
+        Script(requestSpendScriptHash),
+        Script(requestPolicyId),
+        smartTokensSpendScriptHash,
       )
     }
   let loanOutputs =
     st_utils.get_outputs_to_smart_credential(
       self.outputs,
-      Script(config.loanSpendScriptHash),
+      Script(loanSpendScriptHash),
       Script(policy_id),
-      config.smartTokensSpendScriptHash,
+      smartTokensSpendScriptHash,
     )
   //We exclude the burnt tokens (quantity < 0) as they are always allowed
   let mintedNFTs =
@@ -104,7 +124,7 @@ fn check_mint(
       if redeemer.isPoolOrigin {
         let poolWithdrawRedeemer =
           safe_list_at(self.redeemers, redeemer.originWithdrawRedeemerIndex)
-        expect poolWithdrawRedeemer.1st == Withdraw(Script(config.poolPolicyId))
+        expect poolWithdrawRedeemer.1st == Withdraw(Script(poolPolicyId))
         expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
         list.indexed_foldr(
           originInputs,
@@ -136,10 +156,7 @@ fn check_mint(
       } else {
         let requestWithdrawRedeemer =
           safe_list_at(self.redeemers, redeemer.originWithdrawRedeemerIndex)
-        expect
-          requestWithdrawRedeemer.1st == Withdraw(
-            Script(config.requestPolicyId),
-          )
+        expect requestWithdrawRedeemer.1st == Withdraw(Script(requestPolicyId))
         expect requestRedeemer: RequestWithdrawRedeemer =
           requestWithdrawRedeemer.2nd
         list.indexed_foldr(

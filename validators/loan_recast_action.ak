@@ -1,21 +1,20 @@
+use aiken/builtin
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use aiken/math.{pow}
 use aiken/math/rational
-use cardano/address.{Address, Credential, Inline, Script}
+use cardano/address.{Address, Credential, Script}
 use cardano/assets.{PolicyId, flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use fluidtokens/constants
 use fluidtokens/finance.{get_next_installment_amount}
-use fluidtokens/types/config.{ConfigDatum}
-use fluidtokens/types/general.{Asset}
-use fluidtokens/types/loan.{LoanDatum, LoanRecastActionWithdrawRedeemer} as l
-use fluidtokens/types/pool.{
-  CommonData, InterestOnRemainingPrincipal, PerpetualLoan,
+use fluidtokens/types/general.{
+  Asset, InterestOnRemainingPrincipal, PerpetualLoan,
 }
-use fluidtokens/types/repayment.{RepaymentDatum, RepaymentDatumWithToken}
+use fluidtokens/types/loan.{LoanDatum, LoanRecastActionWithdrawRedeemer} as l
+use fluidtokens/types/repayment.{RepaymentDatumWithToken}
 use fluidtokens/utils.{
   is_nft_in_output, is_output_to_spend_validator, safe_list_at,
 }
@@ -33,17 +32,29 @@ validator loan_recast_action(
     self: Transaction,
   ) {
     let config =
-      utils.get_config(
+      utils.get_config_as_data(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
+    let smartTokensSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
+    let loanSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 10))
+    let loanPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 2))
+    let borrowerBondPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 4))
+    let lenderBondPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 5))
+    let repaymentPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 7))
     let loanInputs =
       get_inputs_from_smart_credential(
         self.inputs,
-        Script(config.loanSpendScriptHash),
-        Script(config.loanPolicyId),
-        config.smartTokensSpendScriptHash,
+        Script(loanSpendScriptHash),
+        Script(loanPolicyId),
+        smartTokensSpendScriptHash,
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
@@ -66,11 +77,15 @@ validator loan_recast_action(
           inputAction.borrowerBondOutputIndex,
           inputAction.lenderBondRefInputIndex,
           index,
-          config,
           datum,
           inputAction.principalPaid,
-          config.loanPolicyId,
+          loanPolicyId,
           inputAction.loanId,
+          smartTokensSpendScriptHash,
+          lenderBondPolicyId,
+          borrowerBondPolicyId,
+          repaymentPolicyId,
+          loanSpendScriptHash,
         )
       },
     )
@@ -87,71 +102,73 @@ fn check_recast(
   borrowerBondOutputIndex: Int,
   lenderBondRefInputIndex: Int,
   loanInputIndex: Int,
-  config: ConfigDatum,
   datum: LoanDatum,
   principalPaid: Int,
   loanPolicyId: PolicyId,
   loanId: ByteArray,
+  smartTokensSpendScriptHash: ByteArray,
+  lenderBondPolicyId: PolicyId,
+  borrowerBondPolicyId: PolicyId,
+  repaymentPolicyId: ByteArray,
+  loanSpendScriptHash: ByteArray,
 ) {
   expect Finite(validTo) = self.validity_range.upper_bound.bound_type
   let borrowerBondOutput = safe_list_at(self.outputs, borrowerBondOutputIndex)
   let lenderBondRefInput =
     safe_list_at(self.reference_inputs, lenderBondRefInputIndex)
   let lenderBondAddress = lenderBondRefInput.output.address
-  expect Some(Inline(lenderBondStakeCredential)) =
-    lenderBondAddress.stake_credential
   let repaymentOutput =
     utils.safe_list_at(
       get_outputs_to_smart_credential(
         self.outputs,
         lenderBondAddress.payment_credential,
-        lenderBondStakeCredential,
-        config.smartTokensSpendScriptHash,
+        lenderBondAddress.payment_credential,
+        smartTokensSpendScriptHash,
       ),
       loanInputIndex,
     )
   let periodToLatestPaidInstallment =
-    datum.repaidInstallments * datum.commonData.installmentPeriod
+    datum.repaidInstallments * datum.installmentPeriod
   let timePassedSinceLastRepaidInstallment =
     validTo - (
       datum.lendDate + (
-        datum.commonData.initialGracePeriod + periodToLatestPaidInstallment
+        datum.initialGracePeriod + periodToLatestPaidInstallment
       ) * constants.hour_to_millis
     )
   let dueInstallments =
     timePassedSinceLastRepaidInstallment / (
-      datum.commonData.installmentPeriod * constants.hour_to_millis
+      datum.installmentPeriod * constants.hour_to_millis
     )
 
   let principalAfterRecasting =
-    when datum.commonData.repaymentMode is {
+    when datum.repaymentMode is {
       InterestOnRemainingPrincipal { .. } -> {
         //Formula is: remainingPrincipal = P*r^t - A*(r^t - 1)/(r - 1)
-        //where P = principal amount, r = interest rate per installment, t = latest paid installment and A = installment amount
+        //where P = principal amount, r = 1 + interest rate per installment, t = latest paid installment and A = installment amount
         expect Some(interestRateAsRational) =
-          rational.new(datum.commonData.interestRate, 10000)
+          rational.new(datum.interestRate, 10000)
         let a =
           get_next_installment_amount(
-            datum.commonData.repaymentMode,
+            datum.repaymentMode,
             rational.from_int(datum.principalAmount),
             interestRateAsRational,
             datum.totalInstallments,
             datum.repaidInstallments,
-            datum.commonData.installmentPeriod,
-            datum.commonData.initialGracePeriod,
+            datum.installmentPeriod,
+            datum.initialGracePeriod,
             False,
-            datum.commonData.penaltyFeeForLateRepayment,
+            datum.penaltyFeeForLateRepayment,
           )
 
         let interestPerInstallment =
-          datum.commonData.interestRate / datum.totalInstallments
+          datum.interestRate / datum.totalInstallments
 
-        let rToTheT = pow(interestPerInstallment, datum.repaidInstallments)
+        let r = 1 + interestPerInstallment
+
+        let rToTheT = pow(r, datum.repaidInstallments)
 
         let remainingPrincipalToPay =
-          datum.principalAmount * rToTheT - a * ( rToTheT - 1 ) / (
-            interestPerInstallment - 1
-          )
+          datum.principalAmount * rToTheT - a * ( rToTheT - 1 ) / ( r - 1 )
 
         remainingPrincipalToPay - principalPaid
       }
@@ -161,18 +178,14 @@ fn check_recast(
   and {
     principalPaid > 0,
     quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-    quantity_of(
-      lenderBondRefInput.output.value,
-      config.lenderBondPolicyId,
-      loanId,
-    ) == 1,
-    is_nft_in_output(config.borrowerBondPolicyId, loanId, borrowerBondOutput),
+    quantity_of(lenderBondRefInput.output.value, lenderBondPolicyId, loanId) == 1,
+    is_nft_in_output(borrowerBondPolicyId, loanId, borrowerBondOutput),
     //A recast is permitted only if the loan has installments
-    datum.commonData.installmentPeriod > 0,
+    datum.installmentPeriod > 0,
     //A recast is permitted only when all due installments + 1 are paid, otherwise the borrower avoids paying what is due
     datum.repaidInstallments >= dueInstallments + 1,
     //A recast must be within the number of recasts allowed
-    when datum.commonData.repaymentMode is {
+    when datum.repaymentMode is {
       InterestOnRemainingPrincipal { max_possible_recasts } ->
         datum.doneRecasts < max_possible_recasts
       PerpetualLoan { max_possible_recasts, .. } ->
@@ -182,16 +195,13 @@ fn check_recast(
     validate_repayment_output(
       loanInputOutputReference: input.output_reference,
       repaymentOutput: repaymentOutput,
-      lenderBondAsset: Asset {
-        policyId: config.lenderBondPolicyId,
-        assetName: loanId,
-      },
-      repaymentAsset: datum.commonData.principalAsset,
+      lenderBondAsset: Asset { policyId: lenderBondPolicyId, assetName: loanId },
+      repaymentAsset: datum.principalAsset,
       repaymentAmount: principalPaid,
       action: constants.repayment_action_recast,
       extra_data: loanId,
-      repaymentReceipts: datum.commonData.repaymentReceipts,
-      repaymentPolicyId: config.repaymentPolicyId,
+      repaymentReceipts: datum.repaymentReceipts,
+      repaymentPolicyId: repaymentPolicyId,
     ),
     or {
       and {
@@ -207,49 +217,74 @@ fn check_recast(
             safe_list_at(
               get_outputs_to_smart_credential(
                 self.outputs,
-                Script(config.loanSpendScriptHash),
-                Script(config.loanPolicyId),
-                config.smartTokensSpendScriptHash,
+                Script(loanSpendScriptHash),
+                Script(loanPolicyId),
+                smartTokensSpendScriptHash,
               ),
               loanInputIndex,
             )
           expect InlineDatum(outputDatum) = loanOutput.datum
-          expect parsedDatum: LoanDatum = outputDatum
           let newLoanExpectedDatum =
-            when datum.commonData.repaymentMode is {
+            when datum.repaymentMode is {
               InterestOnRemainingPrincipal { .. } -> {
                 let newTotalInstallments =
                   datum.totalInstallments - datum.repaidInstallments
                 let newRepaidInstallments = 0
 
-                LoanDatum {
-                  commonData: datum.commonData,
-                  totalInstallments: newTotalInstallments,
-                  originId: datum.originId,
-                  collateral: datum.collateral,
-                  principalAmount: principalAfterRecasting,
-                  lendDate: datum.lendDate,
-                  repaidInstallments: newRepaidInstallments,
-                  doneRecasts: datum.doneRecasts + 1,
-                }
+                //Loan datum except the first 5 fields
+                let datumUnchangedPart =
+                  datum
+                    |> builtin.unconstr_fields
+                    |> builtin.tail_list
+                    |> builtin.tail_list
+                    |> builtin.tail_list
+                    |> builtin.tail_list
+                    |> builtin.tail_list
+
+                //Adding the new first 5 fields
+                builtin.cons_list(
+                  builtin.i_data(newRepaidInstallments),
+                  builtin.cons_list(
+                    builtin.i_data(datum.doneRecasts + 1),
+                    builtin.cons_list(
+                      builtin.i_data(principalAfterRecasting),
+                      builtin.cons_list(
+                        builtin.i_data(
+                          datum.interestRate / newTotalInstallments,
+                        ),
+                        builtin.cons_list(
+                          builtin.i_data(newTotalInstallments),
+                          datumUnchangedPart,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
               }
-              _ ->
-                LoanDatum {
-                  commonData: datum.commonData,
-                  totalInstallments: datum.totalInstallments,
-                  originId: datum.originId,
-                  collateral: datum.collateral,
-                  principalAmount: principalAfterRecasting,
-                  lendDate: datum.lendDate,
-                  repaidInstallments: datum.repaidInstallments,
-                  doneRecasts: datum.doneRecasts + 1,
-                }
+
+              _ -> {
+                //Loan datum except the first 2 fields
+                let datumUnchangedPart =
+                  datum
+                    |> builtin.unconstr_fields
+                    |> builtin.tail_list
+                    |> builtin.tail_list
+
+                //Adding the new first 2 fields
+                builtin.cons_list(
+                  builtin.i_data(datum.repaidInstallments),
+                  builtin.cons_list(
+                    builtin.i_data(datum.doneRecasts + 1),
+                    builtin.cons_list(
+                      builtin.i_data(principalAfterRecasting),
+                      datumUnchangedPart,
+                    ),
+                  ),
+                )
+              }
             }
           let correctDestination =
-            if is_output_to_spend_validator(
-              loanOutput,
-              config.loanSpendScriptHash,
-            ) {
+            if is_output_to_spend_validator(loanOutput, loanSpendScriptHash) {
               loanOutput.address.stake_credential == input.output.address.stake_credential
             } else {
               //outputs have been already filtered at the beginning
@@ -257,7 +292,7 @@ fn check_recast(
             }
           and {
             correctDestination,
-            parsedDatum == newLoanExpectedDatum,
+            builtin.un_list_data(outputDatum) == newLoanExpectedDatum,
             //loanNFT is already included in the value
             input.output.value == loanOutput.value,
           }
@@ -279,7 +314,6 @@ fn validate_repayment_output(
   repaymentPolicyId: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = repaymentOutput.datum
-  expect parsedDatum: RepaymentDatum = outputDatum
   let newDatum =
     RepaymentDatumWithToken {
       inputOutputReference: loanInputOutputReference,
@@ -300,7 +334,8 @@ fn validate_repayment_output(
       utils.hash_output_ref(loanInputOutputReference),
     ) == 1
 
-  let isDatumCorrect = parsedDatum == newDatum
+  let isDatumCorrect =
+    builtin.un_list_data(outputDatum) == builtin.un_list_data(newDatum)
   let receiptAssetCount =
     if repaymentReceipts {
       1

@@ -6,40 +6,8 @@
 //Loan refinancing is done spending the new loan and the old loan in the same tx.
 use cardano/address.{Address}
 use cardano/transaction.{OutputReference}
-use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
-
-pub type RepaymentMode {
-  //Amortization. Express number of possible recasts: 0 means no recasting, if you want "unlimited" just put a very big int
-  InterestOnRemainingPrincipal { max_possible_recasts: Int }
-  //Installment amount = Principal+Interest/Installments
-  PrincipalAndInterestOnInstallments
-  //Perpetual loans don't have a deadline, the borrower can repay whenever he wants
-  //The APY increases over time linearly and if installments are > 1 and they are not paid in time
-  //the borrower can be liquidated
-  //At each installment the borrower has to pay only the interest since last installment
-  //When the borrower wants to close the loan, he has to pay the principal + interest since last installment
-  //Liquidation for too low ltv is always possible if enabled
-  //initialGracePeriod allows not to repay for a certain period after the loan starts but the interest rate keeps increasing!
-  //So the first installment requires you to pay that too
-  //Recasting is permitted when enabled
-  //APY = mx + c = apyIncreaseLinearCoefficient/1000000 * x + interestRate/10000 (the variable called as such)
-  //Hourly interest rate = c / 8760
-  //Normal installment amount = hourly interest rate * installmentPeriod
-  PerpetualLoan { apyIncreaseLinearCoefficient: Int, max_possible_recasts: Int }
-}
-
-pub type LiquidationMode {
-  NoLiquidationFullCollateralClaim
-  NoLiquidationDutchAuctionClaim
-  Liquidation {
-    lTV: Int,
-    lTVDivider: Int,
-    //If true, 
-    //If negative, borrower loses all the collateral when liquidation happens
-    //If >= 0, when claiming the collateral the lender must pay to the borrower the difference
-    //If > 0, this represents the per mille of the debt that must be given to the lender as penalty for being liquidated
-    partialLiquidationPenaltyPerMille: Int,
-  }
+use fluidtokens/types/general.{
+  Asset, AuthorizationMethod, CollateralAsset, LiquidationMode, RepaymentMode,
 }
 
 pub type CommonData {
@@ -53,6 +21,8 @@ pub type CommonData {
   //How much time between 2 consecutive installments, expressed in hours
   //In case of Perpetual loans if it's > 0 it means we have infinite installments otherwise == 0 means no installments
   installmentPeriod: Int,
+  //Total number of installments, ignored in Perpetual loans
+  totalInstallments: Int,
   //Period after starting the loan and before starting repaying (borrower can't be liquidated in this period)
   //Expressed in hours
   initialGracePeriod: Int,
@@ -68,9 +38,12 @@ pub type CommonData {
 }
 
 pub type PoolDatum {
+  //Permissioned pools use this field to specify an extra Withdraw validator to force the conditions of the Borrow action.
+  //Put "NONE" if it's a permissionless pool
+  permissionedConditionScriptHash: ByteArray,
+  //Extend the pool datum for cases like permissioned pools. It will be parsed properly depending on specific use case.
+  extraData: Data,
   commonData: CommonData,
-  //Total number of installments, ignored in Perpetual loans
-  totalInstallments: Int,
   lenderAuth: AuthorizationMethod,
   lenderAddress: Address,
   //This pool can cover multiple collections/token, but only one of them can be chosen for each loan (ie. no mixed bundle loans).
@@ -87,11 +60,6 @@ pub type PoolDatum {
   minCollateralDivider: List<Int>,
   //True if borrowable amount of the collateralOptions must be updated through oracles
   dynamicCollateralPrice: Bool,
-  //Permissioned pools use this field to specify an extra Withdraw validator to force the conditions of the Borrow action.
-  //Put "NONE" if it's a permissionless pool
-  permissionedConditionScriptHash: ByteArray,
-  //Extend the pool datum for cases like permissioned pools. It will be parsed properly depending on specific use case.
-  extraData: Data,
 }
 
 pub type PoolMintRedeemer {

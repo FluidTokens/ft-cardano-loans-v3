@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
@@ -18,10 +19,11 @@ use fluidtokens/finance.{
   get_min_principal_for_collateral_without_oracles,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
-use fluidtokens/types/config.{ConfigDatum}
-use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
+use fluidtokens/types/general.{
+  Asset, AuthorizationMethod, CollateralAsset, Liquidation,
+}
 use fluidtokens/types/loan.{LoanDatum}
-use fluidtokens/types/pool.{CommonData, Liquidation}
+use fluidtokens/types/pool.{CommonData}
 use fluidtokens/types/request.{
   Cancel, CancelAfterExpiration, Lend, RequestDatum, RequestMintRedeemer,
   RequestWithdrawRedeemer,
@@ -46,17 +48,29 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
   ) {
     expect Script(requestPolicyId) = credential
     let config =
-      utils.get_config(
+      utils.get_config_as_data(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
+    let smartTokensSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
+    let loanSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 10))
+    let requestSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 9))
+    let loanPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 2))
+    let borrowerBondPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 4))
+    let lenderBondPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 5))
     let requestInputs =
       get_inputs_from_smart_credential(
         self.inputs,
-        Script(config.requestSpendScriptHash),
+        Script(requestSpendScriptHash),
         credential,
-        config.smartTokensSpendScriptHash,
+        smartTokensSpendScriptHash,
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
@@ -102,7 +116,6 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
               self,
               input,
               datum,
-              config,
               index,
               principalOracleRefInputIndex,
               collateralOracleRefInputIndex,
@@ -110,6 +123,11 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
               requestId,
               requestPolicyId,
               permissionedConditionWithdrawIndex,
+              loanSpendScriptHash,
+              loanPolicyId,
+              smartTokensSpendScriptHash,
+              borrowerBondPolicyId,
+              lenderBondPolicyId,
             )
         }
       },
@@ -127,18 +145,22 @@ fn check_mint(
   policy_id: PolicyId,
 ) -> Bool {
   let config =
-    utils.get_config(
+    utils.get_config_as_data(
       safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
       configNFTPolicyId,
       configNFTAssetName,
     )
+  let smartTokensSpendScriptHash =
+    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
+  let requestSpendScriptHash =
+    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 9))
   let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
   let requestOutputs =
     st_utils.get_outputs_to_smart_credential(
       self.outputs,
-      Script(config.requestSpendScriptHash),
+      Script(requestSpendScriptHash),
       Script(policy_id),
-      config.smartTokensSpendScriptHash,
+      smartTokensSpendScriptHash,
     )
   let isInputRefSpent =
     option.is_some(find_input(self.inputs, redeemer.inputRef))
@@ -246,7 +268,6 @@ fn check_lend(
   self: Transaction,
   input: Input,
   datum: RequestDatum,
-  config: ConfigDatum,
   index: Int,
   principalOracleRefInputIndex: Int,
   collateralOracleRefInputIndex: Int,
@@ -254,6 +275,11 @@ fn check_lend(
   requestId: ByteArray,
   requestPolicyId: ByteArray,
   permissionedConditionWithdrawIndex: Int,
+  loanSpendScriptHash: ByteArray,
+  loanPolicyId: ByteArray,
+  smartTokensSpendScriptHash: ByteArray,
+  borrowerBondPolicyId: ByteArray,
+  lenderBondPolicyId: ByteArray,
 ) {
   expect (Finite(validFrom), Finite(validTo)) =
     (
@@ -267,9 +293,9 @@ fn check_lend(
     safe_list_at(
       get_outputs_to_smart_credential(
         self.outputs,
-        Script(config.loanSpendScriptHash),
-        Script(config.loanPolicyId),
-        config.smartTokensSpendScriptHash,
+        Script(loanSpendScriptHash),
+        Script(loanPolicyId),
+        smartTokensSpendScriptHash,
       ),
       index,
     )
@@ -319,8 +345,8 @@ fn check_lend(
         ) && givenPrincipalAmount <= datum.maxPrincipal
       validate_output_to_loan(
         loanOutput,
-        config.loanPolicyId,
-        config.loanSpendScriptHash,
+        loanPolicyId,
+        loanSpendScriptHash,
         datum,
         input.output.value,
         givenPrincipalAmount,
@@ -340,8 +366,8 @@ fn check_lend(
 
       validate_output_to_loan(
         loanOutput,
-        config.loanPolicyId,
-        config.loanSpendScriptHash,
+        loanPolicyId,
+        loanSpendScriptHash,
         datum,
         input.output.value,
         givenPrincipalAmount,
@@ -371,8 +397,8 @@ fn check_lend(
       input.output_reference,
       self.mint,
       outputWithBorrowerToken,
-      config.borrowerBondPolicyId,
-      config.lenderBondPolicyId,
+      borrowerBondPolicyId,
+      lenderBondPolicyId,
       inputUtxoId,
       datum.borrowerAddress,
       givenPrincipalAmount,
@@ -475,11 +501,19 @@ fn validate_output_to_loan(
 
   let containsLoanNFT = quantity_of(output.value, loanPolicyId, loanId) == 1
   expect InlineDatum(outputDatum) = output.datum
-  expect parsedDatum: LoanDatum = outputDatum
   let newDatum =
     LoanDatum {
-      commonData: requestDatum.commonData,
-      totalInstallments: requestDatum.totalInstallments,
+      principalAsset: requestDatum.commonData.principalAsset,
+      principalOracleAsset: requestDatum.commonData.principalOracleAsset,
+      interestRate: requestDatum.commonData.interestRate,
+      installmentPeriod: requestDatum.commonData.installmentPeriod,
+      initialGracePeriod: requestDatum.commonData.initialGracePeriod,
+      liquidationMode: requestDatum.commonData.liquidationMode,
+      repaymentMode: requestDatum.commonData.repaymentMode,
+      repaymentTimeWindow: requestDatum.commonData.repaymentTimeWindow,
+      penaltyFeeForLateRepayment: requestDatum.commonData.penaltyFeeForLateRepayment,
+      repaymentReceipts: requestDatum.commonData.repaymentReceipts,
+      totalInstallments: requestDatum.commonData.totalInstallments,
       originId: bytearray.concat("REQUEST", requestId),
       collateral,
       principalAmount: givenPrincipalAmount,
@@ -489,12 +523,13 @@ fn validate_output_to_loan(
     }
 
   let isLiquidationCorrectlySet =
-    when newDatum.commonData.liquidationMode is {
+    when newDatum.liquidationMode is {
       Liquidation { .. } ->
         newDatum.collateral.oracleTokenAsset != constants.no_oracle_token_asset
       _ -> True
     }
-  let isDatumCorrect = parsedDatum == newDatum && isLiquidationCorrectlySet
+  let isDatumCorrect =
+    builtin.un_list_data(outputDatum) == builtin.un_list_data(newDatum) && isLiquidationCorrectlySet
 
   let correctDestination =
     if is_output_to_spend_validator(output, loanSpendScriptHash) {

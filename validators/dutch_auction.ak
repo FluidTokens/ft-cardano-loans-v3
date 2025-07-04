@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use cardano/address.{Address, Credential, Script}
@@ -25,17 +26,21 @@ validator dutch_auction(
     self: Transaction,
   ) {
     let config =
-      utils.get_config(
+      utils.get_config_as_data(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
+    let smartTokensSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
+    let dutchAuctionSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 16))
     let scInputs =
       get_inputs_from_smart_credential(
         self.inputs,
-        Script(config.dutchAuctionSpendScriptHash),
+        Script(dutchAuctionSpendScriptHash),
         credential,
-        config.smartTokensSpendScriptHash,
+        smartTokensSpendScriptHash,
       )
     //Number of actions must be equal to the sc inputs, otherwise some inputs won't be checked
     expect length(scInputs) == length(redeemer.actionsForEachInput)
@@ -99,7 +104,7 @@ validator dutch_auction(
                     datum.debtAmount,
                     datum.ownerAddress,
                     ownerOutput,
-                    config.smartTokensSpendScriptHash,
+                    smartTokensSpendScriptHash,
                   ),
                   correctAmountSentToUser(
                     input.output_reference,
@@ -107,7 +112,7 @@ validator dutch_auction(
                     currentPrice - datum.debtAmount,
                     borrowerAddress,
                     borrowerOutput,
-                    config.smartTokensSpendScriptHash,
+                    smartTokensSpendScriptHash,
                   ),
                 }
               } else {
@@ -117,7 +122,7 @@ validator dutch_auction(
                   currentPrice,
                   datum.ownerAddress,
                   ownerOutput,
-                  config.smartTokensSpendScriptHash,
+                  smartTokensSpendScriptHash,
                 )
               },
             }

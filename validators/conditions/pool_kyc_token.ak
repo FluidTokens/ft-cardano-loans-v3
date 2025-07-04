@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/cbor.{serialise}
 use aiken/collection/list
 use aiken/crypto.{
@@ -10,7 +11,7 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, ValidityRange,
   Withdraw,
 }
-use fluidtokens/types/pool.{Borrow, PoolDatum, PoolWithdrawRedeemer}
+use fluidtokens/types/pool.{Borrow, PoolWithdrawRedeemer}
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 
@@ -76,9 +77,15 @@ validator kyc_token(
         poolInputsAndActions,
         fn(inputAndAction) {
           expect InlineDatum(inputDatum) = inputAndAction.1st.output.datum
-          expect datum: PoolDatum = inputDatum
           when inputAndAction.2nd is {
-            Borrow { .. } -> datum.permissionedConditionScriptHash == scriptHash
+            Borrow { .. } ->
+              //First field of datum is permissionedConditionScriptHash
+              (
+                inputDatum
+                  |> builtin.un_list_data
+                  |> builtin.head_list
+                  |> builtin.un_b_data
+              ) == scriptHash
             _ -> False
           }
         },
@@ -94,7 +101,12 @@ validator kyc_token(
         expect result
 
         expect InlineDatum(inputDatum) = inputAndAction.1st.output.datum
-        expect datum: PoolDatum = inputDatum
+        //Second field of datum is extraData
+        let extraData =
+          inputDatum
+            |> builtin.un_list_data
+            |> builtin.tail_list
+            |> builtin.head_list
         let compliance = safe_list_at(redeemer.complianceForEachInput, index)
 
         expect
@@ -111,7 +123,7 @@ validator kyc_token(
           upper_bound: IntervalBound { bound_type: Finite(token_to), .. },
         } = compliance.token.validity_range
 
-        expect PermissionedDatum { whitelisted_oracles } = datum.extraData
+        expect PermissionedDatum { whitelisted_oracles } = extraData
         let oracle_key_hash = blake2b_224(compliance.token.oracle_key)
         //The oracle public key is one of those listed in the approved oracles
         expect Some(..) =

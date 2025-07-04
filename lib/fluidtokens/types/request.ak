@@ -4,9 +4,11 @@ use fluidtokens/types/general.{AuthorizationMethod, CollateralAsset}
 use fluidtokens/types/pool.{CommonData}
 
 pub type RequestDatum {
+  //Same considerations of PoolDatum
+  permissionedConditionScriptHash: ByteArray,
+  //Same considerations of PoolDatum
+  extraData: Data,
   commonData: CommonData,
-  //Total number of installments, ignored in Perpetual loans
-  totalInstallments: Int,
   borrowerAuth: AuthorizationMethod,
   borrowerAddress: Address,
   //Same considerations of PoolDatum
@@ -18,10 +20,6 @@ pub type RequestDatum {
   maxPrincipal: Int,
   //Same considerations of PoolDatum
   dynamicCollateralPrice: Bool,
-  //Same considerations of PoolDatum
-  permissionedConditionScriptHash: ByteArray,
-  //Same considerations of PoolDatum
-  extraData: Data,
   //POSIX millis after which the request is considered expired and anybody can cancel it
   requestExpiration: Int,
   //In lovelace, how much you earn removing this expired request from the smart contract

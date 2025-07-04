@@ -1,8 +1,9 @@
+use aiken/builtin
 use aiken/collection/list
-use cardano/address.{Script}
+use cardano/address.{Credential, Script}
 use cardano/transaction.{OutputReference, Transaction}
 use fluidtokens/authorizer
-use fluidtokens/utils.{get_config, safe_list_at}
+use fluidtokens/utils.{get_config_as_data, safe_list_at}
 
 validator general_spend(
   withdrawScriptHash: ByteArray,
@@ -16,12 +17,16 @@ validator general_spend(
     self: Transaction,
   ) {
     if datumOpt == None {
-      authorizer.authorize_via_credential(
-        get_config(
+      let config =
+        get_config_as_data(
           safe_list_at(self.reference_inputs, 0),
           configNFTPolicyId,
           configNFTAssetName,
-        ).adminCredential,
+        )
+      expect adminCredential: Credential =
+        utils.safe_list_at(builtin.un_list_data(config), 1)
+      authorizer.authorize_via_credential(
+        adminCredential,
         self.withdrawals,
         self.extra_signatories,
       )

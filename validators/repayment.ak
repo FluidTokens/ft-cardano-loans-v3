@@ -1,3 +1,4 @@
+use aiken/builtin
 //All money to parties are sent here so they can withdraw them along with the repayment NFT.
 //Without the repayment NFT this can be used for depositing other stuff too.
 use aiken/collection/dict
@@ -6,12 +7,11 @@ use cardano/address.{Credential, Script}
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/authorizer.{authorize_action, create_auth}
-use fluidtokens/types/general.{Asset}
+use fluidtokens/types/general.{Asset, Liquidation}
 use fluidtokens/types/loan.{
   ChangeCollateral, Claim, ClaimData, LoanClaimActionWithdrawRedeemer,
   LoanWithdrawRedeemer, Recast, Repay,
 }
-use fluidtokens/types/pool.{Liquidation}
 use fluidtokens/types/repayment.{
   RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
   RepaymentMintRedeemer, RepaymentWithdrawRedeemer, WithdrawWithHash,
@@ -29,17 +29,25 @@ validator repayment(
   //Each output has a unique NFT
   mint(redeemer: RepaymentMintRedeemer, policy_id: PolicyId, self: Transaction) {
     let config =
-      utils.get_config(
+      utils.get_config_as_data(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
+    let smartTokensSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
+    let loanSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 10))
+    let loanPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 2))
+    let loanClaimActionScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 11))
     let loanInputs =
       st_utils.get_inputs_from_smart_credential(
         self.inputs,
-        Script(config.loanSpendScriptHash),
-        Script(config.loanPolicyId),
-        config.smartTokensSpendScriptHash,
+        Script(loanSpendScriptHash),
+        Script(loanPolicyId),
+        smartTokensSpendScriptHash,
       )
 
     //We exclude the burnt tokens (quantity < 0) as they are always allowed
@@ -56,7 +64,7 @@ validator repayment(
       let expectedMintedNFTs = {
         let loanWithdrawRedeemer =
           safe_list_at(self.redeemers, redeemer.loanWithdrawRedeemerIndex)
-        expect loanWithdrawRedeemer.1st == Withdraw(Script(config.loanPolicyId))
+        expect loanWithdrawRedeemer.1st == Withdraw(Script(loanPolicyId))
         expect loanRedeemer: LoanWithdrawRedeemer = loanWithdrawRedeemer.2nd
 
         when loanRedeemer.actionType is {
@@ -68,7 +76,7 @@ validator repayment(
               )
             expect
               loanClaimActionWithdrawRedeemer.1st == Withdraw(
-                Script(config.loanClaimActionScriptHash),
+                Script(loanClaimActionScriptHash),
               )
             expect loanClaimActionRedeemer: LoanClaimActionWithdrawRedeemer =
               loanClaimActionWithdrawRedeemer.2nd
@@ -128,17 +136,21 @@ validator repayment(
   ) {
     expect Script(policyId) = credential
     let config =
-      utils.get_config(
+      utils.get_config_as_data(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
+    let smartTokensSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
+    let repaymentSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 15))
     let repaymentInputs =
       get_inputs_from_smart_credential(
         self.inputs,
-        Script(config.repaymentSpendScriptHash),
+        Script(repaymentSpendScriptHash),
         credential,
-        config.smartTokensSpendScriptHash,
+        smartTokensSpendScriptHash,
       )
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
     list.indexed_foldr(

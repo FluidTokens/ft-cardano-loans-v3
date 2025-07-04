@@ -10,7 +10,6 @@ use cardano/assets.{AssetName, PolicyId, Value, quantity_of, reduce, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
-use fluidtokens/types/config.{ConfigDatum}
 use fluidtokens/types/general.{Asset}
 use fluidtokens/types/oracle.{
   CharlieTokenSpecs, GenericData, OrcfaxTokenSpecs, PriceData,
@@ -34,7 +33,7 @@ pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
   outputRef |> builtin.serialise_data |> crypto.blake2b_224
 }
 
-pub fn get_config(
+pub fn get_config_as_data(
   configRefInput: Input,
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
@@ -46,8 +45,7 @@ pub fn get_config(
       configNFTAssetName,
     ) > 0
   expect InlineDatum(outputDatum) = configRefInput.output.datum
-  expect parsedDatum: ConfigDatum = outputDatum
-  parsedDatum
+  outputDatum
 }
 
 pub fn value_without_policy_id_as_list(value: Value, policyIdToRemove: PolicyId) {

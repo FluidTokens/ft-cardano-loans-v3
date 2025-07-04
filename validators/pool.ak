@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
@@ -13,11 +14,12 @@ use fluidtokens/finance.{
   get_needed_collateral_with_oracles, get_needed_collateral_without_oracles,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
-use fluidtokens/types/config.{ConfigDatum}
-use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
+use fluidtokens/types/general.{
+  Asset, AuthorizationMethod, CollateralAsset, Liquidation,
+}
 use fluidtokens/types/loan.{LoanDatum}
 use fluidtokens/types/pool.{
-  Borrow, Cancel, Liquidation, PoolDatum, PoolMintRedeemer, PoolWithdrawRedeemer,
+  Borrow, Cancel, PoolDatum, PoolMintRedeemer, PoolWithdrawRedeemer,
 } as p
 use fluidtokens/utils.{
   asset_names_number_of_policy_id, is_output_to_spend_validator,
@@ -39,17 +41,29 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
   ) {
     expect Script(poolPolicyId) = credential
     let config =
-      utils.get_config(
+      utils.get_config_as_data(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
+    let smartTokensSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
+    let loanSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 10))
+    let poolSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 8))
+    let loanPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 2))
+    let borrowerBondPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 4))
+    let lenderBondPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 5))
     let poolInputs =
       get_inputs_from_smart_credential(
         self.inputs,
-        Script(config.poolSpendScriptHash),
+        Script(poolSpendScriptHash),
         credential,
-        config.smartTokensSpendScriptHash,
+        smartTokensSpendScriptHash,
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
@@ -88,7 +102,6 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               self,
               input,
               datum,
-              config,
               index,
               outputWithLenderTokenIndex,
               chosenCollateralIndex,
@@ -99,6 +112,11 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               poolPolicyId,
               poolId,
               permissionedConditionWithdrawIndex,
+              loanSpendScriptHash,
+              loanPolicyId,
+              smartTokensSpendScriptHash,
+              borrowerBondPolicyId,
+              lenderBondPolicyId,
             )
         }
       },
@@ -116,18 +134,22 @@ fn check_mint(
   policy_id: PolicyId,
 ) -> Bool {
   let config =
-    utils.get_config(
+    utils.get_config_as_data(
       safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
       configNFTPolicyId,
       configNFTAssetName,
     )
+  let smartTokensSpendScriptHash =
+    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
+  let poolSpendScriptHash =
+    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 8))
   let inputRefHash = utils.hash_output_ref(redeemer.inputRef)
   let poolOutputs =
     st_utils.get_outputs_to_smart_credential(
       self.outputs,
-      Script(config.poolSpendScriptHash),
+      Script(poolSpendScriptHash),
       Script(policy_id),
-      config.smartTokensSpendScriptHash,
+      smartTokensSpendScriptHash,
     )
   let isInputRefSpent =
     option.is_some(find_input(self.inputs, redeemer.inputRef))
@@ -196,7 +218,6 @@ fn check_borrow(
   self: Transaction,
   input: Input,
   datum: PoolDatum,
-  config: ConfigDatum,
   index: Int,
   outputWithLenderTokenIndex: Int,
   chosenCollateralIndex: Int,
@@ -207,6 +228,11 @@ fn check_borrow(
   poolPolicyId: ByteArray,
   poolId: ByteArray,
   permissionedConditionWithdrawIndex: Int,
+  loanSpendScriptHash: ByteArray,
+  loanPolicyId: ByteArray,
+  smartTokensSpendScriptHash: ByteArray,
+  borrowerBondPolicyId: ByteArray,
+  lenderBondPolicyId: ByteArray,
 ) {
   expect (Finite(validFrom), Finite(validTo)) =
     (
@@ -218,9 +244,9 @@ fn check_borrow(
     safe_list_at(
       get_outputs_to_smart_credential(
         self.outputs,
-        Script(config.loanSpendScriptHash),
-        Script(config.loanPolicyId),
-        config.smartTokensSpendScriptHash,
+        Script(loanSpendScriptHash),
+        Script(loanPolicyId),
+        smartTokensSpendScriptHash,
       ),
       index,
     )
@@ -273,8 +299,8 @@ fn check_borrow(
         )
       validate_output_to_loan(
         loanOutput,
-        config.loanPolicyId,
-        config.loanSpendScriptHash,
+        loanPolicyId,
+        loanSpendScriptHash,
         datum,
         wantedPrincipalAmount,
         chosenCollateral,
@@ -292,8 +318,8 @@ fn check_borrow(
     } else {
       validate_output_to_loan(
         loanOutput,
-        config.loanPolicyId,
-        config.loanSpendScriptHash,
+        loanPolicyId,
+        loanSpendScriptHash,
         datum,
         wantedPrincipalAmount,
         chosenCollateral,
@@ -324,8 +350,8 @@ fn check_borrow(
     bonds_sent_to_both_parties(
       self.mint,
       outputWithLenderToken,
-      config.borrowerBondPolicyId,
-      config.lenderBondPolicyId,
+      borrowerBondPolicyId,
+      lenderBondPolicyId,
       inputUtxoId,
       datum.lenderAddress,
     ),
@@ -399,11 +425,19 @@ fn validate_output_to_loan(
 
   let containsLoanNFT = quantity_of(output.value, loanPolicyId, loanId) == 1
   expect InlineDatum(outputDatum) = output.datum
-  expect parsedDatum: LoanDatum = outputDatum
   let newDatum =
     LoanDatum {
-      commonData: poolDatum.commonData,
-      totalInstallments: poolDatum.totalInstallments,
+      principalAsset: poolDatum.commonData.principalAsset,
+      principalOracleAsset: poolDatum.commonData.principalOracleAsset,
+      interestRate: poolDatum.commonData.interestRate,
+      installmentPeriod: poolDatum.commonData.installmentPeriod,
+      initialGracePeriod: poolDatum.commonData.initialGracePeriod,
+      liquidationMode: poolDatum.commonData.liquidationMode,
+      repaymentMode: poolDatum.commonData.repaymentMode,
+      repaymentTimeWindow: poolDatum.commonData.repaymentTimeWindow,
+      penaltyFeeForLateRepayment: poolDatum.commonData.penaltyFeeForLateRepayment,
+      repaymentReceipts: poolDatum.commonData.repaymentReceipts,
+      totalInstallments: poolDatum.commonData.totalInstallments,
       originId: bytearray.concat("POOL", poolId),
       collateral: chosenCollateral,
       principalAmount: wantedPrincipalAmount,
@@ -413,12 +447,13 @@ fn validate_output_to_loan(
     }
 
   let isLiquidationCorrectlySet =
-    when newDatum.commonData.liquidationMode is {
+    when newDatum.liquidationMode is {
       Liquidation { .. } ->
         newDatum.collateral.oracleTokenAsset != constants.no_oracle_token_asset
       _ -> True
     }
-  let isDatumCorrect = parsedDatum == newDatum && isLiquidationCorrectlySet
+  let isDatumCorrect =
+    builtin.un_list_data(outputDatum) == builtin.un_list_data(newDatum) && isLiquidationCorrectlySet
 
   let correctDestination =
     if is_output_to_spend_validator(output, loanSpendScriptHash) {
@@ -458,7 +493,6 @@ fn validate_eventual_output_to_pool(
   poolInputAssetsLength: Int,
 ) {
   expect InlineDatum(outputDatum) = output.datum
-  expect parsedDatum: PoolDatum = outputDatum
 
   let containsCorrectAmount =
     quantity_of(
@@ -469,7 +503,8 @@ fn validate_eventual_output_to_pool(
 
   let containsPoolNFT = quantity_of(output.value, poolPolicyId, poolId) == 1
 
-  let isDatumCorrect = parsedDatum == datum
+  let isDatumCorrect =
+    builtin.un_list_data(outputDatum) == builtin.un_list_data(datum)
 
   let dosProtection = length(flatten(output.value)) == poolInputAssetsLength
 

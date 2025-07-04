@@ -2,14 +2,13 @@ use aiken/math.{pow}
 use aiken/math/rational.{Rational}
 use cardano/assets.{Value, quantity_of}
 use fluidtokens/constants
-use fluidtokens/types/general.{CollateralAsset}
+use fluidtokens/types/general.{
+  CollateralAsset, InterestOnRemainingPrincipal, PerpetualLoan,
+  PrincipalAndInterestOnInstallments, RepaymentMode,
+}
 use fluidtokens/types/oracle.{
   Aggregated, Dedicated, OraclePriceFeed, Pooled, PriceDataCharlie,
   PriceDataOrcfax,
-}
-use fluidtokens/types/pool.{
-  InterestOnRemainingPrincipal, PerpetualLoan,
-  PrincipalAndInterestOnInstallments, RepaymentMode,
 }
 use fluidtokens/utils.{quantity_of_policy_id}
 

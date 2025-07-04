@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
@@ -12,15 +13,14 @@ use fluidtokens/finance.{
   is_repayment_late,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
-use fluidtokens/types/config.{ConfigDatum}
 use fluidtokens/types/dutch_auction.{DutchAuctionDatum}
-use fluidtokens/types/general.{Asset, AuthorizationMethod, CollateralAsset}
-use fluidtokens/types/loan.{LoanClaimActionWithdrawRedeemer, LoanDatum} as l
-use fluidtokens/types/pool.{
-  CommonData, Liquidation, LiquidationMode, NoLiquidationDutchAuctionClaim,
-  NoLiquidationFullCollateralClaim, PerpetualLoan,
+use fluidtokens/types/general.{
+  Asset, AuthorizationMethod, CollateralAsset, Liquidation, LiquidationMode,
+  NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
+  PerpetualLoan,
 }
-use fluidtokens/types/repayment.{RepaymentDatum, RepaymentDatumWithToken}
+use fluidtokens/types/loan.{LoanClaimActionWithdrawRedeemer, LoanDatum} as l
+use fluidtokens/types/repayment.{RepaymentDatumWithToken}
 use fluidtokens/utils.{is_nft_in_output, quantity_of_policy_id, safe_list_at}
 use smart_tokens/utils.{
   get_inputs_from_smart_credential, get_outputs_to_smart_credential,
@@ -37,17 +37,41 @@ validator loan_claim_action(
     self: Transaction,
   ) {
     let config =
-      utils.get_config(
+      utils.get_config_as_data(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
+    let smartTokensSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
+    let loanSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 10))
+    let loanPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 2))
+    let borrowerBondPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 4))
+    let lenderBondPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 5))
+    let dutchAuctionSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 16))
+    let dutchAuctionWithdrawScriptHash =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 17))
+    let dutchAuctionStartingIncreasePerMille =
+      builtin.un_i_data(utils.safe_list_at(builtin.un_list_data(config), 18))
+    let dutchAuctionLoweringAmount =
+      builtin.un_i_data(utils.safe_list_at(builtin.un_list_data(config), 19))
+    let dutchAuctionLoweringFrequency =
+      builtin.un_i_data(utils.safe_list_at(builtin.un_list_data(config), 20))
+    let dutchAuctionMinPriceToCancel =
+      builtin.un_i_data(utils.safe_list_at(builtin.un_list_data(config), 21))
+    let repaymentPolicyId =
+      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 7))
     let loanInputs =
       get_inputs_from_smart_credential(
         self.inputs,
-        Script(config.loanSpendScriptHash),
-        Script(config.loanPolicyId),
-        config.smartTokensSpendScriptHash,
+        Script(loanSpendScriptHash),
+        Script(loanPolicyId),
+        smartTokensSpendScriptHash,
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
@@ -63,7 +87,7 @@ validator loan_claim_action(
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: LoanDatum = inputDatum
         expect Some(interestRateAsRational) =
-          rational.new(datum.commonData.interestRate, 10000)
+          rational.new(datum.interestRate, 10000)
 
         check_claim(
           self,
@@ -71,16 +95,25 @@ validator loan_claim_action(
           inputAction.lenderBondOutputIndex,
           inputAction.borrowerBondRefInputIndex,
           index,
-          config,
           datum,
           inputAction.liquidationMode,
           inputAction.principalOracleRefInputIndex,
           inputAction.collateralOracleRefInputIndex,
-          config.loanPolicyId,
+          borrowerBondPolicyId,
+          lenderBondPolicyId,
+          loanPolicyId,
           inputAction.loanId,
           inputAction.lenderAuth,
           interestRateAsRational,
           inputAction.equity,
+          smartTokensSpendScriptHash,
+          dutchAuctionSpendScriptHash,
+          dutchAuctionWithdrawScriptHash,
+          dutchAuctionStartingIncreasePerMille,
+          dutchAuctionLoweringAmount,
+          dutchAuctionLoweringFrequency,
+          dutchAuctionMinPriceToCancel,
+          repaymentPolicyId,
         )
       },
     )
@@ -97,16 +130,25 @@ fn check_claim(
   lenderBondOutputIndex: Int,
   borrowerBondRefInputIndex: Int,
   loanInputIndex: Int,
-  config: ConfigDatum,
   datum: LoanDatum,
   liquidationMode: LiquidationMode,
   principalOracleRefInputIndex: Int,
   collateralOracleRefInputIndex: Int,
+  borrowerBondPolicyId: ByteArray,
+  lenderBondPolicyId: ByteArray,
   loanPolicyId: PolicyId,
   loanId: ByteArray,
   lenderAuth: AuthorizationMethod,
   interestRateAsRational: rational.Rational,
   equity: Int,
+  smartTokensSpendScriptHash: ByteArray,
+  dutchAuctionSpendScriptHash: ByteArray,
+  dutchAuctionWithdrawScriptHash: ByteArray,
+  dutchAuctionStartingIncreasePerMille: Int,
+  dutchAuctionLoweringAmount: Int,
+  dutchAuctionLoweringFrequency: Int,
+  dutchAuctionMinPriceToCancel: Int,
+  repaymentPolicyId: ByteArray,
 ) {
   expect (Finite(validFrom), Finite(validTo)) =
     (
@@ -119,7 +161,7 @@ fn check_claim(
       utils.safe_list_at(self.reference_inputs, borrowerBondRefInputIndex),
     )
   let isPerpetualLoan =
-    when datum.commonData.repaymentMode is {
+    when datum.repaymentMode is {
       PerpetualLoan { .. } -> True
       _ -> False
     }
@@ -128,43 +170,39 @@ fn check_claim(
       isPerpetualLoan,
       validFrom,
       datum.lendDate,
-      datum.commonData.initialGracePeriod,
+      datum.initialGracePeriod,
       datum.repaidInstallments,
-      datum.commonData.installmentPeriod,
-      datum.commonData.repaymentTimeWindow,
+      datum.installmentPeriod,
+      datum.repaymentTimeWindow,
     )
   and {
-    liquidationMode == datum.commonData.liquidationMode,
+    liquidationMode == datum.liquidationMode,
     quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-    quantity_of(
-      borrowerBondRefInput.output.value,
-      config.borrowerBondPolicyId,
-      loanId,
-    ) == 1,
+    quantity_of(borrowerBondRefInput.output.value, borrowerBondPolicyId, loanId) == 1,
     quantity_of(self.mint, loanPolicyId, loanId) == -1,
-    is_nft_in_output(config.lenderBondPolicyId, loanId, lenderBondOutput),
-    when datum.commonData.liquidationMode is {
+    is_nft_in_output(lenderBondPolicyId, loanId, lenderBondOutput),
+    when datum.liquidationMode is {
       NoLiquidationFullCollateralClaim -> isRepaymentLate
       NoLiquidationDutchAuctionClaim -> {
         let dutchAuctionOutput =
           utils.safe_list_at(
             get_outputs_to_smart_credential(
               self.outputs,
-              Script(config.dutchAuctionSpendScriptHash),
-              Script(config.dutchAuctionWithdrawScriptHash),
-              config.smartTokensSpendScriptHash,
+              Script(dutchAuctionSpendScriptHash),
+              Script(dutchAuctionWithdrawScriptHash),
+              smartTokensSpendScriptHash,
             ),
             loanInputIndex,
           )
         let remainingDebt =
           get_remaining_debt(
-            datum.commonData.repaymentMode,
+            datum.repaymentMode,
             rational.from_int(datum.principalAmount),
             interestRateAsRational,
             datum.totalInstallments,
             datum.repaidInstallments,
-            datum.commonData.installmentPeriod,
-            datum.commonData.initialGracePeriod,
+            datum.installmentPeriod,
+            datum.initialGracePeriod,
             validFrom - datum.lendDate,
           )
         and {
@@ -175,14 +213,21 @@ fn check_claim(
             borrowerBondRefInput.output.address,
             lenderBondOutput.address,
             lenderAuth,
-            config,
             validTo,
-            datum.commonData.principalAsset,
+            datum.principalAsset,
             datum.collateral,
             remainingDebt,
+            dutchAuctionStartingIncreasePerMille,
+            dutchAuctionLoweringAmount,
+            dutchAuctionLoweringFrequency,
+            dutchAuctionMinPriceToCancel,
+            dutchAuctionSpendScriptHash,
+            dutchAuctionWithdrawScriptHash,
+            smartTokensSpendScriptHash,
           ),
         }
       }
+
       Liquidation { lTV, lTVDivider, partialLiquidationPenaltyPerMille } -> {
         let principalAmountAsRational = rational.from_int(datum.principalAmount)
         let collateralOracleRefInput =
@@ -208,28 +253,26 @@ fn check_claim(
             self.redeemers,
             validFrom,
             validTo,
-            datum.commonData.principalOracleAsset.policyId,
-            datum.commonData.principalOracleAsset.assetName,
-            datum.commonData.principalAsset.policyId,
-            Some(datum.commonData.principalAsset.assetName),
+            datum.principalOracleAsset.policyId,
+            datum.principalOracleAsset.assetName,
+            datum.principalAsset.policyId,
+            Some(datum.principalAsset.assetName),
           )
         let remainingDebt =
           get_remaining_debt(
-            datum.commonData.repaymentMode,
+            datum.repaymentMode,
             principalAmountAsRational,
             interestRateAsRational,
             datum.totalInstallments,
             datum.repaidInstallments,
-            datum.commonData.installmentPeriod,
-            datum.commonData.initialGracePeriod,
+            datum.installmentPeriod,
+            datum.initialGracePeriod,
             validFrom - datum.lendDate,
           )
         let collateralAmount =
           get_collateral_amount(input.output.value, datum.collateral)
         expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
         let borrowerBondAddress = borrowerBondRefInput.output.address
-        expect Some(Inline(borrowerBondStakeCredential)) =
-          borrowerBondAddress.stake_credential
         and {
           equity == get_equity(
             collateralAmount,
@@ -257,8 +300,8 @@ fn check_claim(
                   get_outputs_to_smart_credential(
                     self.outputs,
                     borrowerBondAddress.payment_credential,
-                    borrowerBondStakeCredential,
-                    config.smartTokensSpendScriptHash,
+                    borrowerBondAddress.payment_credential,
+                    smartTokensSpendScriptHash,
                   ),
                   loanInputIndex,
                 )
@@ -267,13 +310,13 @@ fn check_claim(
                 equityOutput: borrowerCompensationOutput,
                 equity: equity,
                 borrowerBondAsset: Asset {
-                  policyId: config.borrowerBondPolicyId,
+                  policyId: borrowerBondPolicyId,
                   assetName: loanId,
                 },
-                principalAssetPolicyId: datum.commonData.principalAsset.policyId,
-                principalAssetName: datum.commonData.principalAsset.assetName,
-                repaymentReceipts: datum.commonData.repaymentReceipts,
-                repaymentPolicyId: config.repaymentPolicyId,
+                principalAssetPolicyId: datum.principalAsset.policyId,
+                principalAssetName: datum.principalAsset.assetName,
+                repaymentReceipts: datum.repaymentReceipts,
+                repaymentPolicyId: repaymentPolicyId,
               )
             },
           },
@@ -289,29 +332,35 @@ fn validate_output_to_dutch_auction(
   borrowerAddress: Address,
   lenderAddress: Address,
   lenderAuth: AuthorizationMethod,
-  config: ConfigDatum,
   validTo: Int,
   principalAsset: Asset,
   collateral: CollateralAsset,
   remainingDebt: Int,
+  dutchAuctionStartingIncreasePerMille: Int,
+  dutchAuctionLoweringAmount: Int,
+  dutchAuctionLoweringFrequency: Int,
+  dutchAuctionMinPriceToCancel: Int,
+  dutchAuctionSpendScriptHash: ByteArray,
+  dutchAuctionWithdrawScriptHash: ByteArray,
+  smartTokensSpendScriptHash: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = dutchAuctionOutput.datum
-  expect parsedDatum: DutchAuctionDatum = outputDatum
 
   let newDatum =
     DutchAuctionDatum {
       ownerAuth: lenderAuth,
       ownerAddress: lenderAddress,
       currency: principalAsset,
-      startingPrice: remainingDebt * config.dutchAuctionStartingIncreasePerMille / 1000,
-      loweringAmount: config.dutchAuctionLoweringAmount,
-      loweringFrequency: config.dutchAuctionLoweringFrequency,
-      minPriceToCancel: config.dutchAuctionMinPriceToCancel,
+      startingPrice: remainingDebt * dutchAuctionStartingIncreasePerMille / 1000,
+      loweringAmount: dutchAuctionLoweringAmount,
+      loweringFrequency: dutchAuctionLoweringFrequency,
+      minPriceToCancel: dutchAuctionMinPriceToCancel,
       startDate: validTo,
       borrowerAddress: Some(borrowerAddress),
       debtAmount: remainingDebt,
     }
-  let isDatumCorrect = parsedDatum == newDatum
+  let isDatumCorrect =
+    builtin.un_list_data(outputDatum) == builtin.un_list_data(newDatum)
 
   //No other type of stake credential should be allowed
   expect Some(Inline(_lenderStakeCredential)) = lenderAddress.stake_credential
@@ -339,9 +388,9 @@ fn validate_output_to_dutch_auction(
   and {
     is_output_to_script_smart_credential(
       dutchAuctionOutput,
-      Script(config.dutchAuctionSpendScriptHash),
-      Script(config.dutchAuctionWithdrawScriptHash),
-      config.smartTokensSpendScriptHash,
+      Script(dutchAuctionSpendScriptHash),
+      Script(dutchAuctionWithdrawScriptHash),
+      smartTokensSpendScriptHash,
     ),
     isDatumCorrect,
     correctValue,
@@ -360,7 +409,6 @@ fn equity_sent_to_borrower(
   repaymentPolicyId: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = equityOutput.datum
-  expect parsedDatum: RepaymentDatum = outputDatum
   let newDatum =
     RepaymentDatumWithToken {
       inputOutputReference: loanInputOutputReference,
@@ -379,7 +427,8 @@ fn equity_sent_to_borrower(
       utils.hash_output_ref(loanInputOutputReference),
     ) == 1
 
-  let isDatumCorrect = parsedDatum == newDatum
+  let isDatumCorrect =
+    builtin.un_list_data(outputDatum) == builtin.un_list_data(newDatum)
   let receiptAssetCount =
     if repaymentReceipts {
       1

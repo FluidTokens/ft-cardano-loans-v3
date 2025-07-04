@@ -1,20 +1,42 @@
 use cardano/assets.{AssetName}
-use fluidtokens/types/general.{AuthorizationMethod, CollateralAsset}
-use fluidtokens/types/pool.{CommonData, LiquidationMode, RepaymentMode}
+use fluidtokens/types/general.{
+  Asset, AuthorizationMethod, CollateralAsset, LiquidationMode, RepaymentMode,
+}
 
 pub type LoanDatum {
-  commonData: CommonData,
+  repaidInstallments: Int,
+  //Principal taken with the loan expressed in units, for example 100ADA -> 100000000
+  doneRecasts: Int,
+  principalAmount: Int,
+  //The interest rate of the loan is this number/10000, so 0.01% is expressed as 1.
+  //For perpetuals this variable actually represents c in the formula APY=mx+c, and it can be used for:
+  //installmentAmount (hourly) = c/10000/8760
+  interestRate: Int,
   //Total number of installments, ignored in Perpetual loans
   totalInstallments: Int,
+  principalAsset: Asset,
+  //Used in dynamicPriced pools and in partial liquidations, it indicates the oracle NFT for the principal
+  principalOracleAsset: Asset,
+  //How much time between 2 consecutive installments, expressed in hours
+  //In case of Perpetual loans if it's > 0 it means we have infinite installments otherwise == 0 means no installments
+  installmentPeriod: Int,
+  //Period after starting the loan and before starting repaying (borrower can't be liquidated in this period)
+  //Expressed in hours
+  initialGracePeriod: Int,
+  liquidationMode: LiquidationMode,
+  repaymentMode: RepaymentMode,
+  //Period to repay without being considered late, expressed in hours
+  //After this period, borrower can be liquidated if he hasn't paid the installment
+  repaymentTimeWindow: Int,
+  //Fee borrower pays when he could be liquidated but he repays, <= 0 means no penalty
+  penaltyFeeForLateRepayment: Int,
+  //If true, each payment for claim, recast and repay must be accompanied by a minted repayment receipt NFT
+  repaymentReceipts: Bool,
   //Either the poolId or the requestId
   originId: AssetName,
   collateral: CollateralAsset,
-  //Principal taken with the loan expressed in units, for example 100ADA -> 100000000
-  principalAmount: Int,
   //Expressed in millis POSIX
   lendDate: Int,
-  repaidInstallments: Int,
-  doneRecasts: Int,
 }
 
 pub type LoanMintRedeemer {
