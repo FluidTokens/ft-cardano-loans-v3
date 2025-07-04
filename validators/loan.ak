@@ -26,19 +26,19 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
     self: Transaction,
   ) {
     let config =
-      utils.get_config_as_data(
+      utils.get_config_as_data_list(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
     let loanClaimActionScriptHash =
-      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 11))
+      builtin.un_b_data(utils.safe_list_at(config, 11))
     let loanRepayActionScriptHash =
-      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 12))
+      builtin.un_b_data(utils.safe_list_at(config, 12))
     let loanChangeCollateralActionScriptHash =
-      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 13))
+      builtin.un_b_data(utils.safe_list_at(config, 13))
     let loanRecastActionScriptHash =
-      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 14))
+      builtin.un_b_data(utils.safe_list_at(config, 14))
 
     let actionWithdrawScriptHash =
       when redeemer.actionType is {
@@ -71,23 +71,18 @@ fn check_mint(
   policy_id: PolicyId,
 ) {
   let config =
-    utils.get_config_as_data(
+    utils.get_config_as_data_list(
       safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
       configNFTPolicyId,
       configNFTAssetName,
     )
   let smartTokensSpendScriptHash =
-    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
-  let loanSpendScriptHash =
-    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 10))
-  let poolSpendScriptHash =
-    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 8))
-  let poolPolicyId =
-    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 2))
-  let requestSpendScriptHash =
-    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 9))
-  let requestPolicyId =
-    builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 3))
+    builtin.un_b_data(utils.safe_list_at(config, 0))
+  let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
+  let poolSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 8))
+  let poolPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
+  let requestSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 9))
+  let requestPolicyId = builtin.un_b_data(utils.safe_list_at(config, 3))
 
   let originInputs =
     if redeemer.isPoolOrigin {

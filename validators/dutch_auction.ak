@@ -26,15 +26,15 @@ validator dutch_auction(
     self: Transaction,
   ) {
     let config =
-      utils.get_config_as_data(
+      utils.get_config_as_data_list(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
     let smartTokensSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
+      builtin.un_b_data(utils.safe_list_at(config, 0))
     let dutchAuctionSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 16))
+      builtin.un_b_data(utils.safe_list_at(config, 16))
     let scInputs =
       get_inputs_from_smart_credential(
         self.inputs,

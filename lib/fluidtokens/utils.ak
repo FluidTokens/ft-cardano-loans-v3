@@ -33,7 +33,7 @@ pub fn hash_output_ref(outputRef: OutputReference) -> ByteArray {
   outputRef |> builtin.serialise_data |> crypto.blake2b_224
 }
 
-pub fn get_config_as_data(
+pub fn get_config_as_data_list(
   configRefInput: Input,
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
@@ -45,7 +45,7 @@ pub fn get_config_as_data(
       configNFTAssetName,
     ) > 0
   expect InlineDatum(outputDatum) = configRefInput.output.datum
-  outputDatum
+  builtin.un_list_data(outputDatum)
 }
 
 pub fn value_without_policy_id_as_list(value: Value, policyIdToRemove: PolicyId) {

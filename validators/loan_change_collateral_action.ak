@@ -31,19 +31,16 @@ validator loan_change_collateral_action(
     self: Transaction,
   ) {
     let config =
-      utils.get_config_as_data(
+      utils.get_config_as_data_list(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
     let smartTokensSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 0))
-    let loanSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 10))
-    let loanPolicyId =
-      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 2))
-    let borrowerBondPolicyId =
-      builtin.un_b_data(utils.safe_list_at(builtin.un_list_data(config), 4))
+      builtin.un_b_data(utils.safe_list_at(config, 0))
+    let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
+    let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
+    let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let loanInputs =
       get_inputs_from_smart_credential(
         self.inputs,
