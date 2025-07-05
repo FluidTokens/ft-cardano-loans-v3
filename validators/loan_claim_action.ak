@@ -354,8 +354,7 @@ fn validate_output_to_dutch_auction(
       borrowerAddress: Some(borrowerAddress),
       debtAmount: remainingDebt,
     }
-  let isDatumCorrect =
-    builtin.un_list_data(outputDatum) == builtin.un_list_data(newDatum)
+  let isDatumCorrect = builtin.equals_data(outputDatum, newDatum)
 
   //No other type of stake credential should be allowed
   expect Some(Inline(_lenderStakeCredential)) = lenderAddress.stake_credential
@@ -422,8 +421,7 @@ fn equity_sent_to_borrower(
       utils.hash_output_ref(loanInputOutputReference),
     ) == 1
 
-  let isDatumCorrect =
-    builtin.un_list_data(outputDatum) == builtin.un_list_data(newDatum)
+  let isDatumCorrect = builtin.equals_data(outputDatum, newDatum)
   let receiptAssetCount =
     if repaymentReceipts {
       1

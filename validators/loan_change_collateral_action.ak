@@ -235,7 +235,7 @@ fn validate_output_to_loan_for_changing_collateral(
 
   and {
     correctDestination,
-    builtin.un_list_data(outputDatum) == builtin.un_list_data(datum),
+    builtin.equals_data(outputDatum, datum),
     //loanNFT is already included in the value
     correctValue,
   }

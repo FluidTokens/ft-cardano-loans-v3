@@ -255,8 +255,7 @@ fn validate_repayment_output(
       utils.hash_output_ref(loanInputOutputReference),
     ) == 1
 
-  let isDatumCorrect =
-    builtin.un_list_data(outputDatum) == builtin.un_list_data(newDatum)
+  let isDatumCorrect = builtin.equals_data(outputDatum, newDatum)
   let receiptAssetCount =
     if repaymentReceipts {
       1
@@ -286,7 +285,6 @@ fn validate_eventual_output_to_loan_for_repayment(
   loanSpendScriptHash: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = loanOutput.datum
-  let outputDatumAsFieldsList = builtin.un_list_data(outputDatum)
 
   //Loan datum except the first field
   let datumUnchangedPart =
@@ -301,7 +299,7 @@ fn validate_eventual_output_to_loan_for_repayment(
       datumUnchangedPart,
     )
 
-  let isDatumCorrect = outputDatumAsFieldsList == newLoanExpectedDatum
+  let isDatumCorrect = builtin.equals_data(outputDatum, newLoanExpectedDatum)
 
   let correctDestination =
     if is_output_to_spend_validator(loanOutput, loanSpendScriptHash) {

@@ -287,7 +287,7 @@ fn check_recast(
             }
           and {
             correctDestination,
-            builtin.un_list_data(outputDatum) == newLoanExpectedDatum,
+            builtin.equals_data(outputDatum, newLoanExpectedDatum),
             //loanNFT is already included in the value
             input.output.value == loanOutput.value,
           }
@@ -329,8 +329,7 @@ fn validate_repayment_output(
       utils.hash_output_ref(loanInputOutputReference),
     ) == 1
 
-  let isDatumCorrect =
-    builtin.un_list_data(outputDatum) == builtin.un_list_data(newDatum)
+  let isDatumCorrect = builtin.equals_data(outputDatum, newDatum)
   let receiptAssetCount =
     if repaymentReceipts {
       1

@@ -524,7 +524,7 @@ fn validate_output_to_loan(
       _ -> True
     }
   let isDatumCorrect =
-    builtin.un_list_data(outputDatum) == builtin.un_list_data(newDatum) && isLiquidationCorrectlySet
+    builtin.equals_data(outputDatum, newDatum) && isLiquidationCorrectlySet
 
   let correctDestination =
     if is_output_to_spend_validator(output, loanSpendScriptHash) {

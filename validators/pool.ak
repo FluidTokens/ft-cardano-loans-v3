@@ -447,7 +447,7 @@ fn validate_output_to_loan(
       _ -> True
     }
   let isDatumCorrect =
-    builtin.un_list_data(outputDatum) == builtin.un_list_data(newDatum) && isLiquidationCorrectlySet
+    builtin.equals_data(outputDatum, newDatum) && isLiquidationCorrectlySet
 
   let correctDestination =
     if is_output_to_spend_validator(output, loanSpendScriptHash) {
@@ -497,8 +497,7 @@ fn validate_eventual_output_to_pool(
 
   let containsPoolNFT = quantity_of(output.value, poolPolicyId, poolId) == 1
 
-  let isDatumCorrect =
-    builtin.un_list_data(outputDatum) == builtin.un_list_data(datum)
+  let isDatumCorrect = builtin.equals_data(outputDatum, datum)
 
   let dosProtection = length(flatten(output.value)) == poolInputAssetsLength
 
