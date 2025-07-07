@@ -9,7 +9,7 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use fluidtokens/constants
-use fluidtokens/finance.{get_next_installment_amount}
+use fluidtokens/finance.{get_next_installment_amount, get_remaining_debt}
 use fluidtokens/types/general.{
   Asset, InterestOnRemainingPrincipal, PerpetualLoan,
 }
@@ -130,13 +130,28 @@ validator loan_recast_action(
                   r - 1
                 )
 
-              remainingPrincipalToPay - inputAction.principalPaid
+              remainingPrincipalToPay - inputAction.amountPaid
             }
-            _ -> datum.principalAmount - inputAction.principalPaid
+            PerpetualLoan { .. } -> {
+              expect Some(interestRateAsRational) =
+                rational.new(datum.interestRate, 10000)
+
+              get_remaining_debt(
+                datum.repaymentMode,
+                rational.from_int(datum.principalAmount),
+                interestRateAsRational,
+                datum.totalInstallments,
+                datum.repaidInstallments,
+                datum.installmentPeriod,
+                datum.initialGracePeriod,
+                validTo - datum.lendDate,
+              ) - inputAction.amountPaid
+            }
+            _ -> datum.principalAmount - inputAction.amountPaid
           }
 
         and {
-          inputAction.principalPaid > 0,
+          inputAction.amountPaid > 0,
           quantity_of(input.output.value, loanPolicyId, inputAction.loanId) == 1,
           utils.efficient_quantity_of(
             lenderBondRefInput,
@@ -170,7 +185,7 @@ validator loan_recast_action(
               assetName: inputAction.loanId,
             },
             repaymentAsset: datum.principalAsset,
-            repaymentAmount: inputAction.principalPaid,
+            repaymentAmount: inputAction.amountPaid,
             action: constants.repayment_action_recast,
             extra_data: inputAction.loanId,
             repaymentReceipts: datum.repaymentReceipts,

@@ -110,7 +110,7 @@ pub type RecastData {
   lenderBondRefInputPolicyIdIndex: Int,
   lenderBondRefInputAssetNameIndex: Int,
   //In principal units
-  principalPaid: Int,
+  amountPaid: Int,
   loanId: ByteArray,
 }
 
