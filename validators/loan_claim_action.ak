@@ -3,7 +3,7 @@ use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use cardano/address.{Address, Credential, Inline, Script}
-use cardano/assets.{AssetName, PolicyId, flatten, quantity_of}
+use cardano/assets.{AssetName, flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
@@ -15,7 +15,7 @@ use fluidtokens/finance.{
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/dutch_auction.{DutchAuctionDatum}
 use fluidtokens/types/general.{
-  Asset, AuthorizationMethod, CollateralAsset, Liquidation, LiquidationMode,
+  Asset, AuthorizationMethod, CollateralAsset, Liquidation,
   NoLiquidationDutchAuctionClaim, NoLiquidationFullCollateralClaim,
   PerpetualLoan,
 }
@@ -84,240 +84,206 @@ validator loan_claim_action(
         expect Some(interestRateAsRational) =
           rational.new(datum.interestRate, 10000)
 
-        check_claim(
-          self,
-          input,
-          inputAction.lenderBondOutputIndex,
-          inputAction.borrowerBondRefInputIndex,
-          index,
-          datum,
-          inputAction.liquidationMode,
-          inputAction.principalOracleRefInputIndex,
-          inputAction.collateralOracleRefInputIndex,
-          borrowerBondPolicyId,
-          lenderBondPolicyId,
-          loanPolicyId,
-          inputAction.loanId,
-          inputAction.lenderAuth,
-          interestRateAsRational,
-          inputAction.equity,
-          smartTokensSpendScriptHash,
-          dutchAuctionSpendScriptHash,
-          dutchAuctionWithdrawScriptHash,
-          dutchAuctionStartingIncreasePerMille,
-          dutchAuctionLoweringAmount,
-          dutchAuctionLoweringFrequency,
-          dutchAuctionMinPriceToCancel,
-          repaymentPolicyId,
-        )
+        expect (Finite(validFrom), Finite(validTo)) =
+          (
+            self.validity_range.lower_bound.bound_type,
+            self.validity_range.upper_bound.bound_type,
+          )
+        let (lenderBondOutput, borrowerBondRefInput) =
+          (
+            utils.safe_list_at(self.outputs, inputAction.lenderBondOutputIndex),
+            utils.safe_list_at(
+              self.reference_inputs,
+              inputAction.borrowerBondRefInputIndex,
+            ),
+          )
+        let isPerpetualLoan =
+          when datum.repaymentMode is {
+            PerpetualLoan { .. } -> True
+            _ -> False
+          }
+        let isRepaymentLate =
+          is_repayment_late(
+            isPerpetualLoan,
+            validFrom,
+            datum.lendDate,
+            datum.initialGracePeriod,
+            datum.repaidInstallments,
+            datum.installmentPeriod,
+            datum.repaymentTimeWindow,
+          )
+        and {
+          inputAction.liquidationMode == datum.liquidationMode,
+          quantity_of(input.output.value, loanPolicyId, inputAction.loanId) == 1,
+          utils.efficient_quantity_of(
+            borrowerBondRefInput,
+            borrowerBondPolicyId,
+            inputAction.borrowerBondRefInputPolicyIdIndex,
+            inputAction.loanId,
+            inputAction.borrowerBondRefInputAssetNameIndex,
+          ) == 1,
+          quantity_of(self.mint, loanPolicyId, inputAction.loanId) == -1,
+          is_nft_in_output(
+            lenderBondPolicyId,
+            inputAction.loanId,
+            lenderBondOutput,
+          ),
+          when datum.liquidationMode is {
+            NoLiquidationFullCollateralClaim -> isRepaymentLate
+            NoLiquidationDutchAuctionClaim -> {
+              let dutchAuctionOutput =
+                utils.safe_list_at(
+                  get_outputs_to_smart_credential(
+                    self.outputs,
+                    Script(dutchAuctionSpendScriptHash),
+                    Script(dutchAuctionWithdrawScriptHash),
+                    smartTokensSpendScriptHash,
+                  ),
+                  index,
+                )
+              let remainingDebt =
+                get_remaining_debt(
+                  datum.repaymentMode,
+                  rational.from_int(datum.principalAmount),
+                  interestRateAsRational,
+                  datum.totalInstallments,
+                  datum.repaidInstallments,
+                  datum.installmentPeriod,
+                  datum.initialGracePeriod,
+                  validFrom - datum.lendDate,
+                )
+              and {
+                isRepaymentLate,
+                validate_output_to_dutch_auction(
+                  input,
+                  dutchAuctionOutput,
+                  borrowerBondRefInput.output.address,
+                  lenderBondOutput.address,
+                  inputAction.lenderAuth,
+                  validTo,
+                  datum.principalAsset,
+                  datum.collateral,
+                  remainingDebt,
+                  dutchAuctionStartingIncreasePerMille,
+                  dutchAuctionLoweringAmount,
+                  dutchAuctionLoweringFrequency,
+                  dutchAuctionMinPriceToCancel,
+                  dutchAuctionSpendScriptHash,
+                  dutchAuctionWithdrawScriptHash,
+                  smartTokensSpendScriptHash,
+                ),
+              }
+            }
+
+            Liquidation { lTV, lTVDivider, partialLiquidationPenaltyPerMille } -> {
+              let principalAmountAsRational =
+                rational.from_int(datum.principalAmount)
+              let collateralOracleRefInput =
+                safe_list_at(
+                  self.reference_inputs,
+                  inputAction.collateralOracleRefInputIndex,
+                )
+              expect Some(collateralOraclePriceFeed) =
+                retrieve_oracle_data(
+                  collateralOracleRefInput.output.address.payment_credential,
+                  collateralOracleRefInput.output.value,
+                  self.redeemers,
+                  validFrom,
+                  validTo,
+                  datum.collateral.oracleTokenAsset.policyId,
+                  datum.collateral.oracleTokenAsset.assetName,
+                  datum.collateral.policyId,
+                  datum.collateral.maybeAssetName,
+                )
+              let principalOracleRefInput =
+                safe_list_at(
+                  self.reference_inputs,
+                  inputAction.principalOracleRefInputIndex,
+                )
+              expect Some(principalOraclePriceFeed) =
+                retrieve_oracle_data(
+                  principalOracleRefInput.output.address.payment_credential,
+                  principalOracleRefInput.output.value,
+                  self.redeemers,
+                  validFrom,
+                  validTo,
+                  datum.principalOracleAsset.policyId,
+                  datum.principalOracleAsset.assetName,
+                  datum.principalAsset.policyId,
+                  Some(datum.principalAsset.assetName),
+                )
+              let remainingDebt =
+                get_remaining_debt(
+                  datum.repaymentMode,
+                  principalAmountAsRational,
+                  interestRateAsRational,
+                  datum.totalInstallments,
+                  datum.repaidInstallments,
+                  datum.installmentPeriod,
+                  datum.initialGracePeriod,
+                  validFrom - datum.lendDate,
+                )
+              let collateralAmount =
+                get_collateral_amount(input.output.value, datum.collateral)
+              expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
+              let borrowerBondAddress = borrowerBondRefInput.output.address
+              and {
+                inputAction.equity == get_equity(
+                  collateralAmount,
+                  rational.from_int(remainingDebt),
+                  principalOraclePriceFeed,
+                  collateralOraclePriceFeed,
+                  partialLiquidationPenaltyPerMille,
+                ),
+                or {
+                  isRepaymentLate,
+                  can_liquidate(
+                    principalAmountAsRational,
+                    collateralAmount,
+                    ltvAsRational,
+                    principalOraclePriceFeed,
+                    collateralOraclePriceFeed,
+                  ),
+                },
+                or {
+                  partialLiquidationPenaltyPerMille < 0,
+                  inputAction.equity <= 0,
+                  {
+                    let borrowerCompensationOutput =
+                      utils.safe_list_at(
+                        get_outputs_to_smart_credential(
+                          self.outputs,
+                          borrowerBondAddress.payment_credential,
+                          borrowerBondAddress.payment_credential,
+                          smartTokensSpendScriptHash,
+                        ),
+                        index,
+                      )
+                    equity_sent_to_borrower(
+                      loanInputOutputReference: input.output_reference,
+                      equityOutput: borrowerCompensationOutput,
+                      equity: inputAction.equity,
+                      borrowerBondAsset: Asset {
+                        policyId: borrowerBondPolicyId,
+                        assetName: inputAction.loanId,
+                      },
+                      principalAssetPolicyId: datum.principalAsset.policyId,
+                      principalAssetName: datum.principalAsset.assetName,
+                      repaymentReceipts: datum.repaymentReceipts,
+                      repaymentPolicyId: repaymentPolicyId,
+                    )
+                  },
+                },
+              }
+            }
+          },
+        }
       },
     )
   }
 
   else(_) {
     fail
-  }
-}
-
-fn check_claim(
-  self: Transaction,
-  input: Input,
-  lenderBondOutputIndex: Int,
-  borrowerBondRefInputIndex: Int,
-  loanInputIndex: Int,
-  datum: LoanDatum,
-  liquidationMode: LiquidationMode,
-  principalOracleRefInputIndex: Int,
-  collateralOracleRefInputIndex: Int,
-  borrowerBondPolicyId: ByteArray,
-  lenderBondPolicyId: ByteArray,
-  loanPolicyId: PolicyId,
-  loanId: ByteArray,
-  lenderAuth: AuthorizationMethod,
-  interestRateAsRational: rational.Rational,
-  equity: Int,
-  smartTokensSpendScriptHash: ByteArray,
-  dutchAuctionSpendScriptHash: ByteArray,
-  dutchAuctionWithdrawScriptHash: ByteArray,
-  dutchAuctionStartingIncreasePerMille: Int,
-  dutchAuctionLoweringAmount: Int,
-  dutchAuctionLoweringFrequency: Int,
-  dutchAuctionMinPriceToCancel: Int,
-  repaymentPolicyId: ByteArray,
-) {
-  expect (Finite(validFrom), Finite(validTo)) =
-    (
-      self.validity_range.lower_bound.bound_type,
-      self.validity_range.upper_bound.bound_type,
-    )
-  let (lenderBondOutput, borrowerBondRefInput) =
-    (
-      utils.safe_list_at(self.outputs, lenderBondOutputIndex),
-      utils.safe_list_at(self.reference_inputs, borrowerBondRefInputIndex),
-    )
-  let isPerpetualLoan =
-    when datum.repaymentMode is {
-      PerpetualLoan { .. } -> True
-      _ -> False
-    }
-  let isRepaymentLate =
-    is_repayment_late(
-      isPerpetualLoan,
-      validFrom,
-      datum.lendDate,
-      datum.initialGracePeriod,
-      datum.repaidInstallments,
-      datum.installmentPeriod,
-      datum.repaymentTimeWindow,
-    )
-  and {
-    liquidationMode == datum.liquidationMode,
-    quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-    quantity_of(borrowerBondRefInput.output.value, borrowerBondPolicyId, loanId) == 1,
-    quantity_of(self.mint, loanPolicyId, loanId) == -1,
-    is_nft_in_output(lenderBondPolicyId, loanId, lenderBondOutput),
-    when datum.liquidationMode is {
-      NoLiquidationFullCollateralClaim -> isRepaymentLate
-      NoLiquidationDutchAuctionClaim -> {
-        let dutchAuctionOutput =
-          utils.safe_list_at(
-            get_outputs_to_smart_credential(
-              self.outputs,
-              Script(dutchAuctionSpendScriptHash),
-              Script(dutchAuctionWithdrawScriptHash),
-              smartTokensSpendScriptHash,
-            ),
-            loanInputIndex,
-          )
-        let remainingDebt =
-          get_remaining_debt(
-            datum.repaymentMode,
-            rational.from_int(datum.principalAmount),
-            interestRateAsRational,
-            datum.totalInstallments,
-            datum.repaidInstallments,
-            datum.installmentPeriod,
-            datum.initialGracePeriod,
-            validFrom - datum.lendDate,
-          )
-        and {
-          isRepaymentLate,
-          validate_output_to_dutch_auction(
-            input,
-            dutchAuctionOutput,
-            borrowerBondRefInput.output.address,
-            lenderBondOutput.address,
-            lenderAuth,
-            validTo,
-            datum.principalAsset,
-            datum.collateral,
-            remainingDebt,
-            dutchAuctionStartingIncreasePerMille,
-            dutchAuctionLoweringAmount,
-            dutchAuctionLoweringFrequency,
-            dutchAuctionMinPriceToCancel,
-            dutchAuctionSpendScriptHash,
-            dutchAuctionWithdrawScriptHash,
-            smartTokensSpendScriptHash,
-          ),
-        }
-      }
-
-      Liquidation { lTV, lTVDivider, partialLiquidationPenaltyPerMille } -> {
-        let principalAmountAsRational = rational.from_int(datum.principalAmount)
-        let collateralOracleRefInput =
-          safe_list_at(self.reference_inputs, collateralOracleRefInputIndex)
-        expect Some(collateralOraclePriceFeed) =
-          retrieve_oracle_data(
-            collateralOracleRefInput.output.address.payment_credential,
-            collateralOracleRefInput.output.value,
-            self.redeemers,
-            validFrom,
-            validTo,
-            datum.collateral.oracleTokenAsset.policyId,
-            datum.collateral.oracleTokenAsset.assetName,
-            datum.collateral.policyId,
-            datum.collateral.maybeAssetName,
-          )
-        let principalOracleRefInput =
-          safe_list_at(self.reference_inputs, principalOracleRefInputIndex)
-        expect Some(principalOraclePriceFeed) =
-          retrieve_oracle_data(
-            principalOracleRefInput.output.address.payment_credential,
-            principalOracleRefInput.output.value,
-            self.redeemers,
-            validFrom,
-            validTo,
-            datum.principalOracleAsset.policyId,
-            datum.principalOracleAsset.assetName,
-            datum.principalAsset.policyId,
-            Some(datum.principalAsset.assetName),
-          )
-        let remainingDebt =
-          get_remaining_debt(
-            datum.repaymentMode,
-            principalAmountAsRational,
-            interestRateAsRational,
-            datum.totalInstallments,
-            datum.repaidInstallments,
-            datum.installmentPeriod,
-            datum.initialGracePeriod,
-            validFrom - datum.lendDate,
-          )
-        let collateralAmount =
-          get_collateral_amount(input.output.value, datum.collateral)
-        expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
-        let borrowerBondAddress = borrowerBondRefInput.output.address
-        and {
-          equity == get_equity(
-            collateralAmount,
-            rational.from_int(remainingDebt),
-            principalOraclePriceFeed,
-            collateralOraclePriceFeed,
-            partialLiquidationPenaltyPerMille,
-          ),
-          or {
-            isRepaymentLate,
-            can_liquidate(
-              principalAmountAsRational,
-              collateralAmount,
-              ltvAsRational,
-              principalOraclePriceFeed,
-              collateralOraclePriceFeed,
-            ),
-          },
-          or {
-            partialLiquidationPenaltyPerMille < 0,
-            equity <= 0,
-            {
-              let borrowerCompensationOutput =
-                utils.safe_list_at(
-                  get_outputs_to_smart_credential(
-                    self.outputs,
-                    borrowerBondAddress.payment_credential,
-                    borrowerBondAddress.payment_credential,
-                    smartTokensSpendScriptHash,
-                  ),
-                  loanInputIndex,
-                )
-              equity_sent_to_borrower(
-                loanInputOutputReference: input.output_reference,
-                equityOutput: borrowerCompensationOutput,
-                equity: equity,
-                borrowerBondAsset: Asset {
-                  policyId: borrowerBondPolicyId,
-                  assetName: loanId,
-                },
-                principalAssetPolicyId: datum.principalAsset.policyId,
-                principalAssetName: datum.principalAsset.assetName,
-                repaymentReceipts: datum.repaymentReceipts,
-                repaymentPolicyId: repaymentPolicyId,
-              )
-            },
-          },
-        }
-      }
-    },
   }
 }
 

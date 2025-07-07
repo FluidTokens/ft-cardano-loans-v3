@@ -188,3 +188,33 @@ pub fn get_oracle_orcfax_config(
   expect Some(result) = pairs.get_first(token_pairs, feedToken.assetName)
   result
 }
+
+pub fn efficient_quantity_of(
+  input: Input,
+  policyId: PolicyId,
+  policyIdIndex: Int,
+  assetName: AssetName,
+  assetNameIndex: Int,
+) -> Int {
+  let value_as_list_data =
+    builtin.un_map_data(
+      safe_list_at(
+        builtin.un_list_data(safe_list_at(builtin.un_list_data(input), 1)),
+        1,
+      ),
+    )
+  let policyIdPair = safe_list_at(value_as_list_data, policyIdIndex)
+
+  let assetNamePair =
+    safe_list_at(
+      builtin.un_map_data(builtin.snd_pair(policyIdPair)),
+      assetNameIndex,
+    )
+
+  expect
+    builtin.equals_data(builtin.fst_pair(policyIdPair), policyId) && builtin.equals_data(
+      builtin.fst_pair(assetNamePair),
+      assetName,
+    )
+  builtin.un_i_data(builtin.snd_pair(assetNamePair))
+}

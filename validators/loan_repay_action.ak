@@ -3,7 +3,7 @@ use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use cardano/address.{Address, Credential, Script, StakeCredential}
-use cardano/assets.{PolicyId, flatten, quantity_of}
+use cardano/assets.{flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
@@ -69,157 +69,140 @@ validator loan_repay_action(
         expect Some(interestRateAsRational) =
           rational.new(datum.interestRate, 10000)
 
-        check_repay(
-          self,
-          input,
-          inputAction.borrowerBondOutputIndex,
-          inputAction.lenderBondRefInputIndex,
-          index,
-          datum,
-          loanPolicyId,
-          inputAction.loanId,
-          interestRateAsRational,
-          inputAction.isFinalRepayment,
-          smartTokensSpendScriptHash,
-          lenderBondPolicyId,
-          borrowerBondPolicyId,
-          repaymentPolicyId,
-          loanSpendScriptHash,
-        )
+        expect Finite(validTo) = self.validity_range.upper_bound.bound_type
+        let borrowerBondOutput =
+          safe_list_at(self.outputs, inputAction.borrowerBondOutputIndex)
+        let lenderBondRefInput =
+          safe_list_at(
+            self.reference_inputs,
+            inputAction.lenderBondRefInputIndex,
+          )
+        let lenderBondAddress = lenderBondRefInput.output.address
+        let repaymentOutput =
+          utils.safe_list_at(
+            get_outputs_to_smart_credential(
+              self.outputs,
+              lenderBondAddress.payment_credential,
+              lenderBondAddress.payment_credential,
+              smartTokensSpendScriptHash,
+            ),
+            index,
+          )
+
+        let isPerpetualLoan =
+          when datum.repaymentMode is {
+            PerpetualLoan { .. } -> True
+            _ -> False
+          }
+
+        let isRepaymentLate =
+          is_repayment_late(
+            isPerpetualLoan,
+            validTo,
+            datum.lendDate,
+            datum.initialGracePeriod,
+            datum.repaidInstallments,
+            datum.installmentPeriod,
+            datum.repaymentTimeWindow,
+          )
+        let nextRepaymentAmount =
+          if isPerpetualLoan && (
+            inputAction.isFinalRepayment || datum.installmentPeriod == 0
+          ) {
+            get_remaining_debt(
+              datum.repaymentMode,
+              rational.from_int(datum.principalAmount),
+              interestRateAsRational,
+              datum.totalInstallments,
+              datum.repaidInstallments,
+              datum.installmentPeriod,
+              datum.initialGracePeriod,
+              validTo - datum.lendDate,
+            )
+          } else {
+            get_next_installment_amount(
+              datum.repaymentMode,
+              rational.from_int(datum.principalAmount),
+              interestRateAsRational,
+              datum.totalInstallments,
+              datum.repaidInstallments,
+              datum.installmentPeriod,
+              datum.initialGracePeriod,
+              isRepaymentLate,
+              datum.penaltyFeeForLateRepayment,
+            )
+          }
+        and {
+          quantity_of(input.output.value, loanPolicyId, inputAction.loanId) == 1,
+          utils.efficient_quantity_of(
+            lenderBondRefInput,
+            lenderBondPolicyId,
+            inputAction.lenderBondRefInputPolicyIdIndex,
+            inputAction.loanId,
+            inputAction.lenderBondRefInputAssetNameIndex,
+          ) == 1,
+          is_nft_in_output(
+            borrowerBondPolicyId,
+            inputAction.loanId,
+            borrowerBondOutput,
+          ),
+          validate_repayment_output(
+            loanInputOutputReference: input.output_reference,
+            repaymentOutput: repaymentOutput,
+            lenderBondAsset: Asset {
+              policyId: lenderBondPolicyId,
+              assetName: inputAction.loanId,
+            },
+            repaymentAsset: datum.principalAsset,
+            repaymentAmount: nextRepaymentAmount,
+            action: constants.repayment_action_installment,
+            extra_data: LoanRepaymentData {
+              loanId: inputAction.loanId,
+              principalAmount: datum.principalAmount,
+              interestRate: datum.interestRate,
+              repaidInstallments: datum.repaidInstallments + 1,
+              totalInstallments: datum.totalInstallments,
+              repaymentMode: datum.repaymentMode,
+            },
+            repaymentReceipts: datum.repaymentReceipts,
+            repaymentPolicyId: repaymentPolicyId,
+          ),
+          or {
+            and {
+              if isPerpetualLoan {
+                inputAction.isFinalRepayment || datum.installmentPeriod == 0
+              } else {
+                datum.repaidInstallments == datum.totalInstallments - 1
+              },
+              quantity_of(self.mint, loanPolicyId, inputAction.loanId) == -1,
+            },
+            {
+              let loanOutput =
+                safe_list_at(
+                  get_outputs_to_smart_credential(
+                    self.outputs,
+                    Script(loanSpendScriptHash),
+                    Script(loanPolicyId),
+                    smartTokensSpendScriptHash,
+                  ),
+                  index,
+                )
+              validate_eventual_output_to_loan_for_repayment(
+                loanOutput,
+                datum,
+                input.output.value == loanOutput.value,
+                input.output.address.stake_credential,
+                loanSpendScriptHash,
+              )
+            },
+          },
+        }
       },
     )
   }
 
   else(_) {
     fail
-  }
-}
-
-fn check_repay(
-  self: Transaction,
-  input: Input,
-  borrowerBondOutputIndex: Int,
-  lenderBondRefInputIndex: Int,
-  loanInputIndex: Int,
-  datum: LoanDatum,
-  loanPolicyId: PolicyId,
-  loanId: ByteArray,
-  interestRateAsRational: rational.Rational,
-  isFinalRepayment: Bool,
-  smartTokensSpendScriptHash: ByteArray,
-  lenderBondPolicyId: PolicyId,
-  borrowerBondPolicyId: PolicyId,
-  repaymentPolicyId: ByteArray,
-  loanSpendScriptHash: ByteArray,
-) {
-  expect Finite(validTo) = self.validity_range.upper_bound.bound_type
-  let borrowerBondOutput = safe_list_at(self.outputs, borrowerBondOutputIndex)
-  let lenderBondRefInput =
-    safe_list_at(self.reference_inputs, lenderBondRefInputIndex)
-  let lenderBondAddress = lenderBondRefInput.output.address
-  let repaymentOutput =
-    utils.safe_list_at(
-      get_outputs_to_smart_credential(
-        self.outputs,
-        lenderBondAddress.payment_credential,
-        lenderBondAddress.payment_credential,
-        smartTokensSpendScriptHash,
-      ),
-      loanInputIndex,
-    )
-
-  let isPerpetualLoan =
-    when datum.repaymentMode is {
-      PerpetualLoan { .. } -> True
-      _ -> False
-    }
-
-  let isRepaymentLate =
-    is_repayment_late(
-      isPerpetualLoan,
-      validTo,
-      datum.lendDate,
-      datum.initialGracePeriod,
-      datum.repaidInstallments,
-      datum.installmentPeriod,
-      datum.repaymentTimeWindow,
-    )
-  let nextRepaymentAmount =
-    if isPerpetualLoan && ( isFinalRepayment || datum.installmentPeriod == 0 ) {
-      get_remaining_debt(
-        datum.repaymentMode,
-        rational.from_int(datum.principalAmount),
-        interestRateAsRational,
-        datum.totalInstallments,
-        datum.repaidInstallments,
-        datum.installmentPeriod,
-        datum.initialGracePeriod,
-        validTo - datum.lendDate,
-      )
-    } else {
-      get_next_installment_amount(
-        datum.repaymentMode,
-        rational.from_int(datum.principalAmount),
-        interestRateAsRational,
-        datum.totalInstallments,
-        datum.repaidInstallments,
-        datum.installmentPeriod,
-        datum.initialGracePeriod,
-        isRepaymentLate,
-        datum.penaltyFeeForLateRepayment,
-      )
-    }
-  and {
-    quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-    quantity_of(lenderBondRefInput.output.value, lenderBondPolicyId, loanId) == 1,
-    is_nft_in_output(borrowerBondPolicyId, loanId, borrowerBondOutput),
-    validate_repayment_output(
-      loanInputOutputReference: input.output_reference,
-      repaymentOutput: repaymentOutput,
-      lenderBondAsset: Asset { policyId: lenderBondPolicyId, assetName: loanId },
-      repaymentAsset: datum.principalAsset,
-      repaymentAmount: nextRepaymentAmount,
-      action: constants.repayment_action_installment,
-      extra_data: LoanRepaymentData {
-        loanId,
-        principalAmount: datum.principalAmount,
-        interestRate: datum.interestRate,
-        repaidInstallments: datum.repaidInstallments + 1,
-        totalInstallments: datum.totalInstallments,
-        repaymentMode: datum.repaymentMode,
-      },
-      repaymentReceipts: datum.repaymentReceipts,
-      repaymentPolicyId: repaymentPolicyId,
-    ),
-    or {
-      and {
-        if isPerpetualLoan {
-          isFinalRepayment || datum.installmentPeriod == 0
-        } else {
-          datum.repaidInstallments == datum.totalInstallments - 1
-        },
-        quantity_of(self.mint, loanPolicyId, loanId) == -1,
-      },
-      {
-        let loanOutput =
-          safe_list_at(
-            get_outputs_to_smart_credential(
-              self.outputs,
-              Script(loanSpendScriptHash),
-              Script(loanPolicyId),
-              smartTokensSpendScriptHash,
-            ),
-            loanInputIndex,
-          )
-        validate_eventual_output_to_loan_for_repayment(
-          loanOutput,
-          datum,
-          input.output.value == loanOutput.value,
-          input.output.address.stake_credential,
-          loanSpendScriptHash,
-        )
-      },
-    },
   }
 }
 

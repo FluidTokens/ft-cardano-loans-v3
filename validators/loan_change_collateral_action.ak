@@ -3,8 +3,7 @@ use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use cardano/address.{Address, Credential, Script, StakeCredential}
-use cardano/assets.{PolicyId,
-  Value, add, flatten, quantity_of, without_lovelace}
+use cardano/assets.{Value, add, flatten, quantity_of, without_lovelace}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/finance.{can_liquidate}
 use fluidtokens/oracle.{retrieve_oracle_data}
@@ -62,114 +61,92 @@ validator loan_change_collateral_action(
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: LoanDatum = inputDatum
 
-        check_change_collateral(
-          self,
-          input,
-          inputAction.borrowerBondOutputIndex,
-          index,
-          datum,
-          inputAction.principalOracleRefInputIndex,
-          inputAction.collateralOracleRefInputIndex,
-          inputAction.newCollateralAmount,
-          loanSpendScriptHash,
-          smartTokensSpendScriptHash,
-          borrowerBondPolicyId,
-          loanPolicyId,
-          inputAction.loanId,
-        )
+        when datum.liquidationMode is {
+          Liquidation { lTV, lTVDivider, .. } -> {
+            expect (Finite(validFrom), Finite(validTo)) =
+              (
+                self.validity_range.lower_bound.bound_type,
+                self.validity_range.upper_bound.bound_type,
+              )
+            let borrowerBondOutput =
+              safe_list_at(self.outputs, inputAction.borrowerBondOutputIndex)
+            let loanOutput =
+              utils.safe_list_at(
+                get_outputs_to_smart_credential(
+                  self.outputs,
+                  Script(loanSpendScriptHash),
+                  Script(loanPolicyId),
+                  smartTokensSpendScriptHash,
+                ),
+                index,
+              )
+            expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
+            let collateralOracleRefInput =
+              safe_list_at(
+                self.reference_inputs,
+                inputAction.collateralOracleRefInputIndex,
+              )
+            expect Some(collateralOraclePriceFeed) =
+              retrieve_oracle_data(
+                collateralOracleRefInput.output.address.payment_credential,
+                collateralOracleRefInput.output.value,
+                self.redeemers,
+                validFrom,
+                validTo,
+                datum.collateral.oracleTokenAsset.policyId,
+                datum.collateral.oracleTokenAsset.assetName,
+                datum.collateral.policyId,
+                datum.collateral.maybeAssetName,
+              )
+            let principalOracleRefInput =
+              safe_list_at(
+                self.reference_inputs,
+                inputAction.principalOracleRefInputIndex,
+              )
+            expect Some(principalOraclePriceFeed) =
+              retrieve_oracle_data(
+                principalOracleRefInput.output.address.payment_credential,
+                principalOracleRefInput.output.value,
+                self.redeemers,
+                validFrom,
+                validTo,
+                datum.principalOracleAsset.policyId,
+                datum.principalOracleAsset.assetName,
+                datum.principalAsset.policyId,
+                Some(datum.principalAsset.assetName),
+              )
+            and {
+              quantity_of(input.output.value, loanPolicyId, inputAction.loanId) == 1,
+              is_nft_in_output(
+                borrowerBondPolicyId,
+                inputAction.loanId,
+                borrowerBondOutput,
+              ),
+              can_liquidate(
+                rational.from_int(datum.principalAmount),
+                rational.from_int(inputAction.newCollateralAmount),
+                ltvAsRational,
+                principalOraclePriceFeed,
+                collateralOraclePriceFeed,
+              ) == False,
+              validate_output_to_loan_for_changing_collateral(
+                loanOutput,
+                datum,
+                inputAction.newCollateralAmount,
+                input.output.value,
+                input.output.address.stake_credential,
+                loanSpendScriptHash,
+              ),
+            }
+          }
+          _ -> False
+        }
       },
     )
   }
 
   else(_) {
     fail
-  }
-}
-
-fn check_change_collateral(
-  self: Transaction,
-  input: Input,
-  borrowerBondOutputIndex: Int,
-  loanInputIndex: Int,
-  datum: LoanDatum,
-  principalOracleRefInputIndex: Int,
-  collateralOracleRefInputIndex: Int,
-  newCollateralAmount: Int,
-  loanSpendScriptHash: ByteArray,
-  smartTokensSpendScriptHash: ByteArray,
-  borrowerBondPolicyId: PolicyId,
-  loanPolicyId: PolicyId,
-  loanId: ByteArray,
-) {
-  when datum.liquidationMode is {
-    Liquidation { lTV, lTVDivider, .. } -> {
-      expect (Finite(validFrom), Finite(validTo)) =
-        (
-          self.validity_range.lower_bound.bound_type,
-          self.validity_range.upper_bound.bound_type,
-        )
-      let borrowerBondOutput =
-        safe_list_at(self.outputs, borrowerBondOutputIndex)
-      let loanOutput =
-        utils.safe_list_at(
-          get_outputs_to_smart_credential(
-            self.outputs,
-            Script(loanSpendScriptHash),
-            Script(loanPolicyId),
-            smartTokensSpendScriptHash,
-          ),
-          loanInputIndex,
-        )
-      expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
-      let collateralOracleRefInput =
-        safe_list_at(self.reference_inputs, collateralOracleRefInputIndex)
-      expect Some(collateralOraclePriceFeed) =
-        retrieve_oracle_data(
-          collateralOracleRefInput.output.address.payment_credential,
-          collateralOracleRefInput.output.value,
-          self.redeemers,
-          validFrom,
-          validTo,
-          datum.collateral.oracleTokenAsset.policyId,
-          datum.collateral.oracleTokenAsset.assetName,
-          datum.collateral.policyId,
-          datum.collateral.maybeAssetName,
-        )
-      let principalOracleRefInput =
-        safe_list_at(self.reference_inputs, principalOracleRefInputIndex)
-      expect Some(principalOraclePriceFeed) =
-        retrieve_oracle_data(
-          principalOracleRefInput.output.address.payment_credential,
-          principalOracleRefInput.output.value,
-          self.redeemers,
-          validFrom,
-          validTo,
-          datum.principalOracleAsset.policyId,
-          datum.principalOracleAsset.assetName,
-          datum.principalAsset.policyId,
-          Some(datum.principalAsset.assetName),
-        )
-      and {
-        quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-        is_nft_in_output(borrowerBondPolicyId, loanId, borrowerBondOutput),
-        can_liquidate(
-          rational.from_int(datum.principalAmount),
-          rational.from_int(newCollateralAmount),
-          ltvAsRational,
-          principalOraclePriceFeed,
-          collateralOraclePriceFeed,
-        ) == False,
-        validate_output_to_loan_for_changing_collateral(
-          loanOutput,
-          datum,
-          newCollateralAmount,
-          input.output.value,
-          input.output.address.stake_credential,
-          loanSpendScriptHash,
-        ),
-      }
-    }
-    _ -> False
   }
 }
 

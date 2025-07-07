@@ -4,7 +4,7 @@ use aiken/interval.{Finite, Interval}
 use aiken/math.{pow}
 use aiken/math/rational
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{PolicyId, flatten, quantity_of}
+use cardano/assets.{flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
@@ -66,234 +66,222 @@ validator loan_recast_action(
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: LoanDatum = inputDatum
 
-        check_recast(
-          self,
-          input,
-          inputAction.borrowerBondOutputIndex,
-          inputAction.lenderBondRefInputIndex,
-          index,
-          datum,
-          inputAction.principalPaid,
-          loanPolicyId,
-          inputAction.loanId,
-          smartTokensSpendScriptHash,
-          lenderBondPolicyId,
-          borrowerBondPolicyId,
-          repaymentPolicyId,
-          loanSpendScriptHash,
-        )
+        expect Finite(validTo) = self.validity_range.upper_bound.bound_type
+        let borrowerBondOutput =
+          safe_list_at(self.outputs, inputAction.borrowerBondOutputIndex)
+        let lenderBondRefInput =
+          safe_list_at(
+            self.reference_inputs,
+            inputAction.lenderBondRefInputIndex,
+          )
+        let lenderBondAddress = lenderBondRefInput.output.address
+        let repaymentOutput =
+          utils.safe_list_at(
+            get_outputs_to_smart_credential(
+              self.outputs,
+              lenderBondAddress.payment_credential,
+              lenderBondAddress.payment_credential,
+              smartTokensSpendScriptHash,
+            ),
+            index,
+          )
+        let periodToLatestPaidInstallment =
+          datum.repaidInstallments * datum.installmentPeriod
+        let timePassedSinceLastRepaidInstallment =
+          validTo - (
+            datum.lendDate + (
+              datum.initialGracePeriod + periodToLatestPaidInstallment
+            ) * constants.hour_to_millis
+          )
+        let dueInstallments =
+          timePassedSinceLastRepaidInstallment / (
+            datum.installmentPeriod * constants.hour_to_millis
+          )
+
+        let principalAfterRecasting =
+          when datum.repaymentMode is {
+            InterestOnRemainingPrincipal { .. } -> {
+              //Formula is: remainingPrincipal = P*r^t - A*(r^t - 1)/(r - 1)
+              //where P = principal amount, r = 1 + interest rate per installment, t = latest paid installment and A = installment amount
+              expect Some(interestRateAsRational) =
+                rational.new(datum.interestRate, 10000)
+              let a =
+                get_next_installment_amount(
+                  datum.repaymentMode,
+                  rational.from_int(datum.principalAmount),
+                  interestRateAsRational,
+                  datum.totalInstallments,
+                  datum.repaidInstallments,
+                  datum.installmentPeriod,
+                  datum.initialGracePeriod,
+                  False,
+                  datum.penaltyFeeForLateRepayment,
+                )
+
+              let interestPerInstallment =
+                datum.interestRate / datum.totalInstallments
+
+              let r = 1 + interestPerInstallment
+
+              let rToTheT = pow(r, datum.repaidInstallments)
+
+              let remainingPrincipalToPay =
+                datum.principalAmount * rToTheT - a * ( rToTheT - 1 ) / (
+                  r - 1
+                )
+
+              remainingPrincipalToPay - inputAction.principalPaid
+            }
+            _ -> datum.principalAmount - inputAction.principalPaid
+          }
+
+        and {
+          inputAction.principalPaid > 0,
+          quantity_of(input.output.value, loanPolicyId, inputAction.loanId) == 1,
+          utils.efficient_quantity_of(
+            lenderBondRefInput,
+            lenderBondPolicyId,
+            inputAction.lenderBondRefInputPolicyIdIndex,
+            inputAction.loanId,
+            inputAction.lenderBondRefInputAssetNameIndex,
+          ) == 1,
+          is_nft_in_output(
+            borrowerBondPolicyId,
+            inputAction.loanId,
+            borrowerBondOutput,
+          ),
+          //A recast is permitted only if the loan has installments
+          datum.installmentPeriod > 0,
+          //A recast is permitted only when all due installments + 1 are paid, otherwise the borrower avoids paying what is due
+          datum.repaidInstallments >= dueInstallments + 1,
+          //A recast must be within the number of recasts allowed
+          when datum.repaymentMode is {
+            InterestOnRemainingPrincipal { max_possible_recasts } ->
+              datum.doneRecasts < max_possible_recasts
+            PerpetualLoan { max_possible_recasts, .. } ->
+              datum.doneRecasts < max_possible_recasts
+            _ -> fail
+          },
+          validate_repayment_output(
+            loanInputOutputReference: input.output_reference,
+            repaymentOutput: repaymentOutput,
+            lenderBondAsset: Asset {
+              policyId: lenderBondPolicyId,
+              assetName: inputAction.loanId,
+            },
+            repaymentAsset: datum.principalAsset,
+            repaymentAmount: inputAction.principalPaid,
+            action: constants.repayment_action_recast,
+            extra_data: inputAction.loanId,
+            repaymentReceipts: datum.repaymentReceipts,
+            repaymentPolicyId: repaymentPolicyId,
+          ),
+          or {
+            and {
+              //If principal becomes 0, then the loan is closed (there can't be outstanding interest to pay)
+              principalAfterRecasting == 0,
+              quantity_of(self.mint, loanPolicyId, inputAction.loanId) == -1,
+            },
+            and {
+              principalAfterRecasting > 0,
+              //Loan output is correct
+              {
+                let loanOutput =
+                  safe_list_at(
+                    get_outputs_to_smart_credential(
+                      self.outputs,
+                      Script(loanSpendScriptHash),
+                      Script(loanPolicyId),
+                      smartTokensSpendScriptHash,
+                    ),
+                    index,
+                  )
+                expect InlineDatum(outputDatum) = loanOutput.datum
+                let newLoanExpectedDatum =
+                  when datum.repaymentMode is {
+                    InterestOnRemainingPrincipal { .. } -> {
+                      let newTotalInstallments =
+                        datum.totalInstallments - datum.repaidInstallments
+                      let newRepaidInstallments = 0
+
+                      //Loan datum except the first 5 fields
+                      let datumUnchangedPart =
+                        datum
+                          |> builtin.unconstr_fields
+                          |> builtin.tail_list
+                          |> builtin.tail_list
+                          |> builtin.tail_list
+                          |> builtin.tail_list
+                          |> builtin.tail_list
+
+                      //Adding the new first 5 fields
+                      builtin.cons_list(
+                        builtin.i_data(newRepaidInstallments),
+                        builtin.cons_list(
+                          builtin.i_data(datum.doneRecasts + 1),
+                          builtin.cons_list(
+                            builtin.i_data(principalAfterRecasting),
+                            builtin.cons_list(
+                              builtin.i_data(
+                                datum.interestRate / newTotalInstallments,
+                              ),
+                              builtin.cons_list(
+                                builtin.i_data(newTotalInstallments),
+                                datumUnchangedPart,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    }
+
+                    _ -> {
+                      //Loan datum except the first 2 fields
+                      let datumUnchangedPart =
+                        datum
+                          |> builtin.unconstr_fields
+                          |> builtin.tail_list
+                          |> builtin.tail_list
+
+                      //Adding the new first 2 fields
+                      builtin.cons_list(
+                        builtin.i_data(datum.repaidInstallments),
+                        builtin.cons_list(
+                          builtin.i_data(datum.doneRecasts + 1),
+                          builtin.cons_list(
+                            builtin.i_data(principalAfterRecasting),
+                            datumUnchangedPart,
+                          ),
+                        ),
+                      )
+                    }
+                  }
+                let correctDestination =
+                  if is_output_to_spend_validator(
+                    loanOutput,
+                    loanSpendScriptHash,
+                  ) {
+                    loanOutput.address.stake_credential == input.output.address.stake_credential
+                  } else {
+                    //outputs have been already filtered at the beginning
+                    True
+                  }
+                and {
+                  correctDestination,
+                  builtin.equals_data(outputDatum, newLoanExpectedDatum),
+                  //loanNFT is already included in the value
+                  input.output.value == loanOutput.value,
+                }
+              },
+            },
+          },
+        }
       },
     )
   }
 
   else(_) {
     fail
-  }
-}
-
-fn check_recast(
-  self: Transaction,
-  input: Input,
-  borrowerBondOutputIndex: Int,
-  lenderBondRefInputIndex: Int,
-  loanInputIndex: Int,
-  datum: LoanDatum,
-  principalPaid: Int,
-  loanPolicyId: PolicyId,
-  loanId: ByteArray,
-  smartTokensSpendScriptHash: ByteArray,
-  lenderBondPolicyId: PolicyId,
-  borrowerBondPolicyId: PolicyId,
-  repaymentPolicyId: ByteArray,
-  loanSpendScriptHash: ByteArray,
-) {
-  expect Finite(validTo) = self.validity_range.upper_bound.bound_type
-  let borrowerBondOutput = safe_list_at(self.outputs, borrowerBondOutputIndex)
-  let lenderBondRefInput =
-    safe_list_at(self.reference_inputs, lenderBondRefInputIndex)
-  let lenderBondAddress = lenderBondRefInput.output.address
-  let repaymentOutput =
-    utils.safe_list_at(
-      get_outputs_to_smart_credential(
-        self.outputs,
-        lenderBondAddress.payment_credential,
-        lenderBondAddress.payment_credential,
-        smartTokensSpendScriptHash,
-      ),
-      loanInputIndex,
-    )
-  let periodToLatestPaidInstallment =
-    datum.repaidInstallments * datum.installmentPeriod
-  let timePassedSinceLastRepaidInstallment =
-    validTo - (
-      datum.lendDate + (
-        datum.initialGracePeriod + periodToLatestPaidInstallment
-      ) * constants.hour_to_millis
-    )
-  let dueInstallments =
-    timePassedSinceLastRepaidInstallment / (
-      datum.installmentPeriod * constants.hour_to_millis
-    )
-
-  let principalAfterRecasting =
-    when datum.repaymentMode is {
-      InterestOnRemainingPrincipal { .. } -> {
-        //Formula is: remainingPrincipal = P*r^t - A*(r^t - 1)/(r - 1)
-        //where P = principal amount, r = 1 + interest rate per installment, t = latest paid installment and A = installment amount
-        expect Some(interestRateAsRational) =
-          rational.new(datum.interestRate, 10000)
-        let a =
-          get_next_installment_amount(
-            datum.repaymentMode,
-            rational.from_int(datum.principalAmount),
-            interestRateAsRational,
-            datum.totalInstallments,
-            datum.repaidInstallments,
-            datum.installmentPeriod,
-            datum.initialGracePeriod,
-            False,
-            datum.penaltyFeeForLateRepayment,
-          )
-
-        let interestPerInstallment =
-          datum.interestRate / datum.totalInstallments
-
-        let r = 1 + interestPerInstallment
-
-        let rToTheT = pow(r, datum.repaidInstallments)
-
-        let remainingPrincipalToPay =
-          datum.principalAmount * rToTheT - a * ( rToTheT - 1 ) / ( r - 1 )
-
-        remainingPrincipalToPay - principalPaid
-      }
-      _ -> datum.principalAmount - principalPaid
-    }
-
-  and {
-    principalPaid > 0,
-    quantity_of(input.output.value, loanPolicyId, loanId) == 1,
-    quantity_of(lenderBondRefInput.output.value, lenderBondPolicyId, loanId) == 1,
-    is_nft_in_output(borrowerBondPolicyId, loanId, borrowerBondOutput),
-    //A recast is permitted only if the loan has installments
-    datum.installmentPeriod > 0,
-    //A recast is permitted only when all due installments + 1 are paid, otherwise the borrower avoids paying what is due
-    datum.repaidInstallments >= dueInstallments + 1,
-    //A recast must be within the number of recasts allowed
-    when datum.repaymentMode is {
-      InterestOnRemainingPrincipal { max_possible_recasts } ->
-        datum.doneRecasts < max_possible_recasts
-      PerpetualLoan { max_possible_recasts, .. } ->
-        datum.doneRecasts < max_possible_recasts
-      _ -> fail
-    },
-    validate_repayment_output(
-      loanInputOutputReference: input.output_reference,
-      repaymentOutput: repaymentOutput,
-      lenderBondAsset: Asset { policyId: lenderBondPolicyId, assetName: loanId },
-      repaymentAsset: datum.principalAsset,
-      repaymentAmount: principalPaid,
-      action: constants.repayment_action_recast,
-      extra_data: loanId,
-      repaymentReceipts: datum.repaymentReceipts,
-      repaymentPolicyId: repaymentPolicyId,
-    ),
-    or {
-      and {
-        //If principal becomes 0, then the loan is closed (there can't be outstanding interest to pay)
-        principalAfterRecasting == 0,
-        quantity_of(self.mint, loanPolicyId, loanId) == -1,
-      },
-      and {
-        principalAfterRecasting > 0,
-        //Loan output is correct
-        {
-          let loanOutput =
-            safe_list_at(
-              get_outputs_to_smart_credential(
-                self.outputs,
-                Script(loanSpendScriptHash),
-                Script(loanPolicyId),
-                smartTokensSpendScriptHash,
-              ),
-              loanInputIndex,
-            )
-          expect InlineDatum(outputDatum) = loanOutput.datum
-          let newLoanExpectedDatum =
-            when datum.repaymentMode is {
-              InterestOnRemainingPrincipal { .. } -> {
-                let newTotalInstallments =
-                  datum.totalInstallments - datum.repaidInstallments
-                let newRepaidInstallments = 0
-
-                //Loan datum except the first 5 fields
-                let datumUnchangedPart =
-                  datum
-                    |> builtin.unconstr_fields
-                    |> builtin.tail_list
-                    |> builtin.tail_list
-                    |> builtin.tail_list
-                    |> builtin.tail_list
-                    |> builtin.tail_list
-
-                //Adding the new first 5 fields
-                builtin.cons_list(
-                  builtin.i_data(newRepaidInstallments),
-                  builtin.cons_list(
-                    builtin.i_data(datum.doneRecasts + 1),
-                    builtin.cons_list(
-                      builtin.i_data(principalAfterRecasting),
-                      builtin.cons_list(
-                        builtin.i_data(
-                          datum.interestRate / newTotalInstallments,
-                        ),
-                        builtin.cons_list(
-                          builtin.i_data(newTotalInstallments),
-                          datumUnchangedPart,
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-              }
-
-              _ -> {
-                //Loan datum except the first 2 fields
-                let datumUnchangedPart =
-                  datum
-                    |> builtin.unconstr_fields
-                    |> builtin.tail_list
-                    |> builtin.tail_list
-
-                //Adding the new first 2 fields
-                builtin.cons_list(
-                  builtin.i_data(datum.repaidInstallments),
-                  builtin.cons_list(
-                    builtin.i_data(datum.doneRecasts + 1),
-                    builtin.cons_list(
-                      builtin.i_data(principalAfterRecasting),
-                      datumUnchangedPart,
-                    ),
-                  ),
-                )
-              }
-            }
-          let correctDestination =
-            if is_output_to_spend_validator(loanOutput, loanSpendScriptHash) {
-              loanOutput.address.stake_credential == input.output.address.stake_credential
-            } else {
-              //outputs have been already filtered at the beginning
-              True
-            }
-          and {
-            correctDestination,
-            builtin.equals_data(outputDatum, newLoanExpectedDatum),
-            //loanNFT is already included in the value
-            input.output.value == loanOutput.value,
-          }
-        },
-      },
-    },
   }
 }
 

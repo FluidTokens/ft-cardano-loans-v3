@@ -73,6 +73,10 @@ pub type ClaimData {
   collateralOracleRefInputIndex: Int,
   //If loan doesn't use oracle, this is not used
   principalOracleRefInputIndex: Int,
+  //Position in Value of the borrower bond PolicyId
+  borrowerBondRefInputPolicyIdIndex: Int,
+  //Position in Value of the borrower bond AssetName
+  borrowerBondRefInputAssetNameIndex: Int,
   //Used only when an auction must start as part of liquidation
   lenderAuth: AuthorizationMethod,
   //Only for partialLiquidation, it's collateralValue - remainingDebt expressed in principal currency
@@ -84,6 +88,8 @@ pub type RepayData {
   //This is the absolute output index that contains the borrower bond
   borrowerBondOutputIndex: Int,
   lenderBondRefInputIndex: Int,
+  lenderBondRefInputPolicyIdIndex: Int,
+  lenderBondRefInputAssetNameIndex: Int,
   loanId: ByteArray,
   //Used only in Perpetual Loans to signal the last repayment that will close the loan
   isFinalRepayment: Bool,
@@ -101,6 +107,8 @@ pub type ChangeCollateralData {
 pub type RecastData {
   borrowerBondOutputIndex: Int,
   lenderBondRefInputIndex: Int,
+  lenderBondRefInputPolicyIdIndex: Int,
+  lenderBondRefInputAssetNameIndex: Int,
   //In principal units
   principalPaid: Int,
   loanId: ByteArray,
