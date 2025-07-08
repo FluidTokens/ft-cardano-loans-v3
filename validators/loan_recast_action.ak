@@ -130,14 +130,7 @@ validator loan_recast_action(
                   r - 1
                 )
 
-              let remainingPrincipalToPayCeiled =
-                if a * ( rToTheT - 1 ) % ( r - 1 ) == 0 {
-                  remainingPrincipalToPay
-                } else {
-                  remainingPrincipalToPay + 1
-                }
-
-              remainingPrincipalToPayCeiled - inputAction.amountPaid
+              remainingPrincipalToPay - inputAction.amountPaid
             }
             PerpetualLoan { .. } -> {
               expect Some(interestRateAsRational) =
