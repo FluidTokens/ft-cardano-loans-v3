@@ -7,7 +7,7 @@ use aiken/option
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
 use cardano/assets.{
-  PolicyId, Value, add, flatten, quantity_of, reduce, tokens, without_lovelace,
+  PolicyId, Value, add, flatten, quantity_of, tokens, without_lovelace,
 }
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, find_input,
@@ -190,22 +190,9 @@ fn check_mint(
         }
       },
     )
-  let mintedTokensQuantity =
-    reduce(
-      self.mint,
-      0,
-      fn(policyId, _assetName, amount, result) {
-        if policyId == policy_id {
-          result + amount
-        } else {
-          result
-        }
-      },
-    )
   and {
     isInputRefSpent,
     isEachMintedTokenAccountedFor,
-    mintedTokensQuantity <= 255,
   }
 }
 

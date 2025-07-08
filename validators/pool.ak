@@ -181,7 +181,6 @@ fn check_mint(
 
   and {
     isInputRefSpent,
-    //We don't need to check of a possible overflow (> 255) as if it happens the minted NFT is not unique anymore and the mint will fail
     isEachMintedTokenAccountedFor,
   }
 }
@@ -356,7 +355,6 @@ fn check_borrow(
       },
       and {
         remainingPrincipalAmountAfterBorrow > 0,
-        index <= 255,
         validate_eventual_output_to_pool(
           safe_list_at(self.outputs, index),
           datum,

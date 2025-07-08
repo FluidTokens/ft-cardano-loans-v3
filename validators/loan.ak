@@ -3,7 +3,7 @@ use aiken/collection/dict
 use aiken/collection/list
 use cardano/address.{Credential, Script}
 use cardano/assets.{PolicyId, tokens}
-use cardano/transaction.{Input, Output, OutputReference, Transaction, Withdraw}
+use cardano/transaction.{Input, Output, Transaction, Withdraw}
 use fluidtokens/types/loan.{
   ChangeCollateral, Claim, LoanMintRedeemer, LoanWithdrawRedeemer, Recast, Repay,
 } as l
@@ -134,7 +134,6 @@ fn check_mint(
                   utils.hash_output_ref(input.output_reference)
                 let loanOutput = safe_list_at(loanOutputs, index)
                 expect and {
-                    input.output_reference.output_index <= 255,
                     dict.size(assets.tokens(loanOutput.value, policy_id)) == 1,
                     assets.quantity_of(
                       loanOutput.value,
@@ -167,7 +166,6 @@ fn check_mint(
                   utils.hash_output_ref(input.output_reference)
                 let loanOutput = safe_list_at(loanOutputs, index)
                 expect and {
-                    input.output_reference.output_index <= 255,
                     dict.size(assets.tokens(loanOutput.value, policy_id)) == 1,
                     assets.quantity_of(
                       loanOutput.value,
