@@ -45,7 +45,7 @@ pub fn get_config_as_data_list(
       configNFTAssetName,
     ) > 0
   expect InlineDatum(outputDatum) = configRefInput.output.datum
-  builtin.un_list_data(outputDatum)
+  builtin.unconstr_fields(outputDatum)
 }
 
 pub fn value_without_policy_id_as_list(value: Value, policyIdToRemove: PolicyId) {
@@ -199,7 +199,7 @@ pub fn efficient_quantity_of(
   let value_as_list_data =
     builtin.un_map_data(
       safe_list_at(
-        builtin.un_list_data(safe_list_at(builtin.un_list_data(input), 1)),
+        builtin.unconstr_fields(safe_list_at(builtin.unconstr_fields(input), 1)),
         1,
       ),
     )

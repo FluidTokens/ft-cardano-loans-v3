@@ -82,7 +82,7 @@ validator kyc_token(
               //First field of datum is permissionedConditionScriptHash
               (
                 inputDatum
-                  |> builtin.un_list_data
+                  |> builtin.unconstr_fields
                   |> builtin.head_list
                   |> builtin.un_b_data
               ) == scriptHash
@@ -104,7 +104,7 @@ validator kyc_token(
         //Second field of datum is extraData
         let extraData =
           inputDatum
-            |> builtin.un_list_data
+            |> builtin.unconstr_fields
             |> builtin.tail_list
             |> builtin.head_list
         let compliance = safe_list_at(redeemer.complianceForEachInput, index)

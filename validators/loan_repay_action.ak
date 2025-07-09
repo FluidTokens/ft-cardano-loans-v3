@@ -275,11 +275,14 @@ fn validate_eventual_output_to_loan_for_repayment(
       |> builtin.unconstr_fields
       |> builtin.tail_list
 
-  //Adding the new first field
+  //Adding the new first field and remaking it a constructor
   let newLoanExpectedDatum =
-    builtin.cons_list(
-      builtin.i_data(datum.repaidInstallments + 1),
-      datumUnchangedPart,
+    builtin.constr_data(
+      0,
+      builtin.cons_list(
+        builtin.i_data(datum.repaidInstallments + 1),
+        datumUnchangedPart,
+      ),
     )
 
   let isDatumCorrect = builtin.equals_data(outputDatum, newLoanExpectedDatum)

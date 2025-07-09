@@ -5,8 +5,8 @@ use fluidtokens/types/general.{
 
 pub type LoanDatum {
   repaidInstallments: Int,
-  //Principal taken with the loan expressed in units, for example 100ADA -> 100000000
   doneRecasts: Int,
+  //Principal taken with the loan expressed in units, for example 100ADA -> 100000000
   principalAmount: Int,
   //The interest rate of the loan is this number/10000, so 0.01% is expressed as 1.
   //For perpetuals this variable actually represents c in the formula APY=mx+c, and it can be used for:

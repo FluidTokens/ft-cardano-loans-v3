@@ -229,20 +229,23 @@ validator loan_recast_action(
                           |> builtin.tail_list
                           |> builtin.tail_list
 
-                      //Adding the new first 5 fields
-                      builtin.cons_list(
-                        builtin.i_data(newRepaidInstallments),
+                      //Adding the new first 5 fields and remaking it a constructor
+                      builtin.constr_data(
+                        0,
                         builtin.cons_list(
-                          builtin.i_data(datum.doneRecasts + 1),
+                          builtin.i_data(newRepaidInstallments),
                           builtin.cons_list(
-                            builtin.i_data(principalAfterRecasting),
+                            builtin.i_data(datum.doneRecasts + 1),
                             builtin.cons_list(
-                              builtin.i_data(
-                                datum.interestRate / newTotalInstallments,
-                              ),
+                              builtin.i_data(principalAfterRecasting),
                               builtin.cons_list(
-                                builtin.i_data(newTotalInstallments),
-                                datumUnchangedPart,
+                                builtin.i_data(
+                                  datum.interestRate / newTotalInstallments,
+                                ),
+                                builtin.cons_list(
+                                  builtin.i_data(newTotalInstallments),
+                                  datumUnchangedPart,
+                                ),
                               ),
                             ),
                           ),
@@ -258,14 +261,17 @@ validator loan_recast_action(
                           |> builtin.tail_list
                           |> builtin.tail_list
 
-                      //Adding the new first 2 fields
-                      builtin.cons_list(
-                        builtin.i_data(datum.repaidInstallments),
+                      //Adding the new first 2 fields and remaking it a constructor
+                      builtin.constr_data(
+                        0,
                         builtin.cons_list(
-                          builtin.i_data(datum.doneRecasts + 1),
+                          builtin.i_data(datum.repaidInstallments),
                           builtin.cons_list(
-                            builtin.i_data(principalAfterRecasting),
-                            datumUnchangedPart,
+                            builtin.i_data(datum.doneRecasts + 1),
+                            builtin.cons_list(
+                              builtin.i_data(principalAfterRecasting),
+                              datumUnchangedPart,
+                            ),
                           ),
                         ),
                       )

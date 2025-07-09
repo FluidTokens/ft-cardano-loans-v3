@@ -55,7 +55,7 @@ validator specific_lenders(
               //First field of datum is permissionedConditionScriptHash
               (
                 inputDatum
-                  |> builtin.un_list_data
+                  |> builtin.unconstr_fields
                   |> builtin.head_list
                   |> builtin.un_b_data
               ) == scriptHash
@@ -77,7 +77,7 @@ validator specific_lenders(
         //Second field of datum is extraData
         let extraData =
           inputDatum
-            |> builtin.un_list_data
+            |> builtin.unconstr_fields
             |> builtin.tail_list
             |> builtin.head_list
         expect permissionedDatum: PermissionedDatum = extraData
