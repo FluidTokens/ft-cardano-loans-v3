@@ -58,7 +58,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
     let requestSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 9))
-    let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
+    let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
     let requestInputs =

@@ -40,7 +40,7 @@ validator loan_recast_action(
     let smartTokensSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 0))
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
-    let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
+    let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
     let repaymentPolicyId = builtin.un_b_data(utils.safe_list_at(config, 7))
@@ -240,7 +240,7 @@ validator loan_recast_action(
                               builtin.i_data(principalAfterRecasting),
                               builtin.cons_list(
                                 builtin.i_data(
-                                  datum.interestRate / newTotalInstallments,
+                                  datum.interestRate * newTotalInstallments / datum.totalInstallments,
                                 ),
                                 builtin.cons_list(
                                   builtin.i_data(newTotalInstallments),

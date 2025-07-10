@@ -50,7 +50,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
       builtin.un_b_data(utils.safe_list_at(config, 0))
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
     let poolSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 8))
-    let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
+    let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
     let poolInputs =

@@ -38,7 +38,7 @@ validator loan_change_collateral_action(
     let smartTokensSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 0))
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
-    let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
+    let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let loanInputs =
       get_inputs_from_smart_credential(
