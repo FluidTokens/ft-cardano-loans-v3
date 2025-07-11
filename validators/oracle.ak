@@ -136,7 +136,6 @@ validator oracle(
           rational.new(price_in_lovelaces, price_denominator)
         expect Some(multiplier) = rational.new(math.pow(10, decimals), 1000000)
         let result = rational.mul(token_price, multiplier)
-        let reduced = rational.reduce(result)
         expect Some(orcfax_price) =
           rational.new(
             oracleDatum.statement.body.num,
@@ -159,7 +158,7 @@ validator oracle(
             constants.orcfax_identifier_feed_asset_name,
           ) == 1,
           common.valid_to - constants.max_orcfax_tolerance <= oracleDatum.statement.created_at,
-          compare(reduced, orcfax_price) == Equal,
+          compare(result, orcfax_price) == Equal,
         }
       }
       _ -> {
