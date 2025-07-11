@@ -136,16 +136,22 @@ validator loan_recast_action(
               expect Some(interestRateAsRational) =
                 rational.new(datum.interestRate, 10000)
 
-              get_remaining_debt(
-                datum.repaymentMode,
-                rational.from_int(datum.principalAmount),
-                interestRateAsRational,
-                datum.totalInstallments,
-                datum.repaidInstallments,
-                datum.installmentPeriod,
-                datum.initialGracePeriod,
-                validTo - datum.lendDate,
-              ) - inputAction.amountPaid
+              let remainingDebt =
+                get_remaining_debt(
+                  datum.repaymentMode,
+                  rational.from_int(datum.principalAmount),
+                  interestRateAsRational,
+                  datum.totalInstallments,
+                  datum.repaidInstallments,
+                  datum.installmentPeriod,
+                  datum.initialGracePeriod,
+                  validTo - datum.lendDate,
+                )
+              let leftoverInterest = remainingDebt - datum.principalAmount
+              //Ensure the amountPaid is bigger than the leftOverInterest, otherwise the new principal could become bigger than the old one!
+              expect inputAction.amountPaid > leftoverInterest
+
+              remainingDebt - inputAction.amountPaid
             }
             _ -> datum.principalAmount - inputAction.amountPaid
           }
