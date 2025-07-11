@@ -20,22 +20,24 @@ pub fn create_auth(
   transaction_mint: Value,
 ) {
   when method is {
-    CardanoSignature(hash) -> CardanoSignatureAuth { hash, extra_signatories }
-    CardanoSpendScript(hash) ->
+    CardanoSignature { hash } ->
+      CardanoSignatureAuth { hash, extra_signatories }
+    CardanoSpendScript { hash } ->
       CardanoSpendScriptAuth { hash, transaction_inputs }
-    CardanoWithdrawScript(hash) ->
+    CardanoWithdrawScript { hash } ->
       CardanoWithdrawScriptAuth { hash, withdrawals }
-    CardanoMintScript(hash) -> CardanoMintScriptAuth { hash, transaction_mint }
+    CardanoMintScript { hash } ->
+      CardanoMintScriptAuth { hash, transaction_mint }
   }
 }
 
 pub fn authorize_action(auth: Authorization) -> Bool {
   when auth is {
     // If the authorization method is PubKey, validate using the provided signature.
-    CardanoSignatureAuth(hash, extra_signatories) ->
+    CardanoSignatureAuth { hash, extra_signatories } ->
       list.has(extra_signatories, hash)
     // If the authorization method is SpendScript, ensure the Utxo is present in the transaction inputs.
-    CardanoSpendScriptAuth(hash, transaction_inputs) -> {
+    CardanoSpendScriptAuth { hash, transaction_inputs } -> {
       let auth_cred = Script(hash)
       list.any(
         transaction_inputs,
@@ -49,12 +51,12 @@ pub fn authorize_action(auth: Authorization) -> Bool {
       )
     }
     // If the authorization method is WithdrawScript, validate the presence of a withdrawal in the transaction.
-    CardanoWithdrawScriptAuth(hash, withdrawals) -> {
+    CardanoWithdrawScriptAuth { hash, withdrawals } -> {
       let credential = Script(hash)
       pairs.has_key(withdrawals, credential)
     }
     // If the authorization method is MintScript, ensure the minted tokens meet the policy ID requirements and have a non-zero quantity.
-    CardanoMintScriptAuth(hash, transaction_mint) -> {
+    CardanoMintScriptAuth { hash, transaction_mint } -> {
       let fst_token_quantity =
         transaction_mint
           |> tokens(hash)

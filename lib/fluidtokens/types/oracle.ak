@@ -95,7 +95,7 @@ pub type FspDat =
 
 //the FS feed Datum is of type RationalDatum
 
-pub type Rational {
+pub type OrcfaxRational {
   num: Int,
   denom: Int,
 }
@@ -103,7 +103,7 @@ pub type Rational {
 pub type RationalStatement {
   feed_id: ByteArray,
   created_at: Int,
-  body: Rational,
+  body: OrcfaxRational,
 }
 
 pub type RationalDatum {

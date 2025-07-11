@@ -4,10 +4,12 @@ use fluidtokens/types/general.{
 }
 
 pub type LoanDatum {
-  repaidInstallments: Int,
   doneRecasts: Int,
   //Principal taken with the loan expressed in units, for example 100ADA -> 100000000
   principalAmount: Int,
+  //Expressed in millis POSIX
+  lendDate: Int,
+  repaidInstallments: Int,
   //The interest rate of the loan is this number/10000, so 0.01% is expressed as 1.
   //For perpetuals this variable actually represents c in the formula APY=mx+c, and it can be used for:
   //installmentAmount (hourly) = c/10000/8760
@@ -35,8 +37,6 @@ pub type LoanDatum {
   //Either the poolId or the requestId
   originId: AssetName,
   collateral: CollateralAsset,
-  //Expressed in millis POSIX
-  lendDate: Int,
 }
 
 pub type LoanMintRedeemer {

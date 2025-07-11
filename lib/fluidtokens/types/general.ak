@@ -45,7 +45,7 @@ pub type RepaymentMode {
   //the borrower can be liquidated
   //At each installment the borrower has to pay only the interest since last installment
   //When the borrower wants to close the loan, he has to pay the principal + interest since last installment
-  //Liquidation for too low ltv is always possible if enabled
+  //Liquidation for too high ltv is always possible if enabled
   //initialGracePeriod allows not to repay for a certain period after the loan starts but the interest rate keeps increasing!
   //So the first installment requires you to pay that too
   //Recasting is permitted when enabled

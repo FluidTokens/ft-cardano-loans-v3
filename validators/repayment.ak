@@ -176,7 +176,7 @@ validator repayment(
         and {
           eventualRepaymentTokenBurnt,
           when redeemerAction.1st is {
-            WithdrawWithToken(tokenOutputIndex) -> {
+            WithdrawWithToken { tokenOutputIndex } -> {
               expect RepaymentDatumWithToken { ownerAsset, .. } = datum
               let tokenOutput =
                 utils.safe_list_at(self.outputs, tokenOutputIndex)

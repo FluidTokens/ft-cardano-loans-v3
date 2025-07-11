@@ -43,7 +43,6 @@ validator oracle(
     )
   }
 
-  //Validate that n/m oracles have signed this tx
   withdraw(redeemer: OracleRedeemer, _credential: Credential, self: Transaction) {
     let unique_signatures = list.unique(redeemer.signatures)
     expect unique_signatures == redeemer.signatures
@@ -99,13 +98,13 @@ validator oracle(
         }
       }
 
-      PriceDataOrcfax(
+      PriceDataOrcfax {
         pointer_ref_input_index,
         provider_ref_input_index,
         common,
         price_in_lovelaces,
         price_denominator,
-      ) -> {
+      } -> {
         let orcfax_pointer_input =
           utils.safe_list_at(self.reference_inputs, pointer_ref_input_index)
         expect InlineDatum(referenceDatum) = orcfax_pointer_input.output.datum
@@ -133,10 +132,10 @@ validator oracle(
         //SNEK/ADA 0.0002 so 200/1000000
         //200 unitSNEK/lovelace 
         //therefore in order to get we multipliy numerator by 10^6 and denominator by 10^decimals of token 
-        expect Some(fluid_price) =
+        expect Some(token_price) =
           rational.new(price_in_lovelaces, price_denominator)
         expect Some(multiplier) = rational.new(math.pow(10, decimals), 1000000)
-        let result = rational.mul(fluid_price, multiplier)
+        let result = rational.mul(token_price, multiplier)
         let reduced = rational.reduce(result)
         expect Some(orcfax_price) =
           rational.new(
@@ -164,6 +163,7 @@ validator oracle(
         }
       }
       _ -> {
+        //Validate that n/m oracles have signed this tx
         let serialise_data = builtin.serialise_data(redeemer.data)
         let valid_signatures =
           list.foldl(

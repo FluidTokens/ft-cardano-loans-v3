@@ -83,7 +83,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
 
         when redeemerAction is {
-          Cancel(requestId) ->
+          Cancel { requestId } ->
             check_cancel(
               input.output.value,
               requestPolicyId,
@@ -91,7 +91,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
               self,
               datum.borrowerAuth,
             )
-          CancelAfterExpiration(requestId) ->
+          CancelAfterExpiration { requestId } ->
             check_cancel_after_expiration(
               input.output_reference,
               input.output.value,
@@ -101,13 +101,13 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
               datum,
               index,
             )
-          Lend(
+          Lend {
             principalOracleRefInputIndex,
             collateralOracleRefInputIndex,
             givenPrincipalAmount,
             requestId,
             permissionedConditionWithdrawIndex,
-          ) ->
+          } ->
             check_lend(
               self,
               input,

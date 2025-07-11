@@ -75,7 +75,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
 
         when redeemerAction is {
-          Cancel(poolId) ->
+          Cancel { poolId } ->
             check_cancel(
               input.output.value,
               poolPolicyId,
@@ -83,7 +83,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
               self,
               datum.lenderAuth,
             )
-          Borrow(
+          Borrow {
             borrowerAddress,
             outputWithLenderTokenIndex,
             principalOracleRefInputIndex,
@@ -92,7 +92,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
             wantedPrincipalAmount,
             poolId,
             permissionedConditionWithdrawIndex,
-          ) ->
+          } ->
             check_borrow(
               self,
               input,

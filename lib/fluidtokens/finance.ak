@@ -284,7 +284,7 @@ pub fn get_next_installment_amount(
       },
     )
   when repaymentMode is {
-    InterestOnRemainingPrincipal(..) -> {
+    InterestOnRemainingPrincipal { .. } -> {
       let oneAsRational = rational.from_int(1)
       //Amortization formula
       expect Some(interestPerInstallmentAsRational) =

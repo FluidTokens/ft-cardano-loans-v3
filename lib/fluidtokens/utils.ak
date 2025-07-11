@@ -2,10 +2,10 @@ use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/collection/pairs
-use aiken/crypto.{VerificationKeyHash}
+use aiken/crypto
 use aiken/interval.{Finite}
 use aiken/primitive/bytearray
-use cardano/address.{Address, Inline, Script, VerificationKey}
+use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, quantity_of, reduce, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
@@ -90,19 +90,6 @@ pub fn validity_range_within_an_hour(tx: Transaction) {
   end - start <= 3600000
 }
 
-pub fn is_output_delegated_to_sc(output: Output, scHash: ByteArray) {
-  when output.address.stake_credential is {
-    Some(stake_cred) -> {
-      expect Inline(a) = stake_cred
-      when a is {
-        VerificationKey(hash) -> hash == scHash
-        Script(hash) -> hash == scHash
-      }
-    }
-    None -> False
-  }
-}
-
 pub fn is_output_to_spend_validator(
   output: Output,
   spendValidatorScriptHash: ByteArray,
@@ -111,14 +98,6 @@ pub fn is_output_to_spend_validator(
     Script(hash) -> hash == spendValidatorScriptHash
     _ -> False
   }
-}
-
-pub fn address_in_signatures(
-  extra_signatories: List<VerificationKeyHash>,
-  address: Address,
-) {
-  expect VerificationKey(hash) = address.payment_credential
-  list.has(extra_signatories, hash)
 }
 
 /// Returns the quantity of all tokens with the policyId

@@ -154,7 +154,7 @@ fn validate_output_to_loan_for_changing_collateral(
   loanOutput: Output,
   datum: LoanDatum,
   newCollateralAmount: Int,
-  loanValue: Value,
+  oldLoanValue: Value,
   prevStakeCredential: Option<StakeCredential>,
   loanSpendScriptHash: ByteArray,
 ) {
@@ -173,7 +173,7 @@ fn validate_output_to_loan_for_changing_collateral(
       //The Value must be the same as before except for the quantity of tokens with same collateral's policyId
       let oldValueWithoutPolicyId =
         value_without_policy_id_as_list(
-          without_lovelace(loanValue),
+          without_lovelace(oldLoanValue),
           datum.collateral.policyId,
         )
       let sameValueWithoutCollateralTokens =
@@ -194,10 +194,10 @@ fn validate_output_to_loan_for_changing_collateral(
       //we substract the current amount (resulting it as 0) and add the new one
       let expectedValue =
         add(
-          loanValue,
+          oldLoanValue,
           datum.collateral.policyId,
           assetName,
-          -quantity_of(loanValue, datum.collateral.policyId, assetName) + newCollateralAmount,
+          -quantity_of(oldLoanValue, datum.collateral.policyId, assetName) + newCollateralAmount,
         )
       loanOutput.value == expectedValue
     }

@@ -219,7 +219,7 @@ validator loan_recast_action(
                         datum.totalInstallments - datum.repaidInstallments
                       let newRepaidInstallments = 0
 
-                      //Loan datum except the first 5 fields
+                      //Loan datum except the first 6 fields
                       let datumUnchangedPart =
                         datum
                           |> builtin.unconstr_fields
@@ -228,23 +228,27 @@ validator loan_recast_action(
                           |> builtin.tail_list
                           |> builtin.tail_list
                           |> builtin.tail_list
+                          |> builtin.tail_list
 
-                      //Adding the new first 5 fields and remaking it a constructor
+                      //Adding the new first 6 fields and remaking it a constructor
                       builtin.constr_data(
                         0,
                         builtin.cons_list(
-                          builtin.i_data(newRepaidInstallments),
+                          builtin.i_data(datum.doneRecasts + 1),
                           builtin.cons_list(
-                            builtin.i_data(datum.doneRecasts + 1),
+                            builtin.i_data(principalAfterRecasting),
                             builtin.cons_list(
-                              builtin.i_data(principalAfterRecasting),
+                              builtin.i_data(datum.lendDate),
                               builtin.cons_list(
-                                builtin.i_data(
-                                  datum.interestRate * newTotalInstallments / datum.totalInstallments,
-                                ),
+                                builtin.i_data(newRepaidInstallments),
                                 builtin.cons_list(
-                                  builtin.i_data(newTotalInstallments),
-                                  datumUnchangedPart,
+                                  builtin.i_data(
+                                    datum.interestRate * newTotalInstallments / datum.totalInstallments,
+                                  ),
+                                  builtin.cons_list(
+                                    builtin.i_data(newTotalInstallments),
+                                    datumUnchangedPart,
+                                  ),
                                 ),
                               ),
                             ),
@@ -252,7 +256,38 @@ validator loan_recast_action(
                         ),
                       )
                     }
+                    PerpetualLoan { .. } -> {
+                      expect Finite(validFrom) =
+                        self.validity_range.lower_bound.bound_type
+                      let newLendDate = validFrom
+                      let newRepaidInstallments = 0
+                      //Loan datum except the first 4 fields
+                      let datumUnchangedPart =
+                        datum
+                          |> builtin.unconstr_fields
+                          |> builtin.tail_list
+                          |> builtin.tail_list
+                          |> builtin.tail_list
+                          |> builtin.tail_list
 
+                      //Adding the new first 4 fields and remaking it a constructor
+                      builtin.constr_data(
+                        0,
+                        builtin.cons_list(
+                          builtin.i_data(datum.doneRecasts + 1),
+                          builtin.cons_list(
+                            builtin.i_data(principalAfterRecasting),
+                            builtin.cons_list(
+                              builtin.i_data(newLendDate),
+                              builtin.cons_list(
+                                builtin.i_data(newRepaidInstallments),
+                                datumUnchangedPart,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    }
                     _ -> {
                       //Loan datum except the first 2 fields
                       let datumUnchangedPart =
@@ -265,13 +300,10 @@ validator loan_recast_action(
                       builtin.constr_data(
                         0,
                         builtin.cons_list(
-                          builtin.i_data(datum.repaidInstallments),
+                          builtin.i_data(datum.doneRecasts + 1),
                           builtin.cons_list(
-                            builtin.i_data(datum.doneRecasts + 1),
-                            builtin.cons_list(
-                              builtin.i_data(principalAfterRecasting),
-                              datumUnchangedPart,
-                            ),
+                            builtin.i_data(principalAfterRecasting),
+                            datumUnchangedPart,
                           ),
                         ),
                       )
