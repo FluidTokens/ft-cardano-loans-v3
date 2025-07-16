@@ -127,7 +127,7 @@ validator loan_change_collateral_action(
                   datum.repaidInstallments,
                   datum.installmentPeriod,
                   datum.initialGracePeriod,
-                  validFrom - datum.lendDate,
+                  validTo - datum.lendDate,
                 ),
               )
             and {
