@@ -169,17 +169,17 @@ pub fn get_min_principal_for_collateral_with_oracles(
   )
 }
 
-//Liquidate when current LTV is smaller or equal to the decided one
-//Principal and collateral are expressed in their respective units
+//Liquidate when total debt on collateral is smaller or equal to the decided one
+//Total debt is expressed in principal currency and collateral in its own currency
 pub fn can_liquidate(
-  principal: Rational,
+  remainingDebt: Rational,
   collateral: Rational,
   liquidationLtv: Rational,
   principalOraclePriceFeed: OraclePriceFeed,
   collateralOraclePriceFeed: OraclePriceFeed,
 ) {
-  let principalInLovelace =
-    get_token_amount_in_lovelace(principal, principalOraclePriceFeed)
+  let totalOutstandingDebt =
+    get_token_amount_in_lovelace(remainingDebt, principalOraclePriceFeed)
   let collateralInLovelace =
     get_token_amount_in_lovelace(collateral, collateralOraclePriceFeed)
 
@@ -187,7 +187,7 @@ pub fn can_liquidate(
     collateralInLovelace == rational.zero,
     {
       expect Some(currentLtv) =
-        rational.div(principalInLovelace, collateralInLovelace)
+        rational.div(totalOutstandingDebt, collateralInLovelace)
 
       rational.compare(liquidationLtv, currentLtv) == Less
     },

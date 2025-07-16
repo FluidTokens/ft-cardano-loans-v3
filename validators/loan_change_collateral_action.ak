@@ -5,7 +5,7 @@ use aiken/math/rational
 use cardano/address.{Address, Credential, Script, StakeCredential}
 use cardano/assets.{Value, add, flatten, quantity_of, without_lovelace}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
-use fluidtokens/finance.{can_liquidate}
+use fluidtokens/finance.{can_liquidate, get_remaining_debt}
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
 use fluidtokens/types/loan.{
@@ -115,6 +115,21 @@ validator loan_change_collateral_action(
                 datum.principalAsset.policyId,
                 Some(datum.principalAsset.assetName),
               )
+            expect Some(interestRateAsRational) =
+              rational.new(datum.interestRate, 10000)
+            let remainingDebtAsRational =
+              rational.from_int(
+                get_remaining_debt(
+                  datum.repaymentMode,
+                  rational.from_int(datum.principalAmount),
+                  interestRateAsRational,
+                  datum.totalInstallments,
+                  datum.repaidInstallments,
+                  datum.installmentPeriod,
+                  datum.initialGracePeriod,
+                  validFrom - datum.lendDate,
+                ),
+              )
             and {
               quantity_of(input.output.value, loanPolicyId, inputAction.loanId) == 1,
               is_nft_in_output(
@@ -123,7 +138,7 @@ validator loan_change_collateral_action(
                 borrowerBondOutput,
               ),
               can_liquidate(
-                rational.from_int(datum.principalAmount),
+                remainingDebtAsRational,
                 rational.from_int(inputAction.newCollateralAmount),
                 ltvAsRational,
                 principalOraclePriceFeed,

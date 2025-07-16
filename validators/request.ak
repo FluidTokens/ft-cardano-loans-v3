@@ -38,7 +38,7 @@ use smart_tokens/utils.{
 
 validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
   mint(redeemer: RequestMintRedeemer, policy_id: PolicyId, self: Transaction) {
-    check_mint(self, redeemer, policy_id)
+    check_mint(self, redeemer, policy_id, configNFTPolicyId, configNFTAssetName)
   }
 
   withdraw(
@@ -139,6 +139,8 @@ fn check_mint(
   self: Transaction,
   redeemer: RequestMintRedeemer,
   policy_id: PolicyId,
+  configNFTPolicyId: ByteArray,
+  configNFTAssetName: ByteArray,
 ) -> Bool {
   let config =
     utils.get_config_as_data_list(

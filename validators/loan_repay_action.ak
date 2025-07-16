@@ -269,19 +269,31 @@ fn validate_eventual_output_to_loan_for_repayment(
 ) {
   expect InlineDatum(outputDatum) = loanOutput.datum
 
-  //Loan datum except the first field
+  //Loan datum except the first 4 fields
   let datumUnchangedPart =
     datum
       |> builtin.unconstr_fields
       |> builtin.tail_list
+      |> builtin.tail_list
+      |> builtin.tail_list
+      |> builtin.tail_list
 
-  //Adding the new first field and remaking it a constructor
+  //Adding the new 4th field and remaking it a constructor
   let newLoanExpectedDatum =
     builtin.constr_data(
       0,
       builtin.cons_list(
-        builtin.i_data(datum.repaidInstallments + 1),
-        datumUnchangedPart,
+        builtin.i_data(datum.doneRecasts),
+        builtin.cons_list(
+          builtin.i_data(datum.principalAmount),
+          builtin.cons_list(
+            builtin.i_data(datum.lendDate),
+            builtin.cons_list(
+              builtin.i_data(datum.repaidInstallments + 1),
+              datumUnchangedPart,
+            ),
+          ),
+        ),
       ),
     )
 

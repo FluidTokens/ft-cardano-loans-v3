@@ -212,16 +212,18 @@ validator loan_claim_action(
                   datum.principalAsset.policyId,
                   Some(datum.principalAsset.assetName),
                 )
-              let remainingDebt =
-                get_remaining_debt(
-                  datum.repaymentMode,
-                  principalAmountAsRational,
-                  interestRateAsRational,
-                  datum.totalInstallments,
-                  datum.repaidInstallments,
-                  datum.installmentPeriod,
-                  datum.initialGracePeriod,
-                  validFrom - datum.lendDate,
+              let remainingDebtAsRational =
+                rational.from_int(
+                  get_remaining_debt(
+                    datum.repaymentMode,
+                    principalAmountAsRational,
+                    interestRateAsRational,
+                    datum.totalInstallments,
+                    datum.repaidInstallments,
+                    datum.installmentPeriod,
+                    datum.initialGracePeriod,
+                    validFrom - datum.lendDate,
+                  ),
                 )
               let collateralAmount =
                 get_collateral_amount(input.output.value, datum.collateral)
@@ -230,7 +232,7 @@ validator loan_claim_action(
               and {
                 inputAction.equity == get_equity(
                   collateralAmount,
-                  rational.from_int(remainingDebt),
+                  remainingDebtAsRational,
                   principalOraclePriceFeed,
                   collateralOraclePriceFeed,
                   partialLiquidationPenaltyPerMille,
@@ -238,7 +240,7 @@ validator loan_claim_action(
                 or {
                   isRepaymentLate,
                   can_liquidate(
-                    principalAmountAsRational,
+                    remainingDebtAsRational,
                     collateralAmount,
                     ltvAsRational,
                     principalOraclePriceFeed,

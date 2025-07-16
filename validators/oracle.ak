@@ -65,7 +65,7 @@ validator oracle(
         let (price_oracle, start_oracle, end_oracle) =
           get_oracle_info(oracleDatum.price_data)
 
-        //For each assetname our contracts knows what token identifier should look for and also the mutlipliers to parse the datum from provider to our lovelace format
+        //For each assetname our contracts knows what token identifier should look for and also the multipliers to parse the datum from provider to our lovelace format
         let provider_info = get_oracle_config(charlie_specs, common.token)
         let token_provider_identifier = provider_info.1st
         let decimals = provider_info.2nd

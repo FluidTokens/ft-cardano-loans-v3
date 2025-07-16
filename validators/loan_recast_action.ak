@@ -153,7 +153,7 @@ validator loan_recast_action(
 
               remainingDebt - inputAction.amountPaid
             }
-            _ -> datum.principalAmount - inputAction.amountPaid
+            _ -> fail
           }
 
         and {
@@ -294,26 +294,7 @@ validator loan_recast_action(
                         ),
                       )
                     }
-                    _ -> {
-                      //Loan datum except the first 2 fields
-                      let datumUnchangedPart =
-                        datum
-                          |> builtin.unconstr_fields
-                          |> builtin.tail_list
-                          |> builtin.tail_list
-
-                      //Adding the new first 2 fields and remaking it a constructor
-                      builtin.constr_data(
-                        0,
-                        builtin.cons_list(
-                          builtin.i_data(datum.doneRecasts + 1),
-                          builtin.cons_list(
-                            builtin.i_data(principalAfterRecasting),
-                            datumUnchangedPart,
-                          ),
-                        ),
-                      )
-                    }
+                    _ -> fail
                   }
                 let correctDestination =
                   if is_output_to_spend_validator(

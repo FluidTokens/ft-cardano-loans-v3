@@ -17,7 +17,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
   //Burning is always allowed
   //Each output has a unique NFT
   mint(redeemer: LoanMintRedeemer, policy_id: PolicyId, self: Transaction) {
-    check_mint(self, redeemer, policy_id)
+    check_mint(self, redeemer, policy_id, configNFTPolicyId, configNFTAssetName)
   }
 
   withdraw(
@@ -69,6 +69,8 @@ fn check_mint(
   self: Transaction,
   redeemer: LoanMintRedeemer,
   policy_id: PolicyId,
+  configNFTPolicyId: ByteArray,
+  configNFTAssetName: ByteArray,
 ) {
   let config =
     utils.get_config_as_data_list(
