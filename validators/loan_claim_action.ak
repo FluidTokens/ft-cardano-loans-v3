@@ -89,9 +89,9 @@ validator loan_claim_action(
             self.validity_range.lower_bound.bound_type,
             self.validity_range.upper_bound.bound_type,
           )
-        let (lenderBondOutput, borrowerBondRefInput) =
+        let (lenderBondInput, borrowerBondRefInput) =
           (
-            utils.safe_list_at(self.outputs, inputAction.lenderBondOutputIndex),
+            utils.safe_list_at(self.inputs, inputAction.lenderBondInputIndex),
             utils.safe_list_at(
               self.reference_inputs,
               inputAction.borrowerBondRefInputIndex,
@@ -126,7 +126,7 @@ validator loan_claim_action(
           is_nft_in_output(
             lenderBondPolicyId,
             inputAction.loanId,
-            lenderBondOutput,
+            lenderBondInput.output,
           ),
           when datum.liquidationMode is {
             NoLiquidationFullCollateralClaim -> isRepaymentLate
@@ -158,7 +158,7 @@ validator loan_claim_action(
                   input,
                   dutchAuctionOutput,
                   borrowerBondRefInput.output.address,
-                  lenderBondOutput.address,
+                  lenderBondInput.output.address,
                   inputAction.lenderAuth,
                   validTo,
                   datum.principalAsset,

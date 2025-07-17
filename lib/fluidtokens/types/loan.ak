@@ -65,8 +65,8 @@ pub type LoanWithdrawRedeemer {
 pub type ClaimData {
   //Must be the same value of the one contained in the datum, used by repayment validator
   liquidationMode: LiquidationMode,
-  //This is the absolute output index that contains the lender bond
-  lenderBondOutputIndex: Int,
+  //This is the absolute input index that contains the lender bond
+  lenderBondInputIndex: Int,
   //This is the absolute ref input index that contains the borrower bond
   borrowerBondRefInputIndex: Int,
   //If loan doesn't use oracle, this is not used
