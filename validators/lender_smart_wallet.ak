@@ -1,13 +1,16 @@
 use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list.{length}
+use aiken/crypto
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use aiken/option
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
 use cardano/assets.{PolicyId, Value, add, flatten, quantity_of, tokens}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction, find_input}
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Transaction, find_input,
+}
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/constants
 use fluidtokens/finance.{
@@ -22,6 +25,8 @@ use fluidtokens/types/lender_smart_wallet.{
   LenderSmartWalletDatum, LenderSmartWalletWithdrawRedeemer, Withdraw,
 } as lsw
 use fluidtokens/types/loan.{LoanDatum}
+use fluidtokens/types/minswap_info.{MinswapV2Info}
+use fluidtokens/types/minswap_v2_types as minswap
 use fluidtokens/types/pool.{PoolDatum}
 use fluidtokens/types/repayment.{
   RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
@@ -40,13 +45,15 @@ validator lenderSmartWallet(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
   lenderSmartWalletSpendScriptHash: ByteArray,
+  minswapV2SpendScriptAddress: Address,
+  minswapV2InfoNFTPolicyId: ByteArray,
+  minswapV2InfoNFTAssetName: ByteArray,
 ) {
   withdraw(
     redeemer: LenderSmartWalletWithdrawRedeemer,
     credential: Credential,
     self: Transaction,
   ) {
-    expect Script(lswPolicyId) = credential
     let config =
       utils.get_config_as_data_list(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
@@ -90,6 +97,7 @@ validator lenderSmartWallet(
               expect result
 
               expect InlineDatum(inputDatum) = input.output.datum
+              //TODO Can be optimized with builtins
               expect datum: LenderSmartWalletDatum = inputDatum
               authorize_action(
                 create_auth(
@@ -131,11 +139,7 @@ validator lenderSmartWallet(
           ),
         }
 
-      ClaimLoans {
-        lenderBondOutputIndexes,
-        claimedCollateralOutputIndexes,
-        loanIds,
-      } -> {
+      ClaimLoans { loanIds } -> {
         let loanInputs =
           get_inputs_from_smart_credential(
             self.inputs,
@@ -154,65 +158,73 @@ validator lenderSmartWallet(
               //The last input is not checked but will return its value at the end, so if False withdraw will fail
               expect result
 
-              let lenderBondOutput =
-                safe_list_at(
-                  self.outputs,
-                  safe_list_at(lenderBondOutputIndexes, index),
-                )
-              and {
-                builtin.equals_data(input.output.datum, lenderBondOutput.datum),
-                builtin.equals_data(input.output.value, lenderBondOutput.value),
-                input.output.address == lenderBondOutput.address,
-              }
-            },
-          ),
-          list.indexed_foldr(
-            loanInputs,
-            True,
-            fn(index, input, result) {
-              //As all inputs must return True, if any of previous input returned False, then fail
-              //The last input is not checked but will return its value at the end, so if False withdraw will fail
-              expect result
+              expect InlineDatum(inputLenderBondDatum) = input.output.datum
+              expect lenderBondDatum: LenderSmartWalletDatum =
+                inputLenderBondDatum
 
-              expect InlineDatum(inputDatum) = input.output.datum
-              expect loanDatum: LoanDatum = inputDatum
+              let loanInput = safe_list_at(loanInputs, index)
+              expect InlineDatum(inputLoanDatum) = loanInput.output.datum
+              expect loanDatum: LoanDatum = inputLoanDatum
 
-              let claimedCollateralOutput =
-                safe_list_at(
-                  self.outputs,
-                  safe_list_at(claimedCollateralOutputIndexes, index),
-                )
+              //TODO Should this be using filtered outputs list?
+              let claimedCollateralOutput = safe_list_at(self.outputs, index)
+              //TODO Should this be using filtered outputs list?
+              let lenderBondOutput = safe_list_at(self.outputs, index)
 
               expect InlineDatum(outputDatum) = claimedCollateralOutput.datum
-              expect RepaymentDatumWithToken { ownerAsset, action, .. } =
+              expect RepaymentDatumWithToken { ownerAsset, action, data, .. } =
                 outputDatum
+              expect claimedAsset: CollateralAsset = data
 
               let loanId = safe_list_at(loanIds, index)
               and {
-                validate_liquidated_loan(loanDatum),
-                //TODO Should we check that loan action == Claim?         
-                validate_claimed_collateral_output(
-                  input.output.value,
-                  ownerAsset,
-                  action,
-                  claimedCollateralOutput.value,
-                  claimedCollateralOutput.address,
-                  lenderSmartWalletSpendScriptHash,
-                  lenderBondPolicyId,
-                  loanPolicyId,
-                  loanId,
+                //TODO Do we even need to filter loans that are liquidated?
+                //TODO Should we check that loan reedemer action == Claim?  
+                //We don't check that input contains any specific lender bond as we know it's there
+                //if the loan can be propery claimed. We just ensure it goes back here
+                builtin.equals_data(input.output.datum, lenderBondOutput.datum),
+                builtin.equals_data(input.output.value, lenderBondOutput.value),
+                input.output.address == lenderBondOutput.address,
+                builtin.equals_data(
+                  loanInput.output.value,
+                  add(claimedCollateralOutput.value, loanPolicyId, loanId, 1),
                 ),
+                ownerAsset.policyId == lenderBondPolicyId,
+                ownerAsset.assetName == loanId,
+                action == constants.claimed_collateral_action,
+                claimedAsset == loanDatum.collateral,
+                //TODO This is not CIP113 compatible
+                claimedCollateralOutput.address == Address {
+                  payment_credential: Script(lenderSmartWalletSpendScriptHash),
+                  stake_credential: lenderBondDatum.lenderStakeCredential,
+                },
               }
             },
           ),
         }
       }
+
       ConvertToLiquidity {
         lenderBondRefInputsIndexes,
-        minswapOrderOutputIndexes,
-      } -> and {
+        minswapV2InfoRefInputIndex,
+      } -> {
+        let minswapV2InfoRefInput =
+          safe_list_at(self.reference_inputs, minswapV2InfoRefInputIndex)
+        expect InlineDatum(minswapV2InfoDatum) =
+          minswapV2InfoRefInput.output.datum
+        expect minswapV2Info: MinswapV2Info = minswapV2InfoDatum
+        expect coerced: Pairs<ByteArray, (Asset, Bool)> =
+          minswapV2Info.lpAssetForPoolAssetPairAndDirection
+        let lpAssetForPoolAssetPairAndDirection =
+          coerced |> dict.from_ascending_pairs
+        and {
           //Ensure we don't give accidental authorization to cancelling any pool
           list.length(poolInputs) == 0,
+          quantity_of(
+            minswapV2InfoRefInput.output.value,
+            minswapV2InfoNFTPolicyId,
+            minswapV2InfoNFTAssetName,
+          ) == 1,
           list.indexed_foldr(
             lswInputs,
             True,
@@ -221,40 +233,154 @@ validator lenderSmartWallet(
               //The last input is not checked but will return its value at the end, so if False withdraw will fail
               expect result
 
-              expect InlineDatum(inputDatum) = input.output.datum
-              expect RepaymentDatumWithToken { ownerAsset, .. } = inputDatum
-
               let lenderBondRefInput =
                 safe_list_at(
                   self.reference_inputs,
                   safe_list_at(lenderBondRefInputsIndexes, index),
                 )
-
-              let minswapOrderOutput =
-                safe_list_at(
-                  self.outputs,
-                  safe_list_at(minswapOrderOutputIndexes, index),
+              //TODO Should this be using filtered outputs list?
+              let minswapOrderOutput = safe_list_at(self.outputs, index)
+              expect InlineDatum(inputDatum) = input.output.datum
+              expect RepaymentDatumWithToken { ownerAsset, data, .. } =
+                inputDatum
+              expect claimedCollateralAsset: CollateralAsset = data
+              //This works only for fungibles, not for NFTs
+              expect Some(claimedAssetName) =
+                claimedCollateralAsset.maybeAssetName
+              let claimedAsset =
+                Asset {
+                  policyId: claimedCollateralAsset.policyId,
+                  assetName: claimedAssetName,
+                }
+              let claimedAssetQuantity =
+                quantity_of(
+                  input.output.value,
+                  claimedAsset.policyId,
+                  claimedAssetName,
                 )
 
-              //TODO
-              let correctOrderDatum = False
-              let correctOrderValue = False
-              let correctOrderAddress = False
+              expect InlineDatum(lbDatum) = lenderBondRefInput.output.datum
+              expect lenderBondDatum: LenderSmartWalletDatum = lbDatum
+
+              //TODO This is not CIP113 compatible
+              let thisAddress =
+                Address {
+                  payment_credential: Script(lenderSmartWalletSpendScriptHash),
+                  stake_credential: lenderBondDatum.lenderStakeCredential,
+                }
+
+              let claimedAssetUnit =
+                bytearray.concat(claimedAsset.policyId, claimedAsset.assetName)
+
+              let principalAssetUnit =
+                bytearray.concat(
+                  lenderBondDatum.principalAsset.policyId,
+                  lenderBondDatum.principalAsset.assetName,
+                )
+
+              let orderedAssetUnits =
+                list.sort(
+                  [claimedAssetUnit, principalAssetUnit],
+                  bytearray.compare,
+                )
+
+              let sortedClaimedAssetAndPrincipalAssetUnits =
+                bytearray.concat(
+                  safe_list_at(orderedAssetUnits, 0),
+                  safe_list_at(orderedAssetUnits, 1),
+                )
+
+              expect Some((lpAsset, lpABDirection)) =
+                dict.get(
+                  lpAssetForPoolAssetPairAndDirection,
+                  sortedClaimedAssetAndPrincipalAssetUnits,
+                )
+              let botFee =
+                lenderBondDatum.swappingFeePerMille * claimedAssetQuantity / 1000
+
+              let orderType =
+                minswap.SwapExactIn {
+                  a_to_b_direction: lpABDirection,
+                  swap_amount_option: minswap.SAOSpecificAmount {
+                    swap_amount: claimedAssetQuantity - botFee,
+                  },
+                  minimum_receive: 1,
+                  killable: True,
+                }
+
+              let inputDatumHash =
+                crypto.blake2b_256(builtin.serialise_data(inputDatum))
+              let conversionDatumHash =
+                crypto.blake2b_256(
+                  builtin.serialise_data(
+                    RepaymentDatumWithToken {
+                      inputOutputReference: OutputReference {
+                        transaction_id: "",
+                        output_index: 0,
+                      },
+                      action: constants.converted_to_liquidity_action,
+                      data: claimedAsset,
+                      ownerAsset,
+                    },
+                  ),
+                )
+
+              let expectedOrderDatum =
+                InlineDatum(
+                  minswap.OrderDatum {
+                    canceller: lenderBondDatum.lenderAuth,
+                    refund_receiver: thisAddress,
+                    refund_receiver_datum: minswap.EODInlineDatum {
+                      hash: inputDatumHash,
+                    },
+                    success_receiver: thisAddress,
+                    success_receiver_datum: minswap.EODInlineDatum {
+                      hash: conversionDatumHash,
+                    },
+                    lp_asset: lpAsset,
+                    step: orderType,
+                    max_batcher_fee: 700000,
+                    expiry_setting_opt: None,
+                  },
+                )
+
+              let correctOrderValue =
+                if claimedAsset.policyId == "" {
+                  quantity_of(
+                    minswapOrderOutput.value,
+                    claimedAsset.policyId,
+                    claimedAsset.assetName,
+                  ) == claimedAssetQuantity - botFee
+                } else {
+                  and {
+                    quantity_of(
+                      minswapOrderOutput.value,
+                      claimedAsset.policyId,
+                      claimedAsset.assetName,
+                    ) == claimedAssetQuantity - botFee,
+                    quantity_of(minswapOrderOutput.value, "", "") == 2800000,
+                  }
+                }
 
               and {
-                correctOrderDatum,
+                quantity_of(
+                  lenderBondRefInput.output.value,
+                  ownerAsset.policyId,
+                  ownerAsset.assetName,
+                ) > 0,
+                builtin.equals_data(
+                  minswapOrderOutput.datum,
+                  expectedOrderDatum,
+                ),
                 correctOrderValue,
-                correctOrderAddress,
+                //TODO This is not CIP113 compatible
+                minswapOrderOutput.address == minswapV2SpendScriptAddress,
               }
             },
           ),
         }
-      CompoundLiquidity {
-        lenderBondRefInputIndexes,
-        compoundedPoolInputsIndexes,
-        compoundedPoolOutputsIndexes,
-        compoundedPoolNewIds,
-      } -> {
+      }
+      CompoundLiquidity { lenderBondRefInputIndexes, compoundedPoolNewIds } -> {
         let totalAddedLiquidityForEachPool =
           list.indexed_foldr(
             lswInputs,
@@ -307,16 +433,9 @@ validator lenderSmartWallet(
             //As all inputs must return True, if any of previous input returned False, then fail
             //The last input is not checked but will return its value at the end, so if False withdraw will fail
             expect result
-            let poolInput =
-              safe_list_at(
-                self.inputs,
-                safe_list_at(compoundedPoolInputsIndexes, index),
-              )
-            let poolOutput =
-              safe_list_at(
-                self.outputs,
-                safe_list_at(compoundedPoolOutputsIndexes, index),
-              )
+            let poolInput = safe_list_at(poolInputs, index)
+            //TODO Should this be using filtered outputs list?
+            let poolOutput = safe_list_at(self.outputs, index)
 
             expect InlineDatum(oldDatum) = poolInput.output.datum
             expect PoolDatum { commonData, .. } = oldDatum
@@ -347,13 +466,10 @@ validator lenderSmartWallet(
                     1,
                   )
             and {
+              //We know the pool is a proper pool because in its value there's the old pool nft
               quantity_of(poolInput.output.value, poolPolicyId, poolId) == 1,
               builtin.equals_data(poolInput.output.datum, poolOutput.datum),
               poolOutput.value == expectedNewValue,
-              //TODO This is not CIP113 compatible
-              poolInput.output.address.payment_credential == Script(
-                poolSpendScriptHash,
-              ),
               poolInput.output.address == poolOutput.address,
             }
           },
@@ -364,31 +480,5 @@ validator lenderSmartWallet(
 
   else(_) {
     fail
-  }
-}
-
-fn validate_liquidated_loan(loanDatum: LoanDatum) {
-  //TODO Do we even need to filter loans that are liquidated?
-  True
-}
-
-fn validate_claimed_collateral_output(
-  loanValue: Value,
-  outputOwnerAsset: Asset,
-  action: ByteArray,
-  outputValue: Value,
-  outputAddress: Address,
-  lenderSmartWalletSpendScriptHash: ByteArray,
-  lenderBondPolicyId: ByteArray,
-  loanPolicyId: ByteArray,
-  loanId: ByteArray,
-) {
-  and {
-    builtin.equals_data(loanValue, add(outputValue, loanPolicyId, loanId, 1)),
-    outputOwnerAsset.policyId == lenderBondPolicyId,
-    outputOwnerAsset.assetName == loanId,
-    action == constants.claimed_collateral_action,
-    //TODO This is not CIP113 compatible
-    outputAddress.payment_credential == Script(lenderSmartWalletSpendScriptHash),
   }
 }

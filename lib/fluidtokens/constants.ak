@@ -14,6 +14,8 @@ pub const repayment_action_partial_liquidation = "partial_liquidation"
 
 pub const claimed_collateral_action = "claimed_collateral"
 
+pub const converted_to_liquidity_action = "converted_to_liquidity"
+
 pub const charlie_identifier_asset_name = "OracleFeed"
 
 pub const orcfax_identifier_pointer_asset_name = #"000de140"
