@@ -27,7 +27,9 @@ pub type LenderSmartWalletDatum {
 }
 
 pub type LenderSmartWalletAction {
-  Cancel
+  //As a pool can delegate auth to this withdraw script, we must allow to cancel the pools
+  CancelPools
+  WithdrawBonds
   //Withdraws can be done only after cancelling (getting lender bond back)
   Withdraw { lenderBondOutputIndexes: List<Int> }
   ClaimLoans { loanIds: List<ByteArray> }

@@ -21,8 +21,9 @@ use fluidtokens/types/general.{
   Asset, AuthorizationMethod, CollateralAsset, Liquidation,
 }
 use fluidtokens/types/lender_smart_wallet.{
-  Cancel, ClaimLoans, CompoundLiquidity, ConvertToLiquidity,
+  CancelPools, ClaimLoans, CompoundLiquidity, ConvertToLiquidity,
   LenderSmartWalletDatum, LenderSmartWalletWithdrawRedeemer, Withdraw,
+  WithdrawBonds,
 } as lsw
 use fluidtokens/types/loan.{LoanDatum}
 use fluidtokens/types/minswap_info.{MinswapV2Info}
@@ -84,8 +85,10 @@ validator lenderSmartWallet(
       )
 
     when redeemer.action is {
+      //TODO
+      CancelPools -> False
       //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
-      Cancel -> and {
+      WithdrawBonds -> and {
           //Ensure we don't give accidental authorization to cancelling any pool
           list.length(poolInputs) == 0,
           list.foldr(

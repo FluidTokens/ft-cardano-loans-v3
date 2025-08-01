@@ -17,11 +17,18 @@ pub type CommonPoolDatum {
 }
 
 pub type CommonPoolAction {
-  PoolCreation
-  DepositOrWithdraw
-  ClaimLoans
-  CompoundLiquidity
-  SwapAssetsToLiquidity
+  Cancel
+  //Withdraws can be done only after cancelling (getting lender bond back)
+  Withdraw { lenderBondOutputIndexes: List<Int> }
+  ClaimLoans { loanIds: List<ByteArray> }
+  ConvertToLiquidity {
+    lenderBondRefInputsIndexes: List<Int>,
+    minswapV2InfoRefInputIndex: Int,
+  }
+  CompoundLiquidity {
+    lenderBondRefInputIndexes: List<Int>,
+    compoundedPoolNewIds: List<ByteArray>,
+  }
 }
 
 pub type CommonPoolWithdrawRedeemer {
