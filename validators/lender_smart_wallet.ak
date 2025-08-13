@@ -22,7 +22,7 @@ use fluidtokens/types/general.{
 }
 use fluidtokens/types/lender_smart_wallet.{
   CancelPools, ClaimLoans, CompoundLiquidity, ConvertToLiquidity,
-  LenderSmartWalletDatum, LenderSmartWalletWithdrawRedeemer, Withdraw,
+  LenderSmartWalletDatum, LenderSmartWalletWithdrawRedeemer, WithdrawAssets,
   WithdrawBonds,
 } as lsw
 use fluidtokens/types/loan.{LoanDatum}
@@ -85,9 +85,24 @@ validator lenderSmartWallet(
       )
 
     when redeemer.action is {
-      //TODO
-      CancelPools -> False
-      //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
+      CancelPools -> and {
+          //Ensure we don't give accidental authorization to withdraw assets
+          list.length(lswInputs) == 0,
+          list.indexed_foldr(
+            poolInputs,
+            True,
+            fn(index, input, result) {
+              //As all inputs must return True, if any of previous input returned False, then fail
+              //The last input is not checked but will return its value at the end, so if False withdraw will fail
+              expect result
+
+              expect InlineDatum(inputDatum) = input.output.datum
+              expect PoolDatum { lenderAddress, .. } = inputDatum
+
+              poolOwnerHasSigned
+            },
+          ),
+        }
       WithdrawBonds -> and {
           //Ensure we don't give accidental authorization to cancelling any pool
           list.length(poolInputs) == 0,
@@ -114,7 +129,7 @@ validator lenderSmartWallet(
             },
           ),
         }
-      Withdraw { lenderBondOutputIndexes } -> and {
+      WithdrawAssets { lenderBondOutputIndexes } -> and {
           //Ensure we don't give accidental authorization to cancelling any pool
           list.length(poolInputs) == 0,
           list.indexed_foldr(

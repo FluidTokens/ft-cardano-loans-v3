@@ -31,7 +31,7 @@ pub type LenderSmartWalletAction {
   CancelPools
   WithdrawBonds
   //Withdraws can be done only after cancelling (getting lender bond back)
-  Withdraw { lenderBondOutputIndexes: List<Int> }
+  WithdrawAssets { lenderBondOutputIndexes: List<Int> }
   ClaimLoans { loanIds: List<ByteArray> }
   ConvertToLiquidity {
     lenderBondRefInputsIndexes: List<Int>,
