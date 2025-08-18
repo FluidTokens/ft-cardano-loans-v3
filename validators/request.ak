@@ -321,12 +321,12 @@ fn check_lend(
           Some(datum.commonData.principalAsset.assetName),
         )
       expect
-        givenPrincipalAmount >= get_min_principal_for_collateral_with_oracles(
+        givenPrincipalAmount == get_min_principal_for_collateral_with_oracles(
           collateralAmount,
           minPrincipal,
           principalOraclePriceFeed,
           collateralOraclePriceFeed,
-        ) && givenPrincipalAmount <= datum.maxPrincipal
+        )
       validate_output_to_loan(
         loanOutput,
         loanPolicyId,
