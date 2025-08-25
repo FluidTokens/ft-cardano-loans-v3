@@ -1,13 +1,9 @@
-use aiken/collection/dict
-use aiken/collection/list
 use cardano/address.{Address, Script}
-use cardano/assets.{PolicyId, flatten, quantity_of, tokens}
+use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Redeemer, Transaction, find_input,
 }
 use fluidtokens/authorizer
-use fluidtokens/constants
-use fluidtokens/types/general.{Asset, CollateralAsset}
 use fluidtokens/types/minswap_info.{MinswapV2Info} as minswapV2InfoType
 use fluidtokens/utils.{quantity_of_policy_id}
 

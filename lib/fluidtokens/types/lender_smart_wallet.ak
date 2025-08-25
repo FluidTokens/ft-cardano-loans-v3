@@ -3,10 +3,11 @@
 //Repayments accumulate here in separated utxos, therefore anyone can aggregate them and provide liquidity to the pool.
 //Liquidated collateral is also accumulated here in separated utxos, therefore anyone can aggregate them, swap them on Minswap and
 //provide liquidity to the pool.
-use cardano/address.{Address, StakeCredential}
-use cardano/transaction.{OutputReference}
-use fluidtokens/types/general.{
-  Asset, AuthorizationMethod, CollateralAsset, LiquidationMode, RepaymentMode,
+use cardano/address.{StakeCredential}
+use fluidtokens/types/general.{Asset, AuthorizationMethod}
+
+pub type LenderSmartWalletMintRedeemer {
+  configRefInputIndex: Int,
 }
 
 pub type LenderSmartWalletDatum {
@@ -27,8 +28,6 @@ pub type LenderSmartWalletDatum {
 }
 
 pub type LenderSmartWalletAction {
-  //As a pool can delegate auth to this withdraw script, we must allow to cancel the pools
-  CancelPools
   WithdrawBonds
   //Withdraws can be done only after cancelling (getting lender bond back)
   WithdrawAssets { lenderBondOutputIndexes: List<Int> }
@@ -38,8 +37,10 @@ pub type LenderSmartWalletAction {
     minswapV2InfoRefInputIndex: Int,
   }
   CompoundLiquidity {
-    lenderBondRefInputIndexes: List<Int>,
+    lenderBondInputIndexes: List<Int>,
     compoundedPoolNewIds: List<ByteArray>,
+    //Index of pool input, pool output and new pool id for each lender bond input
+    lenderBondInputPoolIndexes: List<Int>,
   }
 }
 

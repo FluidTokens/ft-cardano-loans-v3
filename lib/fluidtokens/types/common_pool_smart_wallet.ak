@@ -3,8 +3,6 @@
 //Repayments accumulate here in separated utxos, therefore anyone can aggregate them and provide liquidity to the pool.
 //Liquidated collateral is also accumulated here in separated utxos, therefore anyone can aggregate them, swap them on Minswap and
 //provide liquidity to the pool.
-use cardano/address.{Address}
-use cardano/transaction.{OutputReference}
 use fluidtokens/types/general.{Asset}
 
 pub type CommonPoolDatum {
