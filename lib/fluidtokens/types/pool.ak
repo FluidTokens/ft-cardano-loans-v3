@@ -44,8 +44,12 @@ pub type PoolDatum {
   //Extend the pool datum for cases like permissioned pools. It will be parsed properly depending on specific use case.
   extraData: Data,
   commonData: CommonData,
+  //The auth that can cancel the pool
   lenderAuth: AuthorizationMethod,
-  lenderAddress: Address,
+  //Where the lender bond NFT is sent when a loan is created
+  lenderBondAddress: Address,
+  //The datum blake2b_256 hash of the InlineDatum serialised data of the lender bond NFT output
+  lenderBondInlineDatumHash: ByteArray,
   //This pool can cover multiple collections/token, but only one of them can be chosen for each loan (ie. no mixed bundle loans).
   //Important requirement: if Liquidation is enabled, ALL the collateralOptions must have an oracle NFT
   collateralOptions: List<CollateralAsset>,

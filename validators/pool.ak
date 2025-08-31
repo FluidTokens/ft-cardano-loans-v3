@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list.{length}
+use aiken/crypto
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use aiken/option
@@ -348,7 +349,8 @@ fn check_borrow(
       borrowerBondPolicyId,
       lenderBondPolicyId,
       inputUtxoId,
-      datum.lenderAddress,
+      datum.lenderBondAddress,
+      datum.lenderBondInlineDatumHash,
     ),
     or {
       and {
@@ -381,11 +383,13 @@ fn bonds_sent_to_both_parties(
   borrowerBondPolicyId: ByteArray,
   lenderBondPolicyId: ByteArray,
   bondId: ByteArray,
-  lenderAddress: Address,
+  lenderBondAddress: Address,
+  lenderBondInlineDatumHash: ByteArray,
 ) {
-  expect InlineDatum(_) = outputWithLenderToken.datum
+  expect InlineDatum(outputWithLenderTokenDatum) = outputWithLenderToken.datum
   and {
-    outputWithLenderToken.address == lenderAddress,
+    outputWithLenderToken.address == lenderBondAddress,
+    crypto.blake2b_256(builtin.serialise_data(outputWithLenderTokenDatum)) == lenderBondInlineDatumHash,
     quantity_of(mintedValue, borrowerBondPolicyId, bondId) == 1,
     quantity_of(outputWithLenderToken.value, lenderBondPolicyId, bondId) == 1,
     length(flatten(outputWithLenderToken.value)) <= 5,
