@@ -154,7 +154,8 @@ validator poolSmartManager(
           lenderSmartWalletWithdrawRedeemer.2nd
 
         when lenderSmartWalletRedeemer.action is {
-          lsw.CompoundLiquidity { .. } -> True
+          lsw.LiquidatePayInAdvanceAndCompound { .. } -> True
+          lsw.LiquidateConvertAndCompound { .. } -> True
           _ -> False
         }
       }

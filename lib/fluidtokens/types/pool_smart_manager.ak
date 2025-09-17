@@ -3,6 +3,8 @@ use fluidtokens/types/general.{AuthorizationMethod}
 pub type PoolSmartManagerDatum {
   poolOwnerAuth: AuthorizationMethod,
   poolId: ByteArray,
+  //Fee per mille of the collateral asset for the bot that claims the loans collateral
+  liquidationFeePerMille: Int,
 }
 
 pub type PoolSmartManagerMintRedeemer {

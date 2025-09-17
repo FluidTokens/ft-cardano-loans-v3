@@ -19,25 +19,24 @@ pub type LenderSmartWalletDatum {
   poolManagerId: ByteArray,
   //The repaid/liquidated loan must have the same principal of the specified pool
   principalAsset: Asset,
-  //Fee per mille of the collateral asset for the bot that claims the loans collateral
-  claimingFeePerMille: Int,
-  //Fee per mille of the collateral asset for the bot that converts the loans collateral into principal
-  swappingFeePerMille: Int,
-  //Fee per mille of the principal asset for the bot that compounds the liquidity to the pool
-  compoundingFeePerMille: Int,
 }
 
 pub type LenderSmartWalletAction {
   WithdrawBonds
   //Withdraws can be done only after cancelling (getting lender bond back)
   WithdrawAssets { lenderBondOutputIndexes: List<Int> }
-  ClaimLoans { loanInputIndexes: List<Int>, loanIds: List<ByteArray> }
-  ConvertToLiquidity {
-    lenderBondRefInputsIndexes: List<Int>,
-    minswapV2InfoRefInputIndex: Int,
+  LiquidatePayInAdvanceAndCompound {
+    loanInputIndexes: List<Int>,
+    loanIds: List<ByteArray>,
+    lenderBondInputsIndexesForClaimedLoans: List<Int>,
+    lenderBondInputsIndexesForLSWAssets: List<Int>,
+    compoundedPoolNewIds: List<ByteArray>,
   }
-  CompoundLiquidity {
-    lenderBondInputIndexes: List<Int>,
+  LiquidateConvertAndCompound {
+    loanInputIndexes: List<Int>,
+    loanIds: List<ByteArray>,
+    lenderBondInputsIndexes: List<Int>,
+    minswapV2InfoRefInputIndex: Int,
     compoundedPoolNewIds: List<ByteArray>,
   }
 }
