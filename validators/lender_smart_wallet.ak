@@ -1,3 +1,46 @@
+// POSSIBLE POOL ACTIONS:
+// - new -> no auth, new pool nft
+// - borrow -> no auth, no new pool nft
+// - cancel -> auth, no new pool nft
+// - edit (cancel+new) -> auth, new pool nft
+// - compound (cancel+new) -> auth, new pool nft
+
+// poolManager points to a pool nft 
+// -> a lsw points to the poolManager nft that doesn't change
+// -> when a pool nft changes, poolManager also changes its pointing.
+
+// Example: pool nft "A", poolManager nft "B" with datum pool="A". LSW points to "B". 
+// Pool edited, new pool nft "C", updated "B" datum with pool="C", no need to change LSW. 
+// Pool compounded, new pool nft "D", updated "B" datum with pool="D", no need to change LSW.
+// Pool cancelled, "B" can also be burnt. LSW point to a poolManager that doesn't exist anymore.
+
+// 1) poolManager nft mint:
+// 	1) No pools are spent
+// 	2) A pool nft must be minted
+// 	3) poolManager nft must have the same pool nft assetname
+// 	4) poolManager nft must go to poolManager spend script
+// 	5) poolManager nft must have datum with auth=poolOwner and poolId = pool nft
+// 2) poolManager nft burn:
+// 	1) True
+// 3) poolManager spend:
+// 	1) poolManager withdraw executed
+// 4) poolManager withdraw:
+// 	1) CancelPoolManager -> auth signing + burn poolManager nft
+// 	2) UpdatePoolManager -> auth signing
+// 			+ poolManager output same value and destination 
+// 			+ poolManager output datum must be of inline type PoolManagerDatum
+// 	3) CompoundLiquidity -> lsw CompoundLiquidity action is executed
+// 5) lsw CompoundLiquidity:
+// 	1) Sum liquidity for each different poolManager
+//	2) For each liquidity utxo, ensure the correct lenderBond is being spent and goes back unchanged
+//	3) Ensure length(poolManagerInputs) == length(totalAddedLiquidityForEachPool)
+//	4) Ensure length((poolManagerInputs) == length(poolInputs)
+// 	5) For each poolManagerInput:
+// 		1) Ensure it really has the expected nft
+// 		2) Correct pool must be in input (= have the nft written in the PoolManager datum)
+// 		3) Correct pool must be in output (same datum and address + new value is correct)
+// 		4) Correct poolManager in output (same datum except new poolId + same value and address)
+
 use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
@@ -19,6 +62,7 @@ use fluidtokens/types/loan.{LoanDatum}
 use fluidtokens/types/minswap_info.{MinswapV2Info}
 use fluidtokens/types/minswap_v2_types as minswap
 use fluidtokens/types/pool.{PoolDatum}
+use fluidtokens/types/pool_smart_manager.{PoolSmartManagerDatum}
 use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{
@@ -29,9 +73,12 @@ validator lenderSmartWallet(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
   lenderSmartWalletSpendScriptHash: ByteArray,
-  minswapV2SpendScriptAddress: Address,
+  minswapV2SpendScriptHash: ByteArray,
   minswapV2InfoNFTPolicyId: ByteArray,
   minswapV2InfoNFTAssetName: ByteArray,
+  poolManagerSpendScriptHash: ByteArray,
+  poolManagerPolicyId: ByteArray,
+  loanWithdrawScriptHash: ByteArray,
 ) {
   withdraw(
     redeemer: LenderSmartWalletWithdrawRedeemer,
@@ -70,11 +117,10 @@ validator lenderSmartWallet(
             expect result
 
             expect InlineDatum(inputDatum) = input.output.datum
-            //TODO Can be optimized with builtins
-            expect datum: LenderSmartWalletDatum = inputDatum
+            expect LenderSmartWalletDatum { lenderAuth, .. } = inputDatum
             authorize_action(
               create_auth(
-                datum.lenderAuth,
+                lenderAuth,
                 self.inputs,
                 self.withdrawals,
                 self.extra_signatories,
@@ -108,13 +154,31 @@ validator lenderSmartWallet(
           },
         )
 
-      ClaimLoans { loanIds } -> {
+      ClaimLoans { loanInputIndexes, loanIds } -> {
         let loanInputs =
           get_inputs_from_smart_credential(
             self.inputs,
             Script(loanSpendScriptHash),
-            credential,
+            Script(loanWithdrawScriptHash),
             smartTokensSpendScriptHash,
+          )
+        let (lenderBondOutputs, claimedAssetsOutputs) =
+          list.partition(
+            get_outputs_to_smart_credential(
+              self.outputs,
+              Script(lenderSmartWalletSpendScriptHash),
+              credential,
+              smartTokensSpendScriptHash,
+            ),
+            fn(output) {
+              expect InlineDatum(outputDatum) = output.datum
+              if outputDatum is LenderSmartWalletDatum {
+                True
+              } else {
+                //We still expect the datum to be RepaymentDatumWithToken here
+                False
+              }
+            },
           )
         list.indexed_foldr(
           lswInputs,
@@ -128,53 +192,68 @@ validator lenderSmartWallet(
             expect lenderBondDatum: LenderSmartWalletDatum =
               inputLenderBondDatum
 
-            let loanInput = safe_list_at(loanInputs, index)
+            let loanInput =
+              safe_list_at(loanInputs, safe_list_at(loanInputIndexes, index))
             expect InlineDatum(inputLoanDatum) = loanInput.output.datum
             expect loanDatum: LoanDatum = inputLoanDatum
 
-            //TODO Should this be using filtered outputs list?
-            let claimedCollateralOutput = safe_list_at(self.outputs, index)
-            //TODO Should this be using filtered outputs list?
-            let lenderBondOutput = safe_list_at(self.outputs, index)
+            let claimedCollateralOutput =
+              safe_list_at(claimedAssetsOutputs, index)
+            let lenderBondOutput = safe_list_at(lenderBondOutputs, index)
 
-            expect InlineDatum(outputDatum) = claimedCollateralOutput.datum
+            expect InlineDatum(claimedCollateralOutputDatum) =
+              claimedCollateralOutput.datum
             expect RepaymentDatumWithToken { ownerAsset, action, data, .. } =
-              outputDatum
+              claimedCollateralOutputDatum
             expect claimedAsset: CollateralAsset = data
             expect Some(claimedAssetName) = claimedAsset.maybeAssetName
 
             let loanId = safe_list_at(loanIds, index)
+
+            let claimedAssetQuantity =
+              quantity_of(
+                loanInput.output.value,
+                claimedAsset.policyId,
+                claimedAssetName,
+              )
+            let botFee =
+              lenderBondDatum.claimingFeePerMille * claimedAssetQuantity / 1000
             and {
-              //TODO Do we even need to filter loans that are liquidated?
-              //TODO Should we check that loan reedemer action == Claim?  
-              //We don't check that input contains any specific lender bond as we know it's there
-              //if the loan can be propery claimed. We just ensure it goes back here
-              builtin.equals_data(input.output.datum, lenderBondOutput.datum),
-              builtin.equals_data(input.output.value, lenderBondOutput.value),
-              input.output.address == lenderBondOutput.address,
+              //Ensure input lender bond corresponds to the loan being claimed
+              quantity_of(input.output.value, lenderBondPolicyId, loanId) == 1,
+              //Output with lender bond must be the same as input
+              builtin.equals_data(input.output, lenderBondOutput),
+              //Output with claimed collateral must contain everything the loan had except the loan token
+              // and bot fee, so it works only for full liquidations
               builtin.equals_data(
                 loanInput.output.value,
-                add(claimedCollateralOutput.value, loanPolicyId, loanId, 1),
+                add(
+                  add(claimedCollateralOutput.value, loanPolicyId, loanId, 1),
+                  claimedAsset.policyId,
+                  claimedAssetName,
+                  botFee,
+                ),
               ),
+              //Output with claimed collateral must have correct datum
               ownerAsset.policyId == lenderBondPolicyId,
               ownerAsset.assetName == loanId,
               action == constants.claimed_collateral_action,
               claimedAsset == loanDatum.collateral,
-              //Ensure the output contains the collateral asset, works only for full liquidations!
-              quantity_of(
-                claimedCollateralOutput.value,
-                claimedAsset.policyId,
-                //This works only for fungibles, not for NFTs
-                claimedAssetName,
-              ) == quantity_of(
-                loanInput.output.value,
-                claimedAsset.policyId,
-                claimedAssetName,
-              ),
-              //TODO This is not CIP113 compatible
-              claimedCollateralOutput.address == Address {
-                payment_credential: Script(lenderSmartWalletSpendScriptHash),
-                stake_credential: lenderBondDatum.lenderStakeCredential,
+              //Ensure the claimed collateral is sent to the correct address, considering CIP113
+              if loanInput.output.address.payment_credential == Script(
+                smartTokensSpendScriptHash,
+              ) {
+                claimedCollateralOutput.address == Address {
+                  payment_credential: Script(smartTokensSpendScriptHash),
+                  //TODO Should it be spendcredential of the lender?
+                  stake_credential: lenderBondDatum.lenderStakeCredential,
+                }
+              } else {
+                claimedCollateralOutput.address == Address {
+                  payment_credential: Script(lenderSmartWalletSpendScriptHash),
+                  //TODO Should it be spendcredential of the lender?
+                  stake_credential: lenderBondDatum.lenderStakeCredential,
+                }
               },
             }
           },
@@ -194,7 +273,17 @@ validator lenderSmartWallet(
           minswapV2Info.lpAssetForPoolAssetPairAndDirection
         let lpAssetForPoolAssetPairAndDirection =
           coerced |> dict.from_ascending_pairs
+
+        //TODO Is credential correct here?
+        let minswapOrderOutputs =
+          get_outputs_to_smart_credential(
+            self.outputs,
+            Script(minswapV2SpendScriptHash),
+            credential,
+            smartTokensSpendScriptHash,
+          )
         and {
+          //MinswapV2Info ref input must contain the unique NFT
           quantity_of(
             minswapV2InfoRefInput.output.value,
             minswapV2InfoNFTPolicyId,
@@ -213,9 +302,9 @@ validator lenderSmartWallet(
                   self.reference_inputs,
                   safe_list_at(lenderBondRefInputsIndexes, index),
                 )
-              //TODO Should this be using filtered outputs list?
-              let minswapOrderOutput = safe_list_at(self.outputs, index)
+              let minswapOrderOutput = safe_list_at(minswapOrderOutputs, index)
               expect InlineDatum(inputDatum) = input.output.datum
+              //We expect only assets to convert, no lender bonds
               expect RepaymentDatumWithToken { ownerAsset, data, .. } =
                 inputDatum
               expect claimedCollateralAsset: CollateralAsset = data
@@ -236,13 +325,6 @@ validator lenderSmartWallet(
 
               expect InlineDatum(lbDatum) = lenderBondRefInput.output.datum
               expect lenderBondDatum: LenderSmartWalletDatum = lbDatum
-
-              //TODO This is not CIP113 compatible
-              let thisAddress =
-                Address {
-                  payment_credential: Script(lenderSmartWalletSpendScriptHash),
-                  stake_credential: lenderBondDatum.lenderStakeCredential,
-                }
 
               let claimedAssetUnit =
                 bytearray.concat(claimedAsset.policyId, claimedAsset.assetName)
@@ -304,11 +386,11 @@ validator lenderSmartWallet(
                 InlineDatum(
                   minswap.OrderDatum {
                     canceller: lenderBondDatum.lenderAuth,
-                    refund_receiver: thisAddress,
+                    refund_receiver: input.output.address,
                     refund_receiver_datum: minswap.EODInlineDatum {
                       hash: inputDatumHash,
                     },
-                    success_receiver: thisAddress,
+                    success_receiver: input.output.address,
                     success_receiver_datum: minswap.EODInlineDatum {
                       hash: conversionDatumHash,
                     },
@@ -338,28 +420,58 @@ validator lenderSmartWallet(
                 }
 
               and {
+                //Lender bond input must have the corresponding lender bond NFT
                 quantity_of(
                   lenderBondRefInput.output.value,
                   ownerAsset.policyId,
                   ownerAsset.assetName,
                 ) > 0,
+                //Order must have correct datum and value
                 builtin.equals_data(
                   minswapOrderOutput.datum,
                   expectedOrderDatum,
                 ),
                 correctOrderValue,
-                //TODO This is not CIP113 compatible
-                minswapOrderOutput.address == minswapV2SpendScriptAddress,
+                //Ensure the order output is sent to the correct address, considering CIP113
+                if input.output.address.payment_credential == Script(
+                  smartTokensSpendScriptHash,
+                ) {
+                  minswapOrderOutput.address == Address {
+                    payment_credential: Script(smartTokensSpendScriptHash),
+                    //TODO Should it be spendcredential of the lender?
+                    stake_credential: lenderBondDatum.lenderStakeCredential,
+                  }
+                } else {
+                  minswapOrderOutput.address == Address {
+                    payment_credential: Script(minswapV2SpendScriptHash),
+                    //TODO Should it be spendcredential of the lender?
+                    stake_credential: lenderBondDatum.lenderStakeCredential,
+                  }
+                },
               }
             },
           ),
         }
       }
-      CompoundLiquidity {
-        lenderBondInputIndexes,
-        compoundedPoolNewIds,
-        lenderBondInputPoolIndexes,
-      } -> {
+      CompoundLiquidity { lenderBondInputIndexes, compoundedPoolNewIds } -> {
+        let poolManagerInputs =
+          list.filter(
+            self.inputs,
+            fn(input) {
+              input.output.address.payment_credential == Script(
+                poolManagerSpendScriptHash,
+              )
+            },
+          )
+        let poolManagerOutputs =
+          list.filter(
+            self.outputs,
+            fn(output) {
+              output.address.payment_credential == Script(
+                poolManagerSpendScriptHash,
+              )
+            },
+          )
         let poolInputs =
           get_inputs_from_smart_credential(
             self.inputs,
@@ -378,16 +490,18 @@ validator lenderSmartWallet(
           list.partition(
             lswInputs,
             fn(input) {
-              expect InlineDatum(lenderBondDatum) = input.output.datum
-              if lenderBondDatum is LenderSmartWalletDatum {
+              expect InlineDatum(inputDatum) = input.output.datum
+              if inputDatum is LenderSmartWalletDatum {
                 True
               } else {
+                //We still expect the datum to be RepaymentDatumWithToken here
                 False
               }
             },
           )
 
-        let lswOutputs =
+        //Outputs to this sc are all lender bonds, as the compounded assets are sent to the pool
+        let lenderBondOutputs =
           get_outputs_to_smart_credential(
             self.outputs,
             Script(lenderSmartWalletSpendScriptHash),
@@ -395,18 +509,18 @@ validator lenderSmartWallet(
             smartTokensSpendScriptHash,
           )
 
-        let totalAddedLiquidityForEachPool =
+        let totalAddedLiquidityForEachPoolManager =
           dict.to_pairs(
             list.indexed_foldr(
               compoundedAssetsInputs,
               dict.empty,
-              fn(index, input, result) {
-                expect InlineDatum(inputDatum) = input.output.datum
+              fn(index, compoundedAssetInput, result) {
+                expect InlineDatum(compoundedAssetInputDatum) =
+                  compoundedAssetInput.output.datum
                 //Expect the correct datum type
-                expect RepaymentDatumWithToken { ownerAsset, action, .. } =
-                  inputDatum
-                //Exclude any utxo that has collateral to liquidate
-                expect action != constants.claimed_collateral_action
+                expect RepaymentDatumWithToken { ownerAsset, data, .. } =
+                  compoundedAssetInputDatum
+                expect assetToCompound: CollateralAsset = data
                 let lenderBondInput =
                   safe_list_at(
                     lenderBondInputs,
@@ -417,58 +531,35 @@ validator lenderSmartWallet(
                 expect parsedLenderBondInputDatum: LenderSmartWalletDatum =
                   lenderBondInputDatum
 
-                let lenderBondOutput = safe_list_at(lswOutputs, index)
-                expect InlineDatum(lenderBondOutputDatum) =
-                  lenderBondOutput.datum
-                expect parsedLenderBondOutputDatum: LenderSmartWalletDatum =
-                  lenderBondOutputDatum
+                let lenderBondOutput = safe_list_at(lenderBondOutputs, index)
 
-                let lenderBondInputPoolIndex =
-                  safe_list_at(lenderBondInputPoolIndexes, index)
-                let poolInput =
-                  safe_list_at(poolInputs, lenderBondInputPoolIndex)
-                let newPoolId =
-                  safe_list_at(compoundedPoolNewIds, lenderBondInputPoolIndex)
-
-                //The lenderBondInput must obviously contain the lender bond NFT
+                //The asset to compound must be the same as the principal asset of the lender bond
+                expect
+                  builtin.equals_data(
+                    parsedLenderBondInputDatum.principalAsset,
+                    assetToCompound,
+                  )
+                //The lenderBondInput must contain the lender bond NFT
                 expect
                   quantity_of(
                     lenderBondInput.output.value,
                     lenderBondPolicyId,
                     ownerAsset.assetName,
                   ) == 1
-                //Input pool must contain the pool NFT specified in the lender bond
+                //Lender bond datum, value and address must be the same in input and output
                 expect
-                  quantity_of(
-                    poolInput.output.value,
-                    poolPolicyId,
-                    parsedLenderBondInputDatum.poolId,
-                  ) == 1
-                //Check that a new output for lenderbond is created properly with new pool_id
-                expect
-                  parsedLenderBondOutputDatum == LenderSmartWalletDatum {
-                    lenderAuth: parsedLenderBondInputDatum.lenderAuth,
-                    lenderStakeCredential: parsedLenderBondInputDatum.lenderStakeCredential,
-                    poolId: newPoolId,
-                    principalAsset: parsedLenderBondInputDatum.principalAsset,
-                    claimingFeePerMille: parsedLenderBondInputDatum.claimingFeePerMille,
-                    swappingFeePerMille: parsedLenderBondInputDatum.swappingFeePerMille,
-                    compoundingFeePerMille: parsedLenderBondInputDatum.compoundingFeePerMille,
-                  }
-                expect
-                  lenderBondOutput.address == lenderBondInput.output.address
-                expect lenderBondOutput.value == lenderBondInput.output.value
+                  builtin.equals_data(lenderBondOutput, lenderBondInput.output)
                 let addedLiquidity =
                   quantity_of(
-                    input.output.value,
+                    compoundedAssetInput.output.value,
                     parsedLenderBondInputDatum.principalAsset.policyId,
                     parsedLenderBondInputDatum.principalAsset.assetName,
                   )
 
-                //For this pool, add the liquidity
+                //For this poolManager, add the liquidity
                 dict.insert_with(
                   result,
-                  parsedLenderBondInputDatum.poolId,
+                  parsedLenderBondInputDatum.poolManagerId,
                   addedLiquidity,
                   fn(_k, a, b) { Some(a + b) },
                 )
@@ -476,22 +567,34 @@ validator lenderSmartWallet(
             ),
           )
         and {
-          //All pools in input must have been used for compounding
-          list.length(poolInputs) == list.length(totalAddedLiquidityForEachPool),
+          //All pool managers in input must have been used for compounding
+          list.length(poolManagerInputs) == list.length(
+            totalAddedLiquidityForEachPoolManager,
+          ),
+          //No additional pools spent
+          list.length(poolManagerInputs) == list.length(poolInputs),
           list.indexed_foldr(
-            totalAddedLiquidityForEachPool,
+            totalAddedLiquidityForEachPoolManager,
             True,
-            fn(index, Pair(poolId, addedLiquidity), result) {
+            fn(index, Pair(poolManagerId, addedLiquidity), result) {
               //As all inputs must return True, if any of previous input returned False, then fail
               //The last input is not checked but will return its value at the end, so if False withdraw will fail
               expect result
+              let poolManagerInput = safe_list_at(poolManagerInputs, index)
+              let poolManagerOutput = safe_list_at(poolManagerOutputs, index)
               //TODO Is the index ok to select input and output?
               let poolInput = safe_list_at(poolInputs, index)
               let poolOutput = safe_list_at(poolOutputs, index)
 
+              expect InlineDatum(poolManager) = poolManagerInput.output.datum
+              expect PoolSmartManagerDatum { poolId, poolOwnerAuth } =
+                poolManager
+
               expect InlineDatum(oldDatum) = poolInput.output.datum
               expect PoolDatum { commonData, .. } = oldDatum
-              //Replace old liquidity with new one and replace old pool nft to new one
+
+              let newPoolId = safe_list_at(compoundedPoolNewIds, index)
+              //Replace old liquidity with new one and replace old pool nft with new one
               //TODO In case of custom token, is same ADA amount a problem?
               let expectedNewValue =
                 poolInput.output.value
@@ -501,17 +604,29 @@ validator lenderSmartWallet(
                       addedLiquidity,
                     )
                   |> add(poolPolicyId, poolId, -1)
-                  |> add(
-                      poolPolicyId,
-                      safe_list_at(compoundedPoolNewIds, index),
-                      1,
-                    )
+                  |> add(poolPolicyId, newPoolId, 1)
               and {
-                //We know the pool input is a proper pool because in its value there's the old pool nft
+                //Input poolManager must contain the NFT specified in the lender bond datums
+                quantity_of(
+                  poolManagerInput.output.value,
+                  poolManagerPolicyId,
+                  poolManagerId,
+                ) == 1,
+                //Pool must be the one specified in the poolManager datum
                 quantity_of(poolInput.output.value, poolPolicyId, poolId) == 1,
+                //Pool output must be correct
                 builtin.equals_data(poolInput.output.datum, poolOutput.datum),
                 poolOutput.value == expectedNewValue,
                 poolInput.output.address == poolOutput.address,
+                //PoolManager must be same in input and output except for the poolId
+                builtin.equals_data(
+                  poolManagerInput.output.address,
+                  poolManagerOutput.address,
+                ),
+                poolManagerInput.output.value == poolManagerOutput.value,
+                poolManagerOutput.datum == InlineDatum(
+                  PoolSmartManagerDatum { poolOwnerAuth, poolId: newPoolId },
+                ),
               }
             },
           ),

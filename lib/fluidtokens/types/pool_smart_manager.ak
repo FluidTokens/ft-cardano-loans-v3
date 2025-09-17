@@ -2,7 +2,7 @@ use fluidtokens/types/general.{AuthorizationMethod}
 
 pub type PoolSmartManagerDatum {
   poolOwnerAuth: AuthorizationMethod,
-  poolSmartManagerNFT: ByteArray,
+  poolId: ByteArray,
 }
 
 pub type PoolSmartManagerMintRedeemer {
@@ -11,7 +11,8 @@ pub type PoolSmartManagerMintRedeemer {
 
 pub type PoolSmartManagerAction {
   //As a pool can delegate auth to this withdraw script, we must allow to cancel the pools
-  CancelPools
+  CancelPoolManager { poolSmartManagerNFTAssetNames: List<ByteArray> }
+  UpdatePoolManager
   CompoundLiquidity { lenderSmartWalletWithdrawRedeemerIndex: Int }
 }
 

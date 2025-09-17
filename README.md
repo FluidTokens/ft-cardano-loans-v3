@@ -1,4 +1,4 @@
-# FluidTokens Lending V5
+# FluidTokens Lending V3
 
 This repo contains the official smart contracts for the latest lending platform of FluidTokens.
 The logic is thought to be highly customizable, as the same contracts may be used for different flavours of lending.

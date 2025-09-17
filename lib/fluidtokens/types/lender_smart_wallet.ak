@@ -16,7 +16,7 @@ pub type LenderSmartWalletDatum {
   //Stake credential of the lender, used for any utxo created by the bots
   lenderStakeCredential: Option<StakeCredential>,
   //If it's "" it means no compouding allowed
-  poolId: ByteArray,
+  poolManagerId: ByteArray,
   //The repaid/liquidated loan must have the same principal of the specified pool
   principalAsset: Asset,
   //Fee per mille of the collateral asset for the bot that claims the loans collateral
@@ -31,7 +31,7 @@ pub type LenderSmartWalletAction {
   WithdrawBonds
   //Withdraws can be done only after cancelling (getting lender bond back)
   WithdrawAssets { lenderBondOutputIndexes: List<Int> }
-  ClaimLoans { loanIds: List<ByteArray> }
+  ClaimLoans { loanInputIndexes: List<Int>, loanIds: List<ByteArray> }
   ConvertToLiquidity {
     lenderBondRefInputsIndexes: List<Int>,
     minswapV2InfoRefInputIndex: Int,
@@ -39,8 +39,6 @@ pub type LenderSmartWalletAction {
   CompoundLiquidity {
     lenderBondInputIndexes: List<Int>,
     compoundedPoolNewIds: List<ByteArray>,
-    //Index of pool input, pool output and new pool id for each lender bond input
-    lenderBondInputPoolIndexes: List<Int>,
   }
 }
 

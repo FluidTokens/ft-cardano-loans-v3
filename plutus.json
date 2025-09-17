@@ -1,7 +1,7 @@
 {
   "preamble": {
-    "title": "ft/loans-v5",
-    "description": "Aiken contracts for project 'ft/loans-v5'",
+    "title": "ft/loans-v3",
+    "description": "Aiken contracts for project 'ft/loans-v3'",
     "version": "0.0.0",
     "plutusVersion": "v3",
     "compiler": {

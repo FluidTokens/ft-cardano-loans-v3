@@ -1,13 +1,13 @@
-name = "ft/loans-v5"
+name = "ft/loans-v3"
 version = "0.0.0"
 compiler = "v1.1.17"
 plutus = "v3"
 license = "Apache-2.0"
-description = "Aiken contracts for project 'ft/loans-v5'"
+description = "Aiken contracts for project 'ft/loans-v3'"
 
 [repository]
 user = "ft"
-project = "loans-v5"
+project = "loans-v3"
 platform = "github"
 
 [[dependencies]]
