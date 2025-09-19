@@ -396,3 +396,16 @@ pub fn is_repayment_late(
     ) * constants.hour_to_millis,
   }
 }
+
+pub fn convertFromAToBWithOracles(
+  aOraclePriceFeed: OraclePriceFeed,
+  bOraclePriceFeed: OraclePriceFeed,
+  aAmount: Rational,
+) {
+  let aAmountInLovelace =
+    get_token_amount_in_lovelace(aAmount, aOraclePriceFeed)
+
+  rational.ceil(
+    get_lovelace_amount_in_token_currency(aAmountInLovelace, bOraclePriceFeed),
+  )
+}

@@ -15,23 +15,45 @@ pub type LenderSmartWalletDatum {
   lenderAuth: AuthorizationMethod,
   //Stake credential of the lender, used for any utxo created by the bots
   lenderStakeCredential: Option<StakeCredential>,
-  //If it's "" it means no compouding allowed
+  //If false, the collateral must not be converted to principal during liquidations
+  shouldLiquidationConvertToPrincipal: Bool,
+  //How much the bot gets of the liquidated collateral, expressed in per mille (1/1000)
+  liquidationFeePerMille: Int,
+  //If "", no compouding is allowed
   poolManagerId: ByteArray,
   //The repaid/liquidated loan must have the same principal of the specified pool
   principalAsset: Asset,
 }
 
 pub type LenderSmartWalletAction {
+  //Lender can withdraw his bond any time
   WithdrawBonds
-  //Withdraws can be done only after cancelling (getting lender bond back)
-  WithdrawAssets { lenderBondOutputIndexes: List<Int> }
+  //Lender can get his assets that point to his bond as long as the bond is in this contract
+  WithdrawAssets { lenderBondInputIndexes: List<Int> }
+  //Liquidate loans and put the collaterals in this contract
+  Liquidate {
+    lenderBondInputsIndexes: List<Int>,
+    lenderBondAssetNames: List<ByteArray>,
+  }
+  //Compound available assets into the pool
+  Compound {
+    lenderBondInputsIndexes: List<Int>,
+    compoundedPoolNewIds: List<ByteArray>,
+  }
+  //Liquidate loans and pay in advance the corresponding principal in exchange for the collateral
+  LiquidateAndPayInAdvance
+  //Liquidate loans and convert the collateral to principal
+  LiquidateAndConvert
+  //Liquidate + pay in advance + compound 
   LiquidatePayInAdvanceAndCompound {
     loanInputIndexes: List<Int>,
     loanIds: List<ByteArray>,
     lenderBondInputsIndexesForClaimedLoans: List<Int>,
     lenderBondInputsIndexesForLSWAssets: List<Int>,
+    principalAndCollateralOracleRefInputIndexes: List<(Int, Int)>,
     compoundedPoolNewIds: List<ByteArray>,
   }
+  //Liquidate + convert + compound
   LiquidateConvertAndCompound {
     loanInputIndexes: List<Int>,
     loanIds: List<ByteArray>,
