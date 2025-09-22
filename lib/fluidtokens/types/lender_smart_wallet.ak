@@ -1,8 +1,3 @@
-//Common pools produce LP tokens that represent a share of the pool.
-//It support only perpetual loans with full liquidation.
-//Repayments accumulate here in separated utxos, therefore anyone can aggregate them and provide liquidity to the pool.
-//Liquidated collateral is also accumulated here in separated utxos, therefore anyone can aggregate them, swap them on Minswap and
-//provide liquidity to the pool.
 use cardano/address.{StakeCredential}
 use fluidtokens/types/general.{Asset, AuthorizationMethod}
 
@@ -32,24 +27,32 @@ pub type LenderSmartWalletAction {
   WithdrawAssets { lenderBondInputIndexes: List<Int> }
   //Liquidate loans and put the collaterals in this contract
   Liquidate {
-    lenderBondInputsIndexes: List<Int>,
+    lenderBondInputIndexes: List<Int>,
     lenderBondAssetNames: List<ByteArray>,
   }
   //Compound available assets into the pool
   Compound {
-    lenderBondInputsIndexes: List<Int>,
+    lenderBondInputIndexes: List<Int>,
     compoundedPoolNewIds: List<ByteArray>,
   }
   //Liquidate loans and pay in advance the corresponding principal in exchange for the collateral
-  LiquidateAndPayInAdvance
+  LiquidateAndPayInAdvance {
+    lenderBondInputIndexes: List<Int>,
+    lenderBondAssetNames: List<ByteArray>,
+    principalAndCollateralOracleRefInputIndexes: List<(Int, Int)>,
+  }
   //Liquidate loans and convert the collateral to principal
-  LiquidateAndConvert
+  LiquidateAndConvert {
+    lenderBondInputIndexes: List<Int>,
+    loanIds: List<ByteArray>,
+    minswapV2InfoRefInputIndex: Int,
+  }
   //Liquidate + pay in advance + compound 
   LiquidatePayInAdvanceAndCompound {
     loanInputIndexes: List<Int>,
     loanIds: List<ByteArray>,
-    lenderBondInputsIndexesForClaimedLoans: List<Int>,
-    lenderBondInputsIndexesForLSWAssets: List<Int>,
+    lenderBondInputIndexesForClaimedLoans: List<Int>,
+    lenderBondInputIndexesForLSWAssets: List<Int>,
     principalAndCollateralOracleRefInputIndexes: List<(Int, Int)>,
     compoundedPoolNewIds: List<ByteArray>,
   }
@@ -57,7 +60,7 @@ pub type LenderSmartWalletAction {
   LiquidateConvertAndCompound {
     loanInputIndexes: List<Int>,
     loanIds: List<ByteArray>,
-    lenderBondInputsIndexes: List<Int>,
+    lenderBondInputIndexes: List<Int>,
     minswapV2InfoRefInputIndex: Int,
     compoundedPoolNewIds: List<ByteArray>,
   }
@@ -66,4 +69,13 @@ pub type LenderSmartWalletAction {
 pub type LenderSmartWalletWithdrawRedeemer {
   configRefInputIndex: Int,
   action: LenderSmartWalletAction,
+}
+
+pub type LSMWithdrawBondsWithdrawRedeemer {
+  configRefInputIndex: Int,
+}
+
+pub type LSMWithdrawAssetsWithdrawRedeemer {
+  configRefInputIndex: Int,
+  lenderBondInputIndexes: List<Int>,
 }
