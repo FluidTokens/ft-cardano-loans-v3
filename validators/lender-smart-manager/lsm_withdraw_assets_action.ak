@@ -1,43 +1,21 @@
 use aiken/builtin
-use aiken/collection/dict
 use aiken/collection/list
-use aiken/crypto
-use aiken/interval.{Finite, Interval}
-use aiken/math/rational.{Rational}
-use aiken/primitive/bytearray
-use cardano/address.{Address, Credential, Script}
-use cardano/assets.{add, flatten, quantity_of}
-use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
-}
+use cardano/address.{Credential, Script}
+use cardano/assets.{quantity_of}
+use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/authorizer.{authorize_action, create_auth}
-use fluidtokens/constants
-use fluidtokens/finance
-use fluidtokens/oracle.{retrieve_oracle_data}
-use fluidtokens/types/general.{Asset, CollateralAsset}
-use fluidtokens/types/lender_smart_wallet.{
-  Compound, LSMWithdrawAssetsWithdrawRedeemer, LenderSmartWalletDatum,
-  LenderSmartWalletWithdrawRedeemer, Liquidate, LiquidateAndConvert,
-  LiquidateAndPayInAdvance, LiquidateConvertAndCompound,
-  LiquidatePayInAdvanceAndCompound, WithdrawAssets, WithdrawBonds,
-} as lsw
-use fluidtokens/types/loan.{
-  LoanDatum, LoanRepayActionWithdrawRedeemer, LoanRepaymentData,
-} as l
-use fluidtokens/types/minswap_info.{MinswapV2Info}
-use fluidtokens/types/minswap_v2_types as minswap
-use fluidtokens/types/pool.{PoolDatum}
-use fluidtokens/types/pool_smart_manager.{PoolSmartManagerDatum}
+use fluidtokens/types/general.{Asset}
+use fluidtokens/types/lender_smart_manager.{
+  LSMWithdrawAssetsWithdrawRedeemer, LenderSmartManagerDatum,
+} as lsm
 use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
 use fluidtokens/utils.{safe_list_at}
-use smart_tokens/utils.{
-  get_inputs_from_smart_credential, get_outputs_to_smart_credential,
-} as st_utils
+use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 
 validator actionValidator(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
-  lenderSmartWalletSpendScriptHash: ByteArray,
+  lenderSmartManagerSpendScriptHash: ByteArray,
 ) {
   withdraw(
     redeemer: LSMWithdrawAssetsWithdrawRedeemer,
@@ -52,19 +30,19 @@ validator actionValidator(
       )
     let smartTokensSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 0))
-    let lswInputs =
+    let lsmInputs =
       get_inputs_from_smart_credential(
         self.inputs,
-        Script(lenderSmartWalletSpendScriptHash),
+        Script(lenderSmartManagerSpendScriptHash),
         credential,
         smartTokensSpendScriptHash,
       )
-    let (lenderBondInputs, lswAssetsInputs) =
+    let (lenderBondInputs, lsmAssetsInputs) =
       list.partition(
-        lswInputs,
+        lsmInputs,
         fn(input) {
           expect InlineDatum(inputDatum) = input.output.datum
-          if inputDatum is LenderSmartWalletDatum {
+          if inputDatum is LenderSmartManagerDatum {
             True
           } else {
             //We still expect the datum to be RepaymentDatumWithToken here
@@ -75,7 +53,7 @@ validator actionValidator(
 
     and {
       list.indexed_foldr(
-        lswAssetsInputs,
+        lsmAssetsInputs,
         True,
         fn(index, input, result) {
           //As all inputs must return True, if any of previous input returned False, then fail
@@ -85,11 +63,10 @@ validator actionValidator(
           expect InlineDatum(inputDatum) = input.output.datum
           expect RepaymentDatumWithToken { ownerAsset, .. } = inputDatum
 
-          //TODO Vulnerability
           let lenderBondIndex =
             safe_list_at(redeemer.lenderBondInputIndexes, index)
 
-          let lenderBondInput = safe_list_at(lswInputs, lenderBondIndex)
+          let lenderBondInput = safe_list_at(lenderBondInputs, lenderBondIndex)
 
           quantity_of(
             lenderBondInput.output.value,
@@ -108,7 +85,7 @@ validator actionValidator(
 
           expect InlineDatum(inputLenderBondDatum) =
             lenderBondInput.output.datum
-          expect LenderSmartWalletDatum { lenderAuth, .. } =
+          expect LenderSmartManagerDatum { lenderAuth, .. } =
             inputLenderBondDatum
 
           authorize_action(

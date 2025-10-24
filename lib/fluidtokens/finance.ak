@@ -378,6 +378,39 @@ pub fn get_equity(
   rational.floor(equity)
 }
 
+pub fn get_equity_in_collateral_currency(
+  collateralAmount: Rational,
+  remainingDebt: Rational,
+  principalOraclePriceFeed: OraclePriceFeed,
+  collateralOraclePriceFeed: OraclePriceFeed,
+  partialLiquidationPenaltyPerMille: Int,
+) {
+  let remainingDebtInLovelace =
+    get_token_amount_in_lovelace(remainingDebt, principalOraclePriceFeed)
+  let collateralInLovelace =
+    get_token_amount_in_lovelace(collateralAmount, collateralOraclePriceFeed)
+
+  expect Some(partialLiquidationPenaltyAsRational) =
+    rational.new(partialLiquidationPenaltyPerMille, 1000)
+
+  let partialLiquidationPenalty =
+    rational.mul(remainingDebtInLovelace, partialLiquidationPenaltyAsRational)
+
+  let equityInLovelace =
+    rational.sub(
+      rational.sub(collateralInLovelace, remainingDebtInLovelace),
+      partialLiquidationPenalty,
+    )
+
+  let equity =
+    get_lovelace_amount_in_token_currency(
+      equityInLovelace,
+      collateralOraclePriceFeed,
+    )
+
+  rational.floor(equity)
+}
+
 pub fn is_repayment_late(
   isPerpetualLoan: Bool,
   currentTime: Int,

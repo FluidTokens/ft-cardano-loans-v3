@@ -9,8 +9,8 @@ use cardano/transaction.{
 }
 use fluidtokens/constants
 use fluidtokens/finance.{
-  can_liquidate, get_collateral_amount, get_equity, get_remaining_debt,
-  is_repayment_late,
+  can_liquidate, get_collateral_amount, get_equity,
+  get_equity_in_collateral_currency, get_remaining_debt, is_repayment_late,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/dutch_auction.{DutchAuctionDatum}
@@ -230,13 +230,26 @@ validator loan_claim_action(
               expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
               let borrowerBondAddress = borrowerBondRefInput.output.address
               and {
-                inputAction.equity == get_equity(
-                  collateralAmount,
-                  remainingDebtAsRational,
-                  principalOraclePriceFeed,
-                  collateralOraclePriceFeed,
-                  partialLiquidationPenaltyPerMille,
-                ),
+                if or {
+                  collateralAmount == rational.from_int(1),
+                  datum.collateral.maybeAssetName == None,
+                } {
+                  inputAction.equity == get_equity(
+                    collateralAmount,
+                    remainingDebtAsRational,
+                    principalOraclePriceFeed,
+                    collateralOraclePriceFeed,
+                    partialLiquidationPenaltyPerMille,
+                  )
+                } else {
+                  inputAction.equity == get_equity_in_collateral_currency(
+                    collateralAmount,
+                    remainingDebtAsRational,
+                    principalOraclePriceFeed,
+                    collateralOraclePriceFeed,
+                    partialLiquidationPenaltyPerMille,
+                  )
+                },
                 or {
                   isRepaymentLate,
                   can_liquidate(
@@ -269,8 +282,24 @@ validator loan_claim_action(
                         policyId: borrowerBondPolicyId,
                         assetName: inputAction.loanId,
                       },
-                      principalAssetPolicyId: datum.principalAsset.policyId,
-                      principalAssetName: datum.principalAsset.assetName,
+                      principalAssetPolicyId: if or {
+                        collateralAmount == rational.from_int(1),
+                        datum.collateral.maybeAssetName == None,
+                      } {
+                        datum.principalAsset.policyId
+                      } else {
+                        datum.collateral.policyId
+                      },
+                      principalAssetName: if or {
+                        collateralAmount == rational.from_int(1),
+                        datum.collateral.maybeAssetName == None,
+                      } {
+                        datum.principalAsset.assetName
+                      } else {
+                        expect Some(collateraAssetName) =
+                          datum.collateral.maybeAssetName
+                        collateraAssetName
+                      },
                       repaymentReceipts: datum.repaymentReceipts,
                       repaymentPolicyId: repaymentPolicyId,
                     )

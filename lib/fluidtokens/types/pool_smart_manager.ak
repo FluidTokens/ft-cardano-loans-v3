@@ -15,7 +15,7 @@ pub type PoolSmartManagerAction {
   //As a pool can delegate auth to this withdraw script, we must allow to cancel the pools
   CancelPoolManager { poolSmartManagerNFTAssetNames: List<ByteArray> }
   UpdatePoolManager
-  CompoundLiquidity { lenderSmartWalletWithdrawRedeemerIndex: Int }
+  CompoundLiquidity { lenderSmartManagerWithdrawRedeemerIndex: Int }
 }
 
 pub type PoolSmartManagerWithdrawRedeemer {

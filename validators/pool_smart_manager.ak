@@ -5,7 +5,7 @@ use cardano/address.{Address, Credential, Script}
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/authorizer.{authorize_action, create_auth}
-use fluidtokens/types/lender_smart_wallet.{LenderSmartWalletWithdrawRedeemer} as lsw
+use fluidtokens/types/lender_smart_manager.{LenderSmartManagerWithdrawRedeemer} as lsm
 use fluidtokens/types/pool_smart_manager.{
   CancelPoolManager, CompoundLiquidity, PoolSmartManagerDatum,
   PoolSmartManagerMintRedeemer, PoolSmartManagerWithdrawRedeemer,
@@ -18,7 +18,7 @@ validator poolSmartManager(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
   poolSmartManagerSpendScriptHash: ByteArray,
-  lenderSmartWalletWithdrawScriptHash: ByteArray,
+  lenderSmartManagerWithdrawScriptHash: ByteArray,
   poolSpendScriptHash: ByteArray,
   poolWithdrawScriptHash: ByteArray,
   poolManagerSpendScriptHash: ByteArray,
@@ -142,20 +142,21 @@ validator poolSmartManager(
           },
         )
       }
-      CompoundLiquidity { lenderSmartWalletWithdrawRedeemerIndex } -> {
+      CompoundLiquidity { lenderSmartManagerWithdrawRedeemerIndex } -> {
         //CompoundLiquidity action must be executed
-        let lenderSmartWalletWithdrawRedeemer =
-          safe_list_at(self.redeemers, lenderSmartWalletWithdrawRedeemerIndex)
+        let lenderSmartManagerWithdrawRedeemer =
+          safe_list_at(self.redeemers, lenderSmartManagerWithdrawRedeemerIndex)
         expect
-          lenderSmartWalletWithdrawRedeemer.1st == Withdraw(
-            Script(lenderSmartWalletWithdrawScriptHash),
+          lenderSmartManagerWithdrawRedeemer.1st == Withdraw(
+            Script(lenderSmartManagerWithdrawScriptHash),
           )
-        expect lenderSmartWalletRedeemer: LenderSmartWalletWithdrawRedeemer =
-          lenderSmartWalletWithdrawRedeemer.2nd
+        expect lenderSmartManagerRedeemer: LenderSmartManagerWithdrawRedeemer =
+          lenderSmartManagerWithdrawRedeemer.2nd
 
-        when lenderSmartWalletRedeemer.action is {
-          lsw.LiquidatePayInAdvanceAndCompound { .. } -> True
-          lsw.LiquidateConvertAndCompound { .. } -> True
+        when lenderSmartManagerRedeemer.action is {
+          lsm.Compound { .. } -> True
+          lsm.LiquidatePayInAdvanceAndCompound { .. } -> True
+          lsm.LiquidateConvertAndCompound { .. } -> True
           _ -> False
         }
       }
