@@ -93,10 +93,21 @@ validator loan_recast_action(
               datum.initialGracePeriod + periodToLatestPaidInstallment
             ) * constants.hour_to_millis
           )
+
+        let isPerpetualLoanWithNoInstallments =
+          when datum.repaymentMode is {
+            PerpetualLoan { .. } -> datum.installmentPeriod == 0
+            _ -> False
+          }
+
         let dueInstallments =
-          timePassedSinceLastRepaidInstallment / (
-            datum.installmentPeriod * constants.hour_to_millis
-          )
+          if isPerpetualLoanWithNoInstallments {
+            0
+          } else {
+            timePassedSinceLastRepaidInstallment / (
+              datum.installmentPeriod * constants.hour_to_millis
+            )
+          }
 
         let principalAfterRecasting =
           when datum.repaymentMode is {
@@ -171,10 +182,16 @@ validator loan_recast_action(
             inputAction.loanId,
             borrowerBondOutput,
           ),
-          //A recast is permitted only if the loan has installments
-          datum.installmentPeriod > 0,
-          //A recast is permitted only when all due installments + 1 are paid, otherwise the borrower avoids paying what is due
-          datum.repaidInstallments >= dueInstallments + 1,
+          //Either it is a perpetual loan with no installments or the due installments + 1 are paid
+          or {
+            isPerpetualLoanWithNoInstallments,
+            and {
+              //A recast is permitted only if the loan has installments
+              datum.installmentPeriod > 0,
+              //A recast is permitted only when all due installments + 1 are paid, otherwise the borrower avoids paying what is due
+              datum.repaidInstallments >= dueInstallments + 1,
+            },
+          },
           //A recast must be within the number of recasts allowed
           when datum.repaymentMode is {
             InterestOnRemainingPrincipal { max_possible_recasts } ->

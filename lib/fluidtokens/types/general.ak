@@ -48,7 +48,7 @@ pub type RepaymentMode {
   //Liquidation for too high ltv is always possible if enabled
   //initialGracePeriod allows not to repay for a certain period after the loan starts but the interest rate keeps increasing!
   //So the first installment requires you to pay that too
-  //Recasting is permitted when enabled
+  //Recasting is permitted when enabled and perpertual loans can recast also if there are no installments.
   //APY = mx + c = apyIncreaseLinearCoefficient/1000000 * x + interestRate/10000 (the variable called as such)
   //Hourly interest rate = c / 8760
   //Normal installment amount = hourly interest rate * installmentPeriod
