@@ -1,20 +1,21 @@
 use aiken/builtin
 use aiken/collection/list
+use aiken/collection/pairs
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
-use cardano/address.{Address, Credential, Script}
+use cardano/address.{Address, Credential, PaymentCredential, Script}
 use cardano/assets.{flatten, quantity_of}
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
+  InlineDatum, Input, Output, OutputReference, Transaction, Withdraw,
 }
 use fluidtokens/constants
 use fluidtokens/finance
 use fluidtokens/oracle.{retrieve_oracle_data}
-use fluidtokens/types/general.{Asset, CollateralAsset}
+use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
 use fluidtokens/types/lender_smart_manager.{
   LSMLiquidateAndPayInAdvanceWithdrawRedeemer, LenderSmartManagerDatum,
 } as lsm
-use fluidtokens/types/loan.{LoanDatum} as l
+use fluidtokens/types/loan.{LoanDatum} as loan
 use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{
@@ -26,6 +27,7 @@ validator actionValidator(
   configNFTAssetName: ByteArray,
   lenderSmartManagerSpendScriptHash: ByteArray,
   loanWithdrawScriptHash: ByteArray,
+  loanClaimPaymentCredential: PaymentCredential,
 ) {
   withdraw(
     redeemer: LSMLiquidateAndPayInAdvanceWithdrawRedeemer,
@@ -114,6 +116,15 @@ validator actionValidator(
             principalAsset,
             ..
           } = loanInputDatum
+          expect Some(loanRedeemer) =
+            pairs.get_first(
+              self.redeemers,
+              Withdraw(loanClaimPaymentCredential),
+            )
+          expect parsedLoanRedeemer: loan.LoanClaimActionWithdrawRedeemer =
+            loanRedeemer
+          let loanInputAction =
+            safe_list_at(parsedLoanRedeemer.actionsForEachInput, index)
           expect InlineDatum(inputLenderBondDatum) =
             lenderBondInput.output.datum
           expect LenderSmartManagerDatum {
@@ -156,12 +167,19 @@ validator actionValidator(
             )
           let liquidationFee =
             loanCollateralAmount * liquidationFeePerMille / 1000
-          let loanCollateralToSend = loanCollateralAmount - liquidationFee
+          expect Liquidation { partialLiquidationPenaltyPerMille, .. } =
+            loanInputAction.liquidationMode
+          let loanCollateralThatLenderShouldReceive =
+            if partialLiquidationPenaltyPerMille > 0 {
+              loanCollateralAmount - loanInputAction.equity - liquidationFee
+            } else {
+              loanCollateralAmount - liquidationFee
+            }
           let convertedLoanCollateralToPrincipalAmount =
             finance.convertFromAToBWithOracles(
               collateralOraclePriceFeed,
               principalOraclePriceFeed,
-              rational.from_int(loanCollateralToSend),
+              rational.from_int(loanCollateralThatLenderShouldReceive),
             )
 
           let lenderBondAssetName =
@@ -184,7 +202,7 @@ validator actionValidator(
             shouldLiquidationConvertToPrincipal,
             //Output with lender bond must be the same as input
             builtin.equals_data(lenderBondInput.output, lenderBondOutput),
-            //TODO Works only for full liquidations
+            //Ensures lender receives the correct assets, the eventual output to borrower is already checked by loan.ak
             validate_repayment_output(
               loanInputOutputReference: loanInput.output_reference,
               repaymentOutput: lsmAssetsOutput,

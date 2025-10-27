@@ -1,16 +1,17 @@
 use aiken/builtin
 use aiken/collection/list
-use cardano/address.{Credential, Script}
+use aiken/collection/pairs
+use cardano/address.{Credential, PaymentCredential, Script}
 use cardano/assets.{flatten, quantity_of}
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
+  InlineDatum, Input, Output, OutputReference, Transaction, Withdraw,
 }
 use fluidtokens/constants
-use fluidtokens/types/general.{Asset, CollateralAsset}
+use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
 use fluidtokens/types/lender_smart_manager.{
   LSMLiquidateWithdrawRedeemer, LenderSmartManagerDatum,
 } as lsm
-use fluidtokens/types/loan.{LoanDatum} as l
+use fluidtokens/types/loan.{LoanDatum} as loan
 use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{
@@ -22,6 +23,7 @@ validator actionValidator(
   configNFTAssetName: ByteArray,
   lenderSmartManagerSpendScriptHash: ByteArray,
   loanWithdrawScriptHash: ByteArray,
+  loanClaimPaymentCredential: PaymentCredential,
 ) {
   withdraw(
     redeemer: LSMLiquidateWithdrawRedeemer,
@@ -91,6 +93,15 @@ validator actionValidator(
 
           expect InlineDatum(loanInputDatum) = loanInput.output.datum
           expect LoanDatum { collateral, .. } = loanInputDatum
+          expect Some(loanRedeemer) =
+            pairs.get_first(
+              self.redeemers,
+              Withdraw(loanClaimPaymentCredential),
+            )
+          expect parsedLoanRedeemer: loan.LoanClaimActionWithdrawRedeemer =
+            loanRedeemer
+          let loanInputAction =
+            safe_list_at(parsedLoanRedeemer.actionsForEachInput, index)
           expect InlineDatum(inputLenderBondDatum) =
             lenderBondInput.output.datum
           expect LenderSmartManagerDatum {
@@ -99,6 +110,7 @@ validator actionValidator(
             ..
           } = inputLenderBondDatum
           let collateralPolicyId = collateral.policyId
+          //NFT collections as collateral are not allowed
           expect Some(collateralAssetName) = collateral.maybeAssetName
           let loanCollateralAmount =
             quantity_of(
@@ -106,9 +118,19 @@ validator actionValidator(
               collateralPolicyId,
               collateralAssetName,
             )
+          //A single NFT as collateral is not allowed
+          expect loanCollateralAmount > 1
+
           let liquidationFee =
             loanCollateralAmount * liquidationFeePerMille / 1000
-          let loanCollateralToSend = loanCollateralAmount - liquidationFee
+          expect Liquidation { partialLiquidationPenaltyPerMille, .. } =
+            loanInputAction.liquidationMode
+          let loanCollateralThatLenderShouldReceive =
+            if partialLiquidationPenaltyPerMille > 0 {
+              loanCollateralAmount - loanInputAction.equity - liquidationFee
+            } else {
+              loanCollateralAmount - liquidationFee
+            }
 
           let lenderBondAssetName =
             safe_list_at(redeemer.lenderBondAssetNames, index)
@@ -130,7 +152,7 @@ validator actionValidator(
             shouldLiquidationConvertToPrincipal == False,
             //Output with lender bond must be the same as input
             builtin.equals_data(lenderBondInput.output, lenderBondOutput),
-            //TODO Works only for full liquidations
+            //Ensures lender receives the correct assets, the eventual output to borrower is already checked by loan.ak
             validate_repayment_output(
               loanInputOutputReference: loanInput.output_reference,
               repaymentOutput: lsmAssetsOutput,
@@ -139,7 +161,7 @@ validator actionValidator(
                 assetName: lenderBondAssetName,
               },
               repaymentAsset: Asset(collateralPolicyId, collateralAssetName),
-              repaymentAmount: loanCollateralToSend,
+              repaymentAmount: loanCollateralThatLenderShouldReceive,
               action: constants.claimed_collateral_action,
             ),
           }

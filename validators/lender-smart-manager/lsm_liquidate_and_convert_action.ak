@@ -1,21 +1,22 @@
 use aiken/builtin
 use aiken/collection/list
+use aiken/collection/pairs
 use aiken/crypto
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use aiken/primitive/bytearray
-use cardano/address.{Address, Credential, Inline, Script}
+use cardano/address.{Address, Credential, Inline, PaymentCredential, Script}
 use cardano/assets.{quantity_of}
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
+  InlineDatum, Input, Output, OutputReference, Transaction, Withdraw,
 }
 use fluidtokens/constants
 use fluidtokens/finance
-use fluidtokens/types/general.{Asset, CollateralAsset}
+use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
 use fluidtokens/types/lender_smart_manager.{
   LSMLiquidateAndConvertActionWithdrawRedeemer, LenderSmartManagerDatum,
 } as lsm
-use fluidtokens/types/loan.{LoanDatum} as l
+use fluidtokens/types/loan.{LoanDatum} as loan
 use fluidtokens/types/minswap_v2_types as minswap
 use fluidtokens/types/minswap_v2_types.{PoolDatum}
 use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
@@ -36,6 +37,7 @@ validator actionValidator(
   minswapOrderWithdrawScriptHash: ByteArray,
   minswapV2DefaultTradingFeeDenominator: Int,
   maxAllowedSlippage: Int,
+  loanClaimPaymentCredential: PaymentCredential,
 ) {
   withdraw(
     redeemer: LSMLiquidateAndConvertActionWithdrawRedeemer,
@@ -130,6 +132,15 @@ validator actionValidator(
             repaymentMode,
             ..
           } = loanInputDatum
+          expect Some(loanRedeemer) =
+            pairs.get_first(
+              self.redeemers,
+              Withdraw(loanClaimPaymentCredential),
+            )
+          expect parsedLoanRedeemer: loan.LoanClaimActionWithdrawRedeemer =
+            loanRedeemer
+          let loanInputAction =
+            safe_list_at(parsedLoanRedeemer.actionsForEachInput, index)
           expect InlineDatum(inputLenderBondDatum) =
             lenderBondInput.output.datum
           expect LenderSmartManagerDatum {
@@ -198,7 +209,14 @@ validator actionValidator(
 
           let liquidationFee =
             loanCollateralAmount * liquidationFeePerMille / 1000
-          let swappableCollateralAmount = loanCollateralAmount - liquidationFee
+          expect Liquidation { partialLiquidationPenaltyPerMille, .. } =
+            loanInputAction.liquidationMode
+          let swappableCollateralAmount =
+            if partialLiquidationPenaltyPerMille > 0 {
+              loanCollateralAmount - loanInputAction.equity - liquidationFee
+            } else {
+              loanCollateralAmount - liquidationFee
+            }
 
           let ownerAsset =
             Asset {
@@ -348,7 +366,6 @@ validator actionValidator(
             ),
             //Output with lender bond must be the same as input
             builtin.equals_data(lenderBondInput.output, lenderBondOutput),
-            //TODO Works only for full liquidations
             //Order must have correct datum and value
             builtin.equals_data(minswapOrderOutput.datum, expectedOrderDatum),
             correctOrderValue,
