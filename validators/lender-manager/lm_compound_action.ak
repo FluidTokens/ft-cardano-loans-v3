@@ -5,11 +5,11 @@ use cardano/address.{Address, Credential, Script}
 use cardano/assets.{add, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/types/general.{Asset}
-use fluidtokens/types/lender_smart_manager.{
-  LSMCompoundWithdrawRedeemer, LenderSmartManagerDatum,
-} as lsm
+use fluidtokens/types/lender_manager.{
+  LMCompoundWithdrawRedeemer, LenderManagerDatum,
+} as lm
 use fluidtokens/types/pool.{PoolDatum}
-use fluidtokens/types/pool_smart_manager.{PoolSmartManagerDatum}
+use fluidtokens/types/pool_manager.{PoolManagerDatum}
 use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{
@@ -24,7 +24,7 @@ validator actionValidator(
   poolManagerPolicyId: ByteArray,
 ) {
   withdraw(
-    redeemer: LSMCompoundWithdrawRedeemer,
+    redeemer: LMCompoundWithdrawRedeemer,
     credential: Credential,
     self: Transaction,
   ) {
@@ -38,7 +38,7 @@ validator actionValidator(
       builtin.un_b_data(utils.safe_list_at(config, 0))
     let poolSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 8))
     let poolPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
-    let lsmInputs =
+    let lmInputs =
       get_inputs_from_smart_credential(
         self.inputs,
         Script(lenderSmartManagerSpendScriptHash),
@@ -77,12 +77,12 @@ validator actionValidator(
         credential,
         smartTokensSpendScriptHash,
       )
-    let (lenderBondInputs, lsmAssetsInputs) =
+    let (lenderBondInputs, lmAssetsInputs) =
       list.partition(
-        lsmInputs,
+        lmInputs,
         fn(input) {
           expect InlineDatum(inputDatum) = input.output.datum
-          if inputDatum is LenderSmartManagerDatum {
+          if inputDatum is LenderManagerDatum {
             True
           } else {
             //We still expect the datum to be RepaymentDatumWithToken here
@@ -98,66 +98,64 @@ validator actionValidator(
         credential,
         smartTokensSpendScriptHash,
       )
-    //Add repayments sitting in the lsm to the total to compound for each pool manager
+    //Add repayments sitting in the lm to the total to compound for each pool manager
     let totalAssetsToCompoundForEachPoolManager =
-      dict.to_pairs(
-        list.indexed_foldr(
-          lsmAssetsInputs,
-          dict.empty,
-          fn(index, assetInput, result) {
-            expect InlineDatum(assetInputDatum) = assetInput.output.datum
-            expect RepaymentDatumWithToken { ownerAsset, .. } = assetInputDatum
+      list.indexed_foldr(
+        lmAssetsInputs,
+        dict.empty,
+        fn(index, assetInput, result) {
+          expect InlineDatum(assetInputDatum) = assetInput.output.datum
+          expect RepaymentDatumWithToken { ownerAsset, .. } = assetInputDatum
 
-            let lenderBondIndex =
-              safe_list_at(redeemer.lenderBondInputIndexes, index)
+          let lenderBondIndex =
+            safe_list_at(redeemer.lenderBondInputIndexes, index)
 
-            let lenderBondInput =
-              safe_list_at(lenderBondInputs, lenderBondIndex)
-            expect InlineDatum(inputLenderBondDatum) =
-              lenderBondInput.output.datum
-            expect LenderSmartManagerDatum { principalAsset, poolManagerId, .. } =
-              inputLenderBondDatum
-            let assetAmount =
-              quantity_of(
-                assetInput.output.value,
-                principalAsset.policyId,
-                principalAsset.assetName,
-              )
-
-            //Selected lender bond must correspond to the ownerAsset of the datum
-            expect
-              quantity_of(
-                lenderBondInput.output.value,
-                ownerAsset.policyId,
-                ownerAsset.assetName,
-              ) == 1
-
-            dict.insert_with(
-              result,
-              poolManagerId,
-              assetAmount,
-              fn(_k, a, b) { Some(a + b) },
+          let lenderBondInput = safe_list_at(lenderBondInputs, lenderBondIndex)
+          expect InlineDatum(inputLenderBondDatum) =
+            lenderBondInput.output.datum
+          expect LenderManagerDatum { principalAsset, poolManagerId, .. } =
+            inputLenderBondDatum
+          let assetAmount =
+            quantity_of(
+              assetInput.output.value,
+              principalAsset.policyId,
+              principalAsset.assetName,
             )
-          },
-        ),
+
+          //Selected lender bond must correspond to the ownerAsset of the datum
+          expect
+            quantity_of(
+              lenderBondInput.output.value,
+              ownerAsset.policyId,
+              ownerAsset.assetName,
+            ) == 1
+
+          dict.insert_with(
+            result,
+            poolManagerId,
+            assetAmount,
+            fn(_k, a, b) { Some(a + b) },
+          )
+        },
       )
 
     let allCompoundedPoolsAreCorrect =
       list.indexed_foldr(
-        totalAssetsToCompoundForEachPoolManager,
+        poolManagerInputs,
         True,
-        fn(index, Pair(poolManagerId, addedLiquidity), result) {
+        fn(index, poolManagerInput, result) {
           //As all inputs must return True, if any of previous input returned False, then fail
           //The last input is not checked but will return its value at the end, so if False withdraw will fail
           expect result
-          //TODO Is the index ok to select input and output?
-          let poolManagerInput = safe_list_at(poolManagerInputs, index)
+          let poolManagerId = safe_list_at(redeemer.poolManagerIds, index)
+          expect Some(addedLiquidity) =
+            dict.get(totalAssetsToCompoundForEachPoolManager, poolManagerId)
           let poolManagerOutput = safe_list_at(poolManagerOutputs, index)
-          //TODO Is the index ok to select input and output?
-          let poolInput = safe_list_at(poolInputs, index)
-          let poolOutput = safe_list_at(poolOutputs, index)
+          let poolInputIndex = safe_list_at(redeemer.poolInputIndexes, index)
+          let poolInput = safe_list_at(poolInputs, poolInputIndex)
+          let poolOutput = safe_list_at(poolOutputs, poolInputIndex)
           expect InlineDatum(poolManagerDatum) = poolManagerInput.output.datum
-          expect PoolSmartManagerDatum {
+          expect PoolManagerDatum {
             poolId,
             poolOwnerAuth,
             compoudingFeePerMille,
@@ -165,7 +163,6 @@ validator actionValidator(
           expect InlineDatum(oldPoolDatum) = poolInput.output.datum
           expect PoolDatum { commonData, .. } = oldPoolDatum
           let newPoolId = safe_list_at(redeemer.compoundedPoolNewIds, index)
-
           let compoundingFee = addedLiquidity * compoudingFeePerMille / 1000
           //Replace old liquidity with new one and replace old pool nft with new one
           let expectedNewPoolValue =
@@ -177,6 +174,7 @@ validator actionValidator(
                 )
               |> add(poolPolicyId, poolId, -1)
               |> add(poolPolicyId, newPoolId, 1)
+
           and {
             //If poolManagerId is "", no compounding allowed so the whole action must fail
             poolManagerId != "",
@@ -204,7 +202,7 @@ validator actionValidator(
             builtin.equals_data(
               poolManagerOutput.datum,
               InlineDatum(
-                PoolSmartManagerDatum {
+                PoolManagerDatum {
                   poolOwnerAuth,
                   poolId: newPoolId,
                   compoudingFeePerMille,
@@ -234,11 +232,11 @@ validator actionValidator(
     and {
       //All pool managers in input must have been used for compounding
       list.length(poolManagerInputs) == list.length(
-        totalAssetsToCompoundForEachPoolManager,
+        dict.to_pairs(totalAssetsToCompoundForEachPoolManager),
       ),
       //No additional pools spent
       list.length(poolManagerInputs) == list.length(poolInputs),
-      //All compounded pool are correct
+      //All compounded pools are correct
       allCompoundedPoolsAreCorrect,
       //All spent lender bonds return correctly to the sc
       allLenderBondsAreCorrect,

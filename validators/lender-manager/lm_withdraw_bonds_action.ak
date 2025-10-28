@@ -3,9 +3,9 @@ use aiken/collection/list
 use cardano/address.{Credential, Script}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/authorizer.{authorize_action, create_auth}
-use fluidtokens/types/lender_smart_manager.{
-  LSMWithdrawBondsWithdrawRedeemer, LenderSmartManagerDatum,
-} as lsm
+use fluidtokens/types/lender_manager.{
+  LMWithdrawBondsWithdrawRedeemer, LenderManagerDatum,
+} as lm
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 
@@ -15,7 +15,7 @@ validator actionValidator(
   lenderSmartManagerSpendScriptHash: ByteArray,
 ) {
   withdraw(
-    redeemer: LSMWithdrawBondsWithdrawRedeemer,
+    redeemer: LMWithdrawBondsWithdrawRedeemer,
     credential: Credential,
     self: Transaction,
   ) {
@@ -27,7 +27,7 @@ validator actionValidator(
       )
     let smartTokensSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 0))
-    let lsmInputs =
+    let lmInputs =
       get_inputs_from_smart_credential(
         self.inputs,
         Script(lenderSmartManagerSpendScriptHash),
@@ -35,7 +35,7 @@ validator actionValidator(
         smartTokensSpendScriptHash,
       )
     list.foldr(
-      lsmInputs,
+      lmInputs,
       True,
       fn(input, result) {
         //As all inputs must return True, if any of previous input returned False, then fail
@@ -43,7 +43,7 @@ validator actionValidator(
         expect result
 
         expect InlineDatum(inputDatum) = input.output.datum
-        expect LenderSmartManagerDatum { lenderAuth, .. } = inputDatum
+        expect LenderManagerDatum { lenderAuth, .. } = inputDatum
         authorize_action(
           create_auth(
             lenderAuth,

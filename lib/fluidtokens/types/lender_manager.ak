@@ -1,7 +1,19 @@
-use cardano/address.{StakeCredential}
+use cardano/address.{Credential, StakeCredential}
 use fluidtokens/types/general.{Asset, AuthorizationMethod}
 
-pub type LenderSmartManagerDatum {
+pub type LMConfigDatum {
+  adminCredential: Credential,
+  lmWithdrawBondsActionScriptHash: ByteArray,
+  lmWithdrawAssetsActionScriptHash: ByteArray,
+  lmLiquidateActionScriptHash: ByteArray,
+  lmCompoundActionScriptHash: ByteArray,
+  lmLiquidateAndPayInAdvanceActionScriptHash: ByteArray,
+  lmLiquidateAndConvertActionScriptHash: ByteArray,
+  lmLiquidatePayInAdvanceAndCompoundActionScriptHash: ByteArray,
+  lmLiquidateConvertAndCompoundActionScriptHash: ByteArray,
+}
+
+pub type LenderManagerDatum {
   //Auth to get the lender bond back
   lenderAuth: AuthorizationMethod,
   //Stake credential of the lender, used for any utxo created by the bots
@@ -16,7 +28,7 @@ pub type LenderSmartManagerDatum {
   principalAsset: Asset,
 }
 
-pub type LenderSmartManagerAction {
+pub type LenderManagerAction {
   //Lender can withdraw his bond any time
   WithdrawBonds
   //Lender can get his assets that point to his bond as long as the bond is in this contract
@@ -35,40 +47,42 @@ pub type LenderSmartManagerAction {
   LiquidateConvertAndCompound
 }
 
-pub type LenderSmartManagerWithdrawRedeemer {
+pub type LenderManagerWithdrawRedeemer {
   configRefInputIndex: Int,
-  action: LenderSmartManagerAction,
+  action: LenderManagerAction,
 }
 
-pub type LSMWithdrawBondsWithdrawRedeemer {
+pub type LMWithdrawBondsWithdrawRedeemer {
   configRefInputIndex: Int,
 }
 
-pub type LSMWithdrawAssetsWithdrawRedeemer {
+pub type LMWithdrawAssetsWithdrawRedeemer {
   configRefInputIndex: Int,
   lenderBondInputIndexes: List<Int>,
 }
 
-pub type LSMLiquidateWithdrawRedeemer {
+pub type LMLiquidateWithdrawRedeemer {
   configRefInputIndex: Int,
   lenderBondInputIndexes: List<Int>,
   lenderBondAssetNames: List<ByteArray>,
 }
 
-pub type LSMCompoundWithdrawRedeemer {
+pub type LMCompoundWithdrawRedeemer {
   configRefInputIndex: Int,
+  poolManagerIds: List<ByteArray>,
+  poolInputIndexes: List<Int>,
   lenderBondInputIndexes: List<Int>,
   compoundedPoolNewIds: List<ByteArray>,
 }
 
-pub type LSMLiquidateAndPayInAdvanceWithdrawRedeemer {
+pub type LMLiquidateAndPayInAdvanceWithdrawRedeemer {
   configRefInputIndex: Int,
   lenderBondInputIndexes: List<Int>,
   lenderBondAssetNames: List<ByteArray>,
   principalAndCollateralOracleRefInputIndexes: List<(Int, Int)>,
 }
 
-pub type LSMLiquidateAndConvertActionWithdrawRedeemer {
+pub type LMLiquidateAndConvertActionWithdrawRedeemer {
   configRefInputIndex: Int,
   lenderBondInputIndexes: List<Int>,
   lenderBondAssetNames: List<ByteArray>,
@@ -76,15 +90,17 @@ pub type LSMLiquidateAndConvertActionWithdrawRedeemer {
   minswapPoolAssetNames: List<ByteArray>,
 }
 
-pub type LSMLiquidatePayInAdvanceAndCompoundWithdrawRedeemer {
+pub type LMLiquidatePayInAdvanceAndCompoundWithdrawRedeemer {
   configRefInputIndex: Int,
   lenderBondInputIndexes: List<Int>,
   lenderBondAssetNames: List<ByteArray>,
+  poolManagerIds: List<ByteArray>,
+  poolInputIndexes: List<Int>,
   principalAndCollateralOracleRefInputIndexes: List<(Int, Int)>,
   compoundedPoolNewIds: List<ByteArray>,
 }
 
-pub type LSMLiquidatConvertAndCompoundWithdrawRedeemer {
+pub type LMLiquidatConvertAndCompoundWithdrawRedeemer {
   configRefInputIndex: Int,
   lenderBondInputIndexes: List<Int>,
   lenderBondAssetNames: List<ByteArray>,

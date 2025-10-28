@@ -5,11 +5,10 @@ use cardano/address.{Address, Credential, Script}
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/authorizer.{authorize_action, create_auth}
-use fluidtokens/types/lender_smart_manager.{LenderSmartManagerWithdrawRedeemer} as lsm
-use fluidtokens/types/pool_smart_manager.{
-  CancelPoolManager, CompoundLiquidity, PoolSmartManagerDatum,
-  PoolSmartManagerMintRedeemer, PoolSmartManagerWithdrawRedeemer,
-  UpdatePoolManager,
+use fluidtokens/types/lender_manager.{LenderManagerWithdrawRedeemer} as lm
+use fluidtokens/types/pool_manager.{
+  CancelPoolManager, CompoundLiquidity, PoolManagerDatum,
+  PoolManagerMintRedeemer, PoolManagerWithdrawRedeemer, UpdatePoolManager,
 }
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
@@ -24,7 +23,7 @@ validator poolSmartManager(
   poolManagerSpendScriptHash: ByteArray,
 ) {
   mint(
-    redeemer: PoolSmartManagerMintRedeemer,
+    redeemer: PoolManagerMintRedeemer,
     policy_id: PolicyId,
     self: Transaction,
   ) {
@@ -39,7 +38,7 @@ validator poolSmartManager(
   }
 
   withdraw(
-    redeemer: PoolSmartManagerWithdrawRedeemer,
+    redeemer: PoolManagerWithdrawRedeemer,
     credential: Credential,
     self: Transaction,
   ) {
@@ -65,7 +64,7 @@ validator poolSmartManager(
             expect result
 
             expect InlineDatum(inputDatum) = input.output.datum
-            expect PoolSmartManagerDatum { poolOwnerAuth, .. } = inputDatum
+            expect PoolManagerDatum { poolOwnerAuth, .. } = inputDatum
 
             let poolSmartManagerNFTAssetName =
               safe_list_at(poolSmartManagerNFTAssetNames, index)
@@ -113,13 +112,13 @@ validator poolSmartManager(
             expect result
 
             expect InlineDatum(inputDatum) = input.output.datum
-            expect PoolSmartManagerDatum { poolOwnerAuth, .. } = inputDatum
+            expect PoolManagerDatum { poolOwnerAuth, .. } = inputDatum
 
             let poolManagerOutput = safe_list_at(poolManagerOutputs, index)
 
             //Ensure the output has the correct datum type
             expect InlineDatum(outputDatum) = poolManagerOutput.datum
-            expect PoolSmartManagerDatum { .. } = outputDatum
+            expect PoolManagerDatum { .. } = outputDatum
 
             and {
               //Authorize the pool owner to execute this action
@@ -150,13 +149,13 @@ validator poolSmartManager(
           lenderSmartManagerWithdrawRedeemer.1st == Withdraw(
             Script(lenderSmartManagerWithdrawScriptHash),
           )
-        expect lenderSmartManagerRedeemer: LenderSmartManagerWithdrawRedeemer =
+        expect lenderSmartManagerRedeemer: LenderManagerWithdrawRedeemer =
           lenderSmartManagerWithdrawRedeemer.2nd
 
         when lenderSmartManagerRedeemer.action is {
-          lsm.Compound { .. } -> True
-          lsm.LiquidatePayInAdvanceAndCompound { .. } -> True
-          lsm.LiquidateConvertAndCompound { .. } -> True
+          lm.Compound { .. } -> True
+          lm.LiquidatePayInAdvanceAndCompound { .. } -> True
+          lm.LiquidateConvertAndCompound { .. } -> True
           _ -> False
         }
       }
@@ -170,7 +169,7 @@ validator poolSmartManager(
 
 fn check_mint(
   self: Transaction,
-  redeemer: PoolSmartManagerMintRedeemer,
+  redeemer: PoolManagerMintRedeemer,
   policy_id: PolicyId,
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
@@ -227,7 +226,7 @@ fn check_mint(
           )
         //Correct datum type
         expect InlineDatum(outputDatum) = output.datum
-        expect PoolSmartManagerDatum { .. } = outputDatum
+        expect PoolManagerDatum { .. } = outputDatum
 
         and {
           quantity == 1,
@@ -237,10 +236,15 @@ fn check_mint(
       },
     )
 
-  let poolMintedNFTs = dict.to_pairs(tokens(self.mint, poolPolicyId))
+  let poolMintedNFTs =
+    list.filter(
+      dict.to_pairs(tokens(self.mint, poolPolicyId)),
+      fn(Pair(_assetName, quantity)) { quantity > 0 },
+    )
   //NOTE: We don't check the destination of the minted NFTs, as it's the pool owner interest to put them in this SC
   //When you mint a pool you also mint this NFT with same AssetName
   //When you cancel (burn) a pool you also burn this NFT
+  //When you modify/compound a pool you also burn and remint this NFT
   and {
     length(poolInputs) == 0,
     poolSmartManagerMintedNFTs == poolMintedNFTs,

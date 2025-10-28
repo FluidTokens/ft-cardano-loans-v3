@@ -12,9 +12,9 @@ use fluidtokens/constants
 use fluidtokens/finance
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
-use fluidtokens/types/lender_smart_manager.{
-  LSMLiquidateAndPayInAdvanceWithdrawRedeemer, LenderSmartManagerDatum,
-} as lsm
+use fluidtokens/types/lender_manager.{
+  LMLiquidateAndPayInAdvanceWithdrawRedeemer, LenderManagerDatum,
+} as lm
 use fluidtokens/types/loan.{LoanDatum} as loan
 use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
 use fluidtokens/utils.{safe_list_at}
@@ -30,7 +30,7 @@ validator actionValidator(
   loanClaimPaymentCredential: PaymentCredential,
 ) {
   withdraw(
-    redeemer: LSMLiquidateAndPayInAdvanceWithdrawRedeemer,
+    redeemer: LMLiquidateAndPayInAdvanceWithdrawRedeemer,
     credential: Credential,
     self: Transaction,
   ) {
@@ -50,14 +50,14 @@ validator actionValidator(
         self.validity_range.lower_bound.bound_type,
         self.validity_range.upper_bound.bound_type,
       )
-    let lsmInputs =
+    let lmInputs =
       get_inputs_from_smart_credential(
         self.inputs,
         Script(lenderSmartManagerSpendScriptHash),
         credential,
         smartTokensSpendScriptHash,
       )
-    let lsmOutputs =
+    let lmOutputs =
       get_outputs_to_smart_credential(
         self.outputs,
         Script(lenderSmartManagerSpendScriptHash),
@@ -71,13 +71,13 @@ validator actionValidator(
         Script(loanWithdrawScriptHash),
         smartTokensSpendScriptHash,
       )
-    let lenderBondInputs = lsmInputs
-    let (lenderBondOutputs, lsmAssetsOutputs) =
+    let lenderBondInputs = lmInputs
+    let (lenderBondOutputs, lmAssetsOutputs) =
       list.partition(
-        lsmOutputs,
+        lmOutputs,
         fn(output) {
           expect InlineDatum(outputDatum) = output.datum
-          if outputDatum is LenderSmartManagerDatum {
+          if outputDatum is LenderManagerDatum {
             True
           } else {
             //We still expect the datum to be RepaymentDatumWithToken here
@@ -101,7 +101,7 @@ validator actionValidator(
           let lenderBondIndex =
             safe_list_at(redeemer.lenderBondInputIndexes, index)
           let lenderBondInput = safe_list_at(lenderBondInputs, lenderBondIndex)
-          let lsmAssetsOutput = safe_list_at(lsmAssetsOutputs, index)
+          let lmAssetsOutput = safe_list_at(lmAssetsOutputs, index)
           let lenderBondOutput =
             safe_list_at(lenderBondOutputs, lenderBondIndex)
           let collateralOracleRefInput =
@@ -127,7 +127,7 @@ validator actionValidator(
             safe_list_at(parsedLoanRedeemer.actionsForEachInput, index)
           expect InlineDatum(inputLenderBondDatum) =
             lenderBondInput.output.datum
-          expect LenderSmartManagerDatum {
+          expect LenderManagerDatum {
             shouldLiquidationConvertToPrincipal,
             liquidationFeePerMille,
             ..
@@ -205,7 +205,7 @@ validator actionValidator(
             //Ensures lender receives the correct assets, the eventual output to borrower is already checked by loan.ak
             validate_repayment_output(
               loanInputOutputReference: loanInput.output_reference,
-              repaymentOutput: lsmAssetsOutput,
+              repaymentOutput: lmAssetsOutput,
               lenderBondAsset: Asset {
                 policyId: lenderBondPolicyId,
                 assetName: lenderBondAssetName,

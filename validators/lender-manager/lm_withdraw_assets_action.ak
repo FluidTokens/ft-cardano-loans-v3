@@ -5,9 +5,9 @@ use cardano/assets.{quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/types/general.{Asset}
-use fluidtokens/types/lender_smart_manager.{
-  LSMWithdrawAssetsWithdrawRedeemer, LenderSmartManagerDatum,
-} as lsm
+use fluidtokens/types/lender_manager.{
+  LMWithdrawAssetsWithdrawRedeemer, LenderManagerDatum,
+} as lm
 use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
@@ -18,7 +18,7 @@ validator actionValidator(
   lenderSmartManagerSpendScriptHash: ByteArray,
 ) {
   withdraw(
-    redeemer: LSMWithdrawAssetsWithdrawRedeemer,
+    redeemer: LMWithdrawAssetsWithdrawRedeemer,
     credential: Credential,
     self: Transaction,
   ) {
@@ -30,19 +30,19 @@ validator actionValidator(
       )
     let smartTokensSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 0))
-    let lsmInputs =
+    let lmInputs =
       get_inputs_from_smart_credential(
         self.inputs,
         Script(lenderSmartManagerSpendScriptHash),
         credential,
         smartTokensSpendScriptHash,
       )
-    let (lenderBondInputs, lsmAssetsInputs) =
+    let (lenderBondInputs, lmAssetsInputs) =
       list.partition(
-        lsmInputs,
+        lmInputs,
         fn(input) {
           expect InlineDatum(inputDatum) = input.output.datum
-          if inputDatum is LenderSmartManagerDatum {
+          if inputDatum is LenderManagerDatum {
             True
           } else {
             //We still expect the datum to be RepaymentDatumWithToken here
@@ -53,7 +53,7 @@ validator actionValidator(
 
     and {
       list.indexed_foldr(
-        lsmAssetsInputs,
+        lmAssetsInputs,
         True,
         fn(index, input, result) {
           //As all inputs must return True, if any of previous input returned False, then fail
@@ -85,8 +85,7 @@ validator actionValidator(
 
           expect InlineDatum(inputLenderBondDatum) =
             lenderBondInput.output.datum
-          expect LenderSmartManagerDatum { lenderAuth, .. } =
-            inputLenderBondDatum
+          expect LenderManagerDatum { lenderAuth, .. } = inputLenderBondDatum
 
           authorize_action(
             create_auth(

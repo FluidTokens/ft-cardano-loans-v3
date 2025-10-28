@@ -13,9 +13,9 @@ use cardano/transaction.{
 use fluidtokens/constants
 use fluidtokens/finance
 use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
-use fluidtokens/types/lender_smart_manager.{
-  LSMLiquidateAndConvertActionWithdrawRedeemer, LenderSmartManagerDatum,
-} as lsm
+use fluidtokens/types/lender_manager.{
+  LMLiquidateAndConvertActionWithdrawRedeemer, LenderManagerDatum,
+} as lm
 use fluidtokens/types/loan.{LoanDatum} as loan
 use fluidtokens/types/minswap_v2_types as minswap
 use fluidtokens/types/minswap_v2_types.{PoolDatum}
@@ -40,7 +40,7 @@ validator actionValidator(
   loanClaimPaymentCredential: PaymentCredential,
 ) {
   withdraw(
-    redeemer: LSMLiquidateAndConvertActionWithdrawRedeemer,
+    redeemer: LMLiquidateAndConvertActionWithdrawRedeemer,
     credential: Credential,
     self: Transaction,
   ) {
@@ -56,7 +56,7 @@ validator actionValidator(
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
-    let lsmInputs =
+    let lmInputs =
       get_inputs_from_smart_credential(
         self.inputs,
         Script(lenderSmartManagerSpendScriptHash),
@@ -77,7 +77,7 @@ validator actionValidator(
         Script(minswapPoolWithdrawScriptHash),
         smartTokensSpendScriptHash,
       )
-    let lenderBondInputs = lsmInputs
+    let lenderBondInputs = lmInputs
     let lenderBondOutputs =
       get_outputs_to_smart_credential(
         self.outputs,
@@ -85,12 +85,11 @@ validator actionValidator(
         credential,
         smartTokensSpendScriptHash,
       )
-    //TODO Is credential correct here?
     let minswapOrderOutputs =
       get_outputs_to_smart_credential(
         self.outputs,
         Script(minswapOrderSpendScriptHash),
-        credential,
+        Script(minswapOrderWithdrawScriptHash),
         smartTokensSpendScriptHash,
       )
 
@@ -143,7 +142,7 @@ validator actionValidator(
             safe_list_at(parsedLoanRedeemer.actionsForEachInput, index)
           expect InlineDatum(inputLenderBondDatum) =
             lenderBondInput.output.datum
-          expect LenderSmartManagerDatum {
+          expect LenderManagerDatum {
             shouldLiquidationConvertToPrincipal,
             liquidationFeePerMille,
             lenderAuth,
@@ -341,7 +340,6 @@ validator actionValidator(
               minswapPoolAssetName,
             ) == 1,
             //Ensure the minswap pool is for the correct assets
-            //TODO We need to order them correctly, what's the sorting logic of minswap?
             if isCollateralAssetA {
               asset_a == collateralAsset && asset_b == principalAsset
             } else {
