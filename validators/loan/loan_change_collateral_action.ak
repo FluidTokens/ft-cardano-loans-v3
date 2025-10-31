@@ -209,24 +209,19 @@ fn validate_output_to_loan_for_changing_collateral(
       //we substract the current amount (resulting it as 0) and add the new one.
       //We don't consider lovelace if collateral is a custom token
       let expectedValue =
-        if datum.collateral.policyId == "" {
-          add(
-            oldLoanValue,
-            datum.collateral.policyId,
-            assetName,
-            -quantity_of(oldLoanValue, datum.collateral.policyId, assetName) + newCollateralAmount,
-          )
-        } else {
-          without_lovelace(
-            add(
-              oldLoanValue,
-              datum.collateral.policyId,
-              assetName,
-              -quantity_of(oldLoanValue, datum.collateral.policyId, assetName) + newCollateralAmount,
-            ),
-          )
-        }
-      loanOutput.value == expectedValue
+        add(
+          oldLoanValue,
+          datum.collateral.policyId,
+          assetName,
+          -quantity_of(oldLoanValue, datum.collateral.policyId, assetName) + newCollateralAmount,
+        )
+      if datum.collateral.policyId == "" {
+        //expected value
+        expectedValue == loanOutput.value
+      } else {
+        //expected value
+        without_lovelace(expectedValue) == without_lovelace(loanOutput.value)
+      }
     }
 
   let correctDestination =
