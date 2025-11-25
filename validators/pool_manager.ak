@@ -34,6 +34,8 @@ validator poolSmartManager(
       configNFTPolicyId,
       configNFTAssetName,
       poolManagerSpendScriptHash,
+      poolSpendScriptHash,
+      poolWithdrawScriptHash,
     )
   }
 
@@ -174,6 +176,8 @@ fn check_mint(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
   poolManagerSpendScriptHash: ByteArray,
+  poolSpendScriptHash: ByteArray,
+  poolWithdrawScriptHash: ByteArray,
 ) {
   let config =
     utils.get_config_as_data_list(
