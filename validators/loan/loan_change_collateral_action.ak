@@ -3,7 +3,9 @@ use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use cardano/address.{Address, Credential, Script, StakeCredential}
-use cardano/assets.{Value, add, flatten, quantity_of, without_lovelace}
+use cardano/assets.{
+  Value, ada_policy_id, add, flatten, quantity_of, without_lovelace,
+}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/finance.{can_liquidate, get_remaining_debt}
 use fluidtokens/oracle.{retrieve_oracle_data}
@@ -49,13 +51,9 @@ validator loan_change_collateral_action(
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
-    list.indexed_foldr(
+    utils.indexed_all(
       loanInputs,
-      True,
-      fn(index, input, result) {
-        //As all inputs must return True, if any of previous input returned False, then fail
-        //The last input is not checked but will return its value at the end, so if False withdraw will fail
-        expect result
+      fn(index, input) {
         let inputAction = safe_list_at(redeemer.actionsForEachInput, index)
 
         expect InlineDatum(inputDatum) = input.output.datum
@@ -215,7 +213,7 @@ fn validate_output_to_loan_for_changing_collateral(
           assetName,
           -quantity_of(oldLoanValue, datum.collateral.policyId, assetName) + newCollateralAmount,
         )
-      if datum.collateral.policyId == "" {
+      if datum.collateral.policyId == ada_policy_id {
         //expected value
         expectedValue == loanOutput.value
       } else {

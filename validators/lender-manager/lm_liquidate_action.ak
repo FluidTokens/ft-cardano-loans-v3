@@ -2,7 +2,7 @@ use aiken/builtin
 use aiken/collection/list
 use aiken/collection/pairs
 use cardano/address.{Credential, PaymentCredential, Script}
-use cardano/assets.{flatten, quantity_of}
+use cardano/assets.{ada_policy_id, flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, Withdraw,
 }
@@ -77,13 +77,9 @@ validator actionValidator(
         },
       )
     let liquidatedCollateralOutputsAreCorrect =
-      list.indexed_foldr(
+      utils.indexed_all(
         loanInputs,
-        False,
-        fn(index, loanInput, result) {
-          //As all inputs must return True, if any of previous input returned False, then fail
-          //The last input is not checked but will return its value at the end, so if False withdraw will fail
-          expect result
+        fn(index, loanInput) {
           let lenderBondIndex =
             safe_list_at(redeemer.lenderBondInputIndexes, index)
           let lenderBondInput = safe_list_at(lenderBondInputs, lenderBondIndex)
@@ -206,7 +202,7 @@ fn validate_repayment_output(
   let isDatumCorrect = builtin.equals_data(outputDatum, newDatum)
 
   let dosProtection =
-    if repaymentAsset.policyId == "" {
+    if repaymentAsset.policyId == ada_policy_id {
       list.length(flatten(repaymentOutput.value)) == 1
     } else {
       list.length(flatten(repaymentOutput.value)) == 2

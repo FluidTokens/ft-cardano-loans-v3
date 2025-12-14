@@ -66,5 +66,8 @@ pub type LiquidationMode {
     //If >= 0, when claiming the collateral the lender must pay to the borrower the difference
     //If > 0, this represents the per mille of the debt that must be given to the lender as penalty for being liquidated
     partialLiquidationPenaltyPerMille: Int,
+    // If `true`, equity is computed in principal currency.
+    // If `false`, equity is computed in collateral currency.
+    equityInPrincipalCurrency: Bool,
   }
 }

@@ -6,7 +6,7 @@ use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Inline, PaymentCredential, Script}
-use cardano/assets.{quantity_of}
+use cardano/assets.{ada_policy_id, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, Withdraw,
 }
@@ -94,13 +94,9 @@ validator actionValidator(
       )
 
     let liquidatedCollateralOutputsAreCorrect =
-      list.indexed_foldr(
+      utils.indexed_all(
         loanInputs,
-        False,
-        fn(index, loanInput, result) {
-          //As all inputs must return True, if any of previous input returned False, then fail
-          //The last input is not checked but will return its value at the end, so if False withdraw will fail
-          expect result
+        fn(index, loanInput) {
           let lenderBondAssetName =
             safe_list_at(redeemer.lenderBondAssetNames, index)
           let lenderBondIndex =
@@ -273,7 +269,7 @@ validator actionValidator(
             )
 
           let correctOrderValue =
-            if collateralPolicyId == "" {
+            if collateralPolicyId == ada_policy_id {
               quantity_of(
                 minswapOrderOutput.value,
                 collateralPolicyId,

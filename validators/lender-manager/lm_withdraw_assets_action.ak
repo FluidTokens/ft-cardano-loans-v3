@@ -52,14 +52,9 @@ validator actionValidator(
       )
 
     and {
-      list.indexed_foldr(
+      utils.indexed_all(
         lmAssetsInputs,
-        True,
-        fn(index, input, result) {
-          //As all inputs must return True, if any of previous input returned False, then fail
-          //The last input is not checked but will return its value at the end, so if False withdraw will fail
-          expect result
-
+        fn(index, input) {
           expect InlineDatum(inputDatum) = input.output.datum
           expect RepaymentDatumWithToken { ownerAsset, .. } = inputDatum
 

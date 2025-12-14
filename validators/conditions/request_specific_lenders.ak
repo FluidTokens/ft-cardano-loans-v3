@@ -65,14 +65,9 @@ validator specific_lenders(
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of tokens is equal to the number of inputs
-    list.indexed_foldr(
+    utils.indexed_all(
       requestInputsAndActionsThatNeedThisCondition,
-      True,
-      fn(index, inputAndAction, result) {
-        //As all inputs must return True, if any of previous input returned False, then fail
-        //The last input is not checked but will return its value at the end, so if False withdraw will fail
-        expect result
-
+      fn(index, inputAndAction) {
         expect InlineDatum(inputDatum) = inputAndAction.1st.output.datum
         //Second field of datum is extraData
         let extraData =

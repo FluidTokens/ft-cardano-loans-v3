@@ -1,9 +1,10 @@
 use aiken/builtin
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
+use aiken/math.{max}
 use aiken/math/rational
 use cardano/address.{Address, Credential, Inline, Script}
-use cardano/assets.{AssetName, flatten, quantity_of}
+use cardano/assets.{AssetName, ada_policy_id, flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
@@ -70,13 +71,9 @@ validator loan_claim_action(
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
-    list.indexed_foldr(
+    utils.indexed_all(
       loanInputs,
-      True,
-      fn(index, input, result) {
-        //As all inputs must return True, if any of previous input returned False, then fail
-        //The last input is not checked but will return its value at the end, so if False withdraw will fail
-        expect result
+      fn(index, input) {
         let inputAction = safe_list_at(redeemer.actionsForEachInput, index)
 
         expect InlineDatum(inputDatum) = input.output.datum
@@ -175,7 +172,12 @@ validator loan_claim_action(
               }
             }
 
-            Liquidation { lTV, lTVDivider, partialLiquidationPenaltyPerMille } -> {
+            Liquidation {
+              lTV,
+              lTVDivider,
+              partialLiquidationPenaltyPerMille,
+              equityInPrincipalCurrency,
+            } -> {
               let principalAmountAsRational =
                 rational.from_int(datum.principalAmount)
               let collateralOracleRefInput =
@@ -230,26 +232,6 @@ validator loan_claim_action(
               expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
               let borrowerBondAddress = borrowerBondRefInput.output.address
               and {
-                if or {
-                  collateralAmount == rational.from_int(1),
-                  datum.collateral.maybeAssetName == None,
-                } {
-                  inputAction.equity == get_equity(
-                    collateralAmount,
-                    remainingDebtAsRational,
-                    principalOraclePriceFeed,
-                    collateralOraclePriceFeed,
-                    partialLiquidationPenaltyPerMille,
-                  )
-                } else {
-                  inputAction.equity == get_equity_in_collateral_currency(
-                    collateralAmount,
-                    remainingDebtAsRational,
-                    principalOraclePriceFeed,
-                    collateralOraclePriceFeed,
-                    partialLiquidationPenaltyPerMille,
-                  )
-                },
                 or {
                   isRepaymentLate,
                   can_liquidate(
@@ -260,9 +242,40 @@ validator loan_claim_action(
                     collateralOraclePriceFeed,
                   ),
                 },
+                // equity non-negativity and correctness condition
+                if partialLiquidationPenaltyPerMille < 0 {
+                  // Equity disabled: must be zero, and no borrower compensation.
+                  inputAction.equity == 0
+                } else {
+                  // Normal case: equity must be >= 0 and correctly paid out if positive.
+                  and {
+                    inputAction.equity >= 0,
+                    if equityInPrincipalCurrency {
+                      let computed_equity =
+                        get_equity(
+                          collateralAmount,
+                          remainingDebtAsRational,
+                          principalOraclePriceFeed,
+                          collateralOraclePriceFeed,
+                          partialLiquidationPenaltyPerMille,
+                        )
+                      inputAction.equity == max(computed_equity, 0)
+                    } else {
+                      let computed_equity =
+                        get_equity_in_collateral_currency(
+                          collateralAmount,
+                          remainingDebtAsRational,
+                          principalOraclePriceFeed,
+                          collateralOraclePriceFeed,
+                          partialLiquidationPenaltyPerMille,
+                        )
+                      inputAction.equity == max(computed_equity, 0)
+                    },
+                  }
+                },
+                // borrower compensation / equity payout condition
                 or {
-                  partialLiquidationPenaltyPerMille < 0,
-                  inputAction.equity <= 0,
+                  inputAction.equity == 0,
                   {
                     let borrowerCompensationOutput =
                       utils.safe_list_at(
@@ -282,18 +295,12 @@ validator loan_claim_action(
                         policyId: borrowerBondPolicyId,
                         assetName: inputAction.loanId,
                       },
-                      principalAssetPolicyId: if or {
-                        collateralAmount == rational.from_int(1),
-                        datum.collateral.maybeAssetName == None,
-                      } {
+                      principalAssetPolicyId: if equityInPrincipalCurrency {
                         datum.principalAsset.policyId
                       } else {
                         datum.collateral.policyId
                       },
-                      principalAssetName: if or {
-                        collateralAmount == rational.from_int(1),
-                        datum.collateral.maybeAssetName == None,
-                      } {
+                      principalAssetName: if equityInPrincipalCurrency {
                         datum.principalAsset.assetName
                       } else {
                         expect Some(collateraAssetName) =
@@ -426,7 +433,7 @@ fn equity_sent_to_borrower(
       0
     }
   let dosProtection =
-    if principalAssetPolicyId == "" {
+    if principalAssetPolicyId == ada_policy_id {
       length(flatten(equityOutput.value)) == 1 + receiptAssetCount
     } else {
       length(flatten(equityOutput.value)) == 2 + receiptAssetCount

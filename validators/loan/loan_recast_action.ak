@@ -4,7 +4,7 @@ use aiken/interval.{Finite, Interval}
 use aiken/math.{pow}
 use aiken/math/rational
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{flatten, quantity_of}
+use cardano/assets.{ada_policy_id, flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
@@ -53,14 +53,9 @@ validator loan_recast_action(
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
-    list.indexed_foldr(
+    utils.indexed_all(
       loanInputs,
-      True,
-      fn(index, input, result) {
-        //As all inputs must return True, if any of previous input returned False, then fail
-        //The last input is not checked but will return its value at the end, so if False withdraw will fail
-        expect result
-
+      fn(index, input) {
         let inputAction = safe_list_at(redeemer.actionsForEachInput, index)
 
         expect InlineDatum(inputDatum) = input.output.datum
@@ -382,7 +377,7 @@ fn validate_repayment_output(
       0
     }
   let dosProtection =
-    if repaymentAsset.policyId == "" {
+    if repaymentAsset.policyId == ada_policy_id {
       length(flatten(repaymentOutput.value)) == 1 + receiptAssetCount
     } else {
       length(flatten(repaymentOutput.value)) == 2 + receiptAssetCount

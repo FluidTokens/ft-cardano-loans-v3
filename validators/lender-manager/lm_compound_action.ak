@@ -140,13 +140,9 @@ validator actionValidator(
       )
 
     let allCompoundedPoolsAreCorrect =
-      list.indexed_foldr(
+      utils.indexed_all(
         poolManagerInputs,
-        True,
-        fn(index, poolManagerInput, result) {
-          //As all inputs must return True, if any of previous input returned False, then fail
-          //The last input is not checked but will return its value at the end, so if False withdraw will fail
-          expect result
+        fn(index, poolManagerInput) {
           let poolManagerId = safe_list_at(redeemer.poolManagerIds, index)
           expect Some(addedLiquidity) =
             dict.get(totalAssetsToCompoundForEachPoolManager, poolManagerId)
@@ -214,14 +210,9 @@ validator actionValidator(
       )
 
     let allLenderBondsAreCorrect =
-      list.indexed_foldr(
+      utils.indexed_all(
         lenderBondInputs,
-        True,
-        fn(index, lenderBondInput, result) {
-          //As all inputs must return True, if any of previous input returned False, then fail
-          //The last input is not checked but will return its value at the end, so if False withdraw will fail
-          expect result
-
+        fn(index, lenderBondInput) {
           let lenderBondOutput = safe_list_at(lenderBondOutputs, index)
 
           //Output with lender bond must be the same as input
