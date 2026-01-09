@@ -1,5 +1,5 @@
 //Exactly as the general config but only for lender smart manager
-
+use aiken/collection/dict
 use cardano/address.{Address, Script}
 use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{
@@ -8,7 +8,7 @@ use cardano/transaction.{
 use fluidtokens/authorizer
 use fluidtokens/constants
 use fluidtokens/types/lender_manager.{LMConfigDatum}
-use fluidtokens/utils.{quantity_of_policy_id}
+use fluidtokens/utils
 
 //Contains all SC params
 validator config(tx0: ByteArray, index0: Int) {
@@ -23,10 +23,9 @@ validator config(tx0: ByteArray, index0: Int) {
     and {
       //First output goes to this address
       output_parameters.address.payment_credential == contractCredential,
-      //Only 1 token of same policy
-      quantity_of_policy_id(self.mint, policy_id) == 1,
-      //I am minting only 1 token (NFT)
-      quantity_of(self.mint, policy_id, constants.config_asset_name) == 1,
+      assets.tokens(self.mint, policy_id) == dict.from_pairs(
+        [Pair(constants.config_asset_name, 1)],
+      ),
       //NFT goes to the output
       quantity_of(
         output_parameters.value,

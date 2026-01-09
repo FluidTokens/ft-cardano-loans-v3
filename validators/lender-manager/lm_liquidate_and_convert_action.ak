@@ -204,14 +204,9 @@ validator actionValidator(
 
           let liquidationFee =
             loanCollateralAmount * liquidationFeePerMille / 1000
-          expect Liquidation { partialLiquidationPenaltyPerMille, .. } =
-            loanInputAction.liquidationMode
+          expect Liquidation { .. } = loanInputAction.liquidationMode
           let swappableCollateralAmount =
-            if partialLiquidationPenaltyPerMille > 0 {
-              loanCollateralAmount - loanInputAction.equity - liquidationFee
-            } else {
-              loanCollateralAmount - liquidationFee
-            }
+            loanCollateralAmount - loanInputAction.equity - liquidationFee
 
           let ownerAsset =
             Asset {

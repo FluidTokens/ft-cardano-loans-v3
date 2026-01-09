@@ -34,14 +34,10 @@ validator actionValidator(
         credential,
         smartTokensSpendScriptHash,
       )
-    list.foldr(
+    list.all(
       lmInputs,
-      True,
-      fn(input, result) {
-        //As all inputs must return True, if any of previous input returned False, then fail
-        //The last input is not checked but will return its value at the end, so if False withdraw will fail
-        expect result
-
+      // the list being traversed (lmInputs or lenderBondInputs)
+      fn(input: Input) -> Bool {
         expect InlineDatum(inputDatum) = input.output.datum
         expect LenderManagerDatum { lenderAuth, .. } = inputDatum
         authorize_action(

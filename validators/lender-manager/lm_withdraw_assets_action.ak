@@ -70,14 +70,9 @@ validator actionValidator(
           ) == 1
         },
       ),
-      list.foldr(
+      list.all(
         lenderBondInputs,
-        True,
-        fn(lenderBondInput, result) {
-          //As all inputs must return True, if any of previous input returned False, then fail
-          //The last input is not checked but will return its value at the end, so if False withdraw will fail
-          expect result
-
+        fn(lenderBondInput: Input) -> Bool {
           expect InlineDatum(inputLenderBondDatum) =
             lenderBondInput.output.datum
           expect LenderManagerDatum { lenderAuth, .. } = inputLenderBondDatum
