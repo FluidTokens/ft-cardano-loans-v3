@@ -295,12 +295,12 @@ validator loan_claim_action(
                         policyId: borrowerBondPolicyId,
                         assetName: inputAction.loanId,
                       },
-                      principalAssetPolicyId: if equityInPrincipalCurrency {
+                      equityAssetPolicyId: if equityInPrincipalCurrency {
                         datum.principalAsset.policyId
                       } else {
                         datum.collateral.policyId
                       },
-                      principalAssetName: if equityInPrincipalCurrency {
+                      equityAssetName: if equityInPrincipalCurrency {
                         datum.principalAsset.assetName
                       } else {
                         expect Some(collateraAssetName) =
@@ -401,8 +401,8 @@ fn equity_sent_to_borrower(
   equityOutput: Output,
   equity: Int,
   borrowerBondAsset: Asset,
-  principalAssetPolicyId: ByteArray,
-  principalAssetName: AssetName,
+  equityAssetPolicyId: ByteArray,
+  equityAssetName: AssetName,
   repaymentReceipts: Bool,
   repaymentPolicyId: ByteArray,
 ) {
@@ -416,7 +416,7 @@ fn equity_sent_to_borrower(
     }
 
   let containsCorrectAmount =
-    quantity_of(equityOutput.value, principalAssetPolicyId, principalAssetName) >= equity
+    quantity_of(equityOutput.value, equityAssetPolicyId, equityAssetName) >= equity
 
   let receiptCondition =
     repaymentReceipts == False || quantity_of(
@@ -433,7 +433,7 @@ fn equity_sent_to_borrower(
       0
     }
   let dosProtection =
-    if principalAssetPolicyId == ada_policy_id {
+    if equityAssetPolicyId == ada_policy_id {
       length(flatten(equityOutput.value)) == 1 + receiptAssetCount
     } else {
       length(flatten(equityOutput.value)) == 2 + receiptAssetCount
