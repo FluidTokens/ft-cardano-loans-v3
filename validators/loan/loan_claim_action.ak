@@ -70,13 +70,9 @@ validator loan_claim_action(
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
-    list.indexed_foldr(
+    utils.indexed_all(
       loanInputs,
-      True,
-      fn(index, input, result) {
-        //As all inputs must return True, if any of previous input returned False, then fail
-        //The last input is not checked but will return its value at the end, so if False withdraw will fail
-        expect result
+      fn(index, input) {
         let inputAction = safe_list_at(redeemer.actionsForEachInput, index)
 
         expect InlineDatum(inputDatum) = input.output.datum
@@ -260,20 +256,23 @@ validator loan_claim_action(
                     collateralOraclePriceFeed,
                   ),
                 },
-                or {
-                  partialLiquidationPenaltyPerMille < 0,
-                  inputAction.equity <= 0,
-                  {
-                    let borrowerCompensationOutput =
-                      utils.safe_list_at(
-                        get_outputs_to_smart_credential(
-                          self.outputs,
-                          borrowerBondAddress.payment_credential,
-                          borrowerBondAddress.payment_credential,
-                          smartTokensSpendScriptHash,
-                        ),
-                        index,
-                      )
+                if partialLiquidationPenaltyPerMille < 0 {
+                  // Equity disabled: must be zero, and no borrower compensation.
+                  inputAction.equity == 0
+                } else {
+                  // Normal case: equity must be >= 0 and correctly paid out if positive.
+                  let borrowerCompensationOutput =
+                    utils.safe_list_at(
+                      get_outputs_to_smart_credential(
+                        self.outputs,
+                        borrowerBondAddress.payment_credential,
+                        borrowerBondAddress.payment_credential,
+                        smartTokensSpendScriptHash,
+                      ),
+                      index,
+                    )
+                  and {
+                    inputAction.equity >= 0,
                     equity_sent_to_borrower(
                       loanInputOutputReference: input.output_reference,
                       equityOutput: borrowerCompensationOutput,
@@ -282,7 +281,7 @@ validator loan_claim_action(
                         policyId: borrowerBondPolicyId,
                         assetName: inputAction.loanId,
                       },
-                      principalAssetPolicyId: if or {
+                      equityAssetPolicyId: if or {
                         collateralAmount == rational.from_int(1),
                         datum.collateral.maybeAssetName == None,
                       } {
@@ -290,7 +289,7 @@ validator loan_claim_action(
                       } else {
                         datum.collateral.policyId
                       },
-                      principalAssetName: if or {
+                      equityAssetName: if or {
                         collateralAmount == rational.from_int(1),
                         datum.collateral.maybeAssetName == None,
                       } {
@@ -302,8 +301,8 @@ validator loan_claim_action(
                       },
                       repaymentReceipts: datum.repaymentReceipts,
                       repaymentPolicyId: repaymentPolicyId,
-                    )
-                  },
+                    ),
+                  }
                 },
               }
             }
@@ -394,8 +393,8 @@ fn equity_sent_to_borrower(
   equityOutput: Output,
   equity: Int,
   borrowerBondAsset: Asset,
-  principalAssetPolicyId: ByteArray,
-  principalAssetName: AssetName,
+  equityAssetPolicyId: ByteArray,
+  equityAssetName: AssetName,
   repaymentReceipts: Bool,
   repaymentPolicyId: ByteArray,
 ) {
@@ -409,7 +408,7 @@ fn equity_sent_to_borrower(
     }
 
   let containsCorrectAmount =
-    quantity_of(equityOutput.value, principalAssetPolicyId, principalAssetName) >= equity
+    quantity_of(equityOutput.value, equityAssetPolicyId, equityAssetName) >= equity
 
   let receiptCondition =
     repaymentReceipts == False || quantity_of(
@@ -426,7 +425,7 @@ fn equity_sent_to_borrower(
       0
     }
   let dosProtection =
-    if principalAssetPolicyId == "" {
+    if equityAssetPolicyId == "" {
       length(flatten(equityOutput.value)) == 1 + receiptAssetCount
     } else {
       length(flatten(equityOutput.value)) == 2 + receiptAssetCount

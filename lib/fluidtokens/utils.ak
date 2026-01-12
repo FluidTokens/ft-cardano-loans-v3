@@ -197,3 +197,13 @@ pub fn efficient_quantity_of(
     )
   builtin.un_i_data(builtin.snd_pair(assetNamePair))
 }
+
+/// Returns `True` if `predicate(index, element)` holds for every element of the list.
+/// Returns `False` as soon as any predicate fails.
+pub fn indexed_all(self: List<a>, predicate: fn(Int, a) -> Bool) -> Bool {
+  list.indexed_foldr(
+    self,
+    True,
+    fn(index, element, acc) { predicate(index, element) && acc },
+  )
+}
