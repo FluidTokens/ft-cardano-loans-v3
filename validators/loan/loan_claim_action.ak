@@ -74,7 +74,6 @@ validator loan_claim_action(
       loanInputs,
       fn(index, input) {
         let inputAction = safe_list_at(redeemer.actionsForEachInput, index)
-
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: LoanDatum = inputDatum
         expect Some(interestRateAsRational) =
@@ -226,25 +225,77 @@ validator loan_claim_action(
               expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
               let borrowerBondAddress = borrowerBondRefInput.output.address
               and {
-                if or {
-                  collateralAmount == rational.from_int(1),
-                  datum.collateral.maybeAssetName == None,
-                } {
-                  inputAction.equity == get_equity(
-                    collateralAmount,
-                    remainingDebtAsRational,
-                    principalOraclePriceFeed,
-                    collateralOraclePriceFeed,
-                    partialLiquidationPenaltyPerMille,
-                  )
+                if partialLiquidationPenaltyPerMille < 0 {
+                  // Equity disabled: must be zero, and no borrower compensation.
+                  inputAction.equity == 0
                 } else {
-                  inputAction.equity == get_equity_in_collateral_currency(
-                    collateralAmount,
-                    remainingDebtAsRational,
-                    principalOraclePriceFeed,
-                    collateralOraclePriceFeed,
-                    partialLiquidationPenaltyPerMille,
-                  )
+                  and {
+                    if or {
+                      collateralAmount == rational.from_int(1),
+                      datum.collateral.maybeAssetName == None,
+                    } {
+                      inputAction.equity == get_equity(
+                        collateralAmount,
+                        remainingDebtAsRational,
+                        principalOraclePriceFeed,
+                        collateralOraclePriceFeed,
+                        partialLiquidationPenaltyPerMille,
+                      )
+                    } else {
+                      inputAction.equity == get_equity_in_collateral_currency(
+                        collateralAmount,
+                        remainingDebtAsRational,
+                        principalOraclePriceFeed,
+                        collateralOraclePriceFeed,
+                        partialLiquidationPenaltyPerMille,
+                      )
+                    },
+                    or {
+                      inputAction.equity <= 0,
+                      // Normal case: equity must be > 0 and correctly paid out
+                      {
+                        let borrowerCompensationOutput =
+                          utils.safe_list_at(
+                            get_outputs_to_smart_credential(
+                              self.outputs,
+                              borrowerBondAddress.payment_credential,
+                              borrowerBondAddress.payment_credential,
+                              smartTokensSpendScriptHash,
+                            ),
+                            index,
+                          )
+                        equity_sent_to_borrower(
+                          loanInputOutputReference: input.output_reference,
+                          equityOutput: borrowerCompensationOutput,
+                          equity: inputAction.equity,
+                          borrowerBondAsset: Asset {
+                            policyId: borrowerBondPolicyId,
+                            assetName: inputAction.loanId,
+                          },
+                          equityAssetPolicyId: if or {
+                            collateralAmount == rational.from_int(1),
+                            datum.collateral.maybeAssetName == None,
+                          } {
+                            datum.principalAsset.policyId
+                          } else {
+                            datum.collateral.policyId
+                          },
+                          equityAssetName: if or {
+                            collateralAmount == rational.from_int(1),
+                            datum.collateral.maybeAssetName == None,
+                          } {
+                            datum.principalAsset.assetName
+                          } else {
+                            expect Some(collateraAssetName) =
+                              datum.collateral.maybeAssetName
+                            collateraAssetName
+                          },
+                          repaymentReceipts: datum.repaymentReceipts,
+                          repaymentPolicyId: repaymentPolicyId,
+                        )
+                      },
+                    },
+                  }
                 },
                 or {
                   isRepaymentLate,
@@ -255,54 +306,6 @@ validator loan_claim_action(
                     principalOraclePriceFeed,
                     collateralOraclePriceFeed,
                   ),
-                },
-                if partialLiquidationPenaltyPerMille < 0 {
-                  // Equity disabled: must be zero, and no borrower compensation.
-                  inputAction.equity == 0
-                } else {
-                  // Normal case: equity must be >= 0 and correctly paid out if positive.
-                  let borrowerCompensationOutput =
-                    utils.safe_list_at(
-                      get_outputs_to_smart_credential(
-                        self.outputs,
-                        borrowerBondAddress.payment_credential,
-                        borrowerBondAddress.payment_credential,
-                        smartTokensSpendScriptHash,
-                      ),
-                      index,
-                    )
-                  and {
-                    inputAction.equity >= 0,
-                    equity_sent_to_borrower(
-                      loanInputOutputReference: input.output_reference,
-                      equityOutput: borrowerCompensationOutput,
-                      equity: inputAction.equity,
-                      borrowerBondAsset: Asset {
-                        policyId: borrowerBondPolicyId,
-                        assetName: inputAction.loanId,
-                      },
-                      equityAssetPolicyId: if or {
-                        collateralAmount == rational.from_int(1),
-                        datum.collateral.maybeAssetName == None,
-                      } {
-                        datum.principalAsset.policyId
-                      } else {
-                        datum.collateral.policyId
-                      },
-                      equityAssetName: if or {
-                        collateralAmount == rational.from_int(1),
-                        datum.collateral.maybeAssetName == None,
-                      } {
-                        datum.principalAsset.assetName
-                      } else {
-                        expect Some(collateraAssetName) =
-                          datum.collateral.maybeAssetName
-                        collateraAssetName
-                      },
-                      repaymentReceipts: datum.repaymentReceipts,
-                      repaymentPolicyId: repaymentPolicyId,
-                    ),
-                  }
                 },
               }
             }
