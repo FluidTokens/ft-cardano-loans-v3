@@ -119,7 +119,9 @@ validator actionValidator(
 
           let liquidationFee =
             loanCollateralAmount * liquidationFeePerMille / 1000
-          expect Liquidation { .. } = loanInputAction.liquidationMode
+          expect Liquidation { equityInPrincipalCurrency, .. } =
+            loanInputAction.liquidationMode
+          expect equityInPrincipalCurrency == False
           let loanCollateralThatLenderShouldReceive =
             loanCollateralAmount - loanInputAction.equity - liquidationFee
 

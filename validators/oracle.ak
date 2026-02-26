@@ -162,7 +162,7 @@ validator oracle(
         }
       }
       _ -> {
-        //Validate that n/m oracles have signed this tx
+        //Validate that n/m oracles have signed the cbor defined as redeemer.data
         let serialise_data = builtin.serialise_data(redeemer.data)
         let valid_signatures =
           list.foldl(

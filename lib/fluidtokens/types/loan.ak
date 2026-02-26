@@ -79,9 +79,12 @@ pub type ClaimData {
   borrowerBondRefInputAssetNameIndex: Int,
   //Used only when an auction must start as part of liquidation
   lenderAuth: AuthorizationMethod,
-  //Only for partialLiquidation, it's collateralValue - remainingDebt expressed in principal currency
+  //In case of partialLiquidation, it's collateralValue - remainingDebt expressed in principal or collateral currency
+  //In case of total liquidation, equity is zero
   equity: Int,
   loanId: ByteArray,
+  //Calculated remaining debt
+  remainingDebt: Int,
 }
 
 pub type RepayData {

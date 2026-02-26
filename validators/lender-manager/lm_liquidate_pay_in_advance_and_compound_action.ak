@@ -1,18 +1,19 @@
 use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
+use aiken/collection/pairs
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
-use cardano/address.{Address, Credential, Script}
-use cardano/assets.{add, quantity_of}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use cardano/address.{Address, Credential, PaymentCredential, Script}
+use cardano/assets.{add, flatten, quantity_of}
+use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/finance
 use fluidtokens/oracle.{retrieve_oracle_data}
-use fluidtokens/types/general.{Asset, CollateralAsset}
+use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
 use fluidtokens/types/lender_manager.{
   LMLiquidatePayInAdvanceAndCompoundWithdrawRedeemer, LenderManagerDatum,
 } as lm
-use fluidtokens/types/loan.{LoanDatum} as l
+use fluidtokens/types/loan.{LoanDatum} as loan
 use fluidtokens/types/pool.{PoolDatum}
 use fluidtokens/types/pool_manager.{PoolManagerDatum}
 use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
@@ -28,6 +29,7 @@ validator actionValidator(
   loanWithdrawScriptHash: ByteArray,
   poolManagerSpendScriptHash: ByteArray,
   poolManagerPolicyId: ByteArray,
+  loanClaimPaymentCredential: PaymentCredential,
 ) {
   withdraw(
     redeemer: LMLiquidatePayInAdvanceAndCompoundWithdrawRedeemer,
@@ -153,6 +155,15 @@ validator actionValidator(
             liquidationFeePerMille,
             ..
           } = inputLenderBondDatum
+          expect Some(loanRedeemer) =
+            pairs.get_first(
+              self.redeemers,
+              Withdraw(loanClaimPaymentCredential),
+            )
+          expect parsedLoanRedeemer: loan.LoanClaimActionWithdrawRedeemer =
+            loanRedeemer
+          let loanInputAction =
+            safe_list_at(parsedLoanRedeemer.actionsForEachInput, index)
           let lenderBondOutput =
             safe_list_at(lenderBondOutputs, lenderBondIndex)
           let collateralPolicyId = collateral.policyId
@@ -188,9 +199,13 @@ validator actionValidator(
               collateralPolicyId,
               collateralAssetName,
             )
+          expect Liquidation { equityInPrincipalCurrency, .. } =
+            loanInputAction.liquidationMode
+          expect equityInPrincipalCurrency == False
           let liquidationFee =
             loanCollateralAmount * liquidationFeePerMille / 1000
-          let loanCollateralToSend = loanCollateralAmount - liquidationFee
+          let loanCollateralToSend =
+            loanCollateralAmount - loanInputAction.equity - liquidationFee
           let convertedLoanCollateralToPrincipalAmount =
             finance.convertFromAToBWithOracles(
               collateralOraclePriceFeed,
@@ -244,14 +259,29 @@ validator actionValidator(
           let lenderBondInput = safe_list_at(lenderBondInputs, lenderBondIndex)
           expect InlineDatum(inputLenderBondDatum) =
             lenderBondInput.output.datum
-          expect LenderManagerDatum { principalAsset, poolManagerId, .. } =
-            inputLenderBondDatum
+          expect LenderManagerDatum {
+            principalAsset,
+            poolManagerId,
+            liquidationFeePerMille,
+            ..
+          } = inputLenderBondDatum
+          // Ensure liquidationFeePerMille is non-negative
+          expect liquidationFeePerMille >= 0
           let assetAmount =
             quantity_of(
               assetInput.output.value,
               principalAsset.policyId,
               principalAsset.assetName,
             )
+
+          expect
+            if principalAsset.policyId == "" {
+              // 1. If principal asset is ADA, ensure no other tokens are present
+              list.length(flatten(assetInput.output.value)) == 1
+            } else {
+              // 2. If principal asset is not ADA, ensure only min-ADA and principal token are present
+              list.length(flatten(assetInput.output.value)) == 2
+            }
 
           //Selected lender bond must correspond to the ownerAsset of the datum
           expect

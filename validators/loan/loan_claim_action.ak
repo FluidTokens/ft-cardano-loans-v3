@@ -138,6 +138,7 @@ validator loan_claim_action(
                   ),
                   index,
                 )
+
               let remainingDebt =
                 get_remaining_debt(
                   datum.repaymentMode,
@@ -150,6 +151,8 @@ validator loan_claim_action(
                   validFrom - datum.lendDate,
                 )
               and {
+                //Ensure remainingDebt value in redeemer is correct
+                remainingDebt == inputAction.remainingDebt,
                 isRepaymentLate,
                 validate_output_to_dutch_auction(
                   input,
@@ -214,24 +217,25 @@ validator loan_claim_action(
                   datum.principalAsset.policyId,
                   Some(datum.principalAsset.assetName),
                 )
-              let remainingDebtAsRational =
-                rational.from_int(
-                  get_remaining_debt(
-                    datum.repaymentMode,
-                    principalAmountAsRational,
-                    interestRateAsRational,
-                    datum.totalInstallments,
-                    datum.repaidInstallments,
-                    datum.installmentPeriod,
-                    datum.initialGracePeriod,
-                    validFrom - datum.lendDate,
-                  ),
+              let remainingDebt =
+                get_remaining_debt(
+                  datum.repaymentMode,
+                  principalAmountAsRational,
+                  interestRateAsRational,
+                  datum.totalInstallments,
+                  datum.repaidInstallments,
+                  datum.installmentPeriod,
+                  datum.initialGracePeriod,
+                  validFrom - datum.lendDate,
                 )
+              let remainingDebtAsRational = rational.from_int(remainingDebt)
               let collateralAmount =
                 get_collateral_amount(input.output.value, datum.collateral)
               expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
               let borrowerBondAddress = borrowerBondRefInput.output.address
               and {
+                //Ensure remainingDebt value in redeemer is correct
+                remainingDebt == inputAction.remainingDebt,
                 or {
                   isRepaymentLate,
                   can_liquidate(

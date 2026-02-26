@@ -2,23 +2,20 @@ use aiken/builtin
 use aiken/collection/list
 use aiken/collection/pairs
 use aiken/crypto
-use aiken/interval.{Finite, Interval}
-use aiken/math/rational
-use aiken/primitive/bytearray
+use amm_dex_v2/types as minswap_types
+use amm_dex_v2/utils as minswap_utils
 use cardano/address.{Address, Credential, Inline, PaymentCredential, Script}
 use cardano/assets.{ada_policy_id, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, Withdraw,
 }
 use fluidtokens/constants
-use fluidtokens/finance
 use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
 use fluidtokens/types/lender_manager.{
   LMLiquidateAndConvertActionWithdrawRedeemer, LenderManagerDatum,
 } as lm
 use fluidtokens/types/loan.{LoanDatum} as loan
-use fluidtokens/types/minswap_v2_types as minswap
-use fluidtokens/types/minswap_v2_types.{PoolDatum}
+use fluidtokens/types/minswap_conversions
 use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{
@@ -35,8 +32,6 @@ validator actionValidator(
   minswapPoolWithdrawScriptHash: ByteArray,
   minswapOrderSpendScriptHash: ByteArray,
   minswapOrderWithdrawScriptHash: ByteArray,
-  minswapV2DefaultTradingFeeDenominator: Int,
-  maxAllowedSlippage: Int,
   loanClaimPaymentCredential: PaymentCredential,
 ) {
   withdraw(
@@ -44,7 +39,6 @@ validator actionValidator(
     credential: Credential,
     self: Transaction,
   ) {
-    expect Finite(validTo) = self.validity_range.upper_bound.bound_type
     let config =
       utils.get_config_as_data_list(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
@@ -114,19 +108,7 @@ validator actionValidator(
           let minswapOrderOutput = safe_list_at(minswapOrderOutputs, index)
 
           expect InlineDatum(loanInputDatum) = loanInput.output.datum
-          expect LoanDatum {
-            collateral,
-            principalAsset,
-            principalAmount,
-            interestRate,
-            totalInstallments,
-            repaidInstallments,
-            installmentPeriod,
-            initialGracePeriod,
-            lendDate,
-            repaymentMode,
-            ..
-          } = loanInputDatum
+          expect LoanDatum { collateral, principalAsset, .. } = loanInputDatum
           expect Some(loanRedeemer) =
             pairs.get_first(
               self.redeemers,
@@ -158,53 +140,25 @@ validator actionValidator(
               policyId: collateralPolicyId,
               assetName: collateralAssetName,
             }
-          let collateralAssetUnit =
-            bytearray.concat(collateralPolicyId, collateralAssetName)
-
-          let principalAssetUnit =
-            bytearray.concat(principalAsset.policyId, principalAsset.assetName)
-
           expect InlineDatum(minswapPoolRefInputDatum) =
             minswapPoolRefInput.output.datum
-          expect PoolDatum {
-            asset_a,
-            asset_b,
-            reserve_a,
-            reserve_b,
-            base_fee_a_numerator,
-            base_fee_b_numerator,
-            ..
-          } = minswapPoolRefInputDatum
-
-          let orderedAssetUnits =
-            list.sort(
-              [collateralAssetUnit, principalAssetUnit],
-              bytearray.compare,
-            )
-
-          let lpAssetName =
-            get_minswap_lp_asset_name(
-              safe_list_at(orderedAssetUnits, 0),
-              safe_list_at(orderedAssetUnits, 1),
-            )
-
-          let isCollateralAssetA = asset_a == collateralAsset
+          expect minswap_types.PoolDatum { asset_a, asset_b, .. } =
+            minswapPoolRefInputDatum
           let lpABDirection =
-            if isCollateralAssetA {
-              True
-            } else {
-              False
-            }
-          let tradingFeeNumerator =
-            if isCollateralAssetA {
-              base_fee_a_numerator
-            } else {
-              base_fee_b_numerator
-            }
+            asset_a == minswap_conversions.to_minswap_asset(collateralAsset)
+          let lpAssetName =
+            minswap_utils.compute_lp_asset_name(
+              asset_a.policy_id,
+              asset_a.asset_name,
+              asset_b.policy_id,
+              asset_b.asset_name,
+            )
 
           let liquidationFee =
             loanCollateralAmount * liquidationFeePerMille / 1000
-          expect Liquidation { .. } = loanInputAction.liquidationMode
+          expect Liquidation { equityInPrincipalCurrency, .. } =
+            loanInputAction.liquidationMode
+          expect equityInPrincipalCurrency == False
           let swappableCollateralAmount =
             loanCollateralAmount - loanInputAction.equity - liquidationFee
 
@@ -214,18 +168,19 @@ validator actionValidator(
               assetName: lenderBondAssetName,
             }
 
+          let isCollateralAssetA =
+            asset_a == minswap_conversions.to_minswap_asset(collateralAsset)
+
           let orderType =
-            minswap.SwapExactIn {
-              a_to_b_direction: lpABDirection,
-              swap_amount_option: minswap.SAOSpecificAmount {
+            minswap_types.SwapExactIn {
+              a_to_b_direction: isCollateralAssetA,
+              swap_amount_option: minswap_types.SAOSpecificAmount {
                 swap_amount: swappableCollateralAmount,
               },
-              minimum_receive: 1,
+              minimum_receive: loanInputAction.remainingDebt,
               killable: True,
             }
 
-          let inputDatumHash =
-            crypto.blake2b_256(builtin.serialise_data(loanInput))
           let conversionDatumHash =
             crypto.blake2b_256(
               builtin.serialise_data(
@@ -241,21 +196,31 @@ validator actionValidator(
               ),
             )
 
+          let refundDatumHash =
+            RepaymentDatumWithToken {
+              inputOutputReference: loanInput.output_reference,
+              action: constants.claimed_collateral_action,
+              data: None,
+              ownerAsset,
+            }
+              |> builtin.serialise_data
+              |> crypto.blake2b_256
+
           let expectedOrderDatum =
             InlineDatum(
-              minswap.OrderDatum {
-                canceller: lenderAuth,
+              minswap_types.OrderDatum {
+                canceller: minswap_conversions.to_order_auth_method(lenderAuth),
                 refund_receiver: lenderBondInput.output.address,
-                refund_receiver_datum: minswap.EODInlineDatum {
-                  hash: inputDatumHash,
+                refund_receiver_datum: minswap_types.EODInlineDatum {
+                  hash: refundDatumHash,
                 },
                 success_receiver: lenderBondInput.output.address,
-                success_receiver_datum: minswap.EODInlineDatum {
+                success_receiver_datum: minswap_types.EODInlineDatum {
                   hash: conversionDatumHash,
                 },
-                lp_asset: Asset {
-                  policyId: minswapPoolPolicyId,
-                  assetName: lpAssetName,
+                lp_asset: minswap_types.Asset {
+                  policy_id: minswapPoolPolicyId,
+                  asset_name: lpAssetName,
                 },
                 step: orderType,
                 max_batcher_fee: 700000,
@@ -280,34 +245,6 @@ validator actionValidator(
                 quantity_of(minswapOrderOutput.value, "", "") == 2800000,
               }
             }
-          let reserveCollateral =
-            if isCollateralAssetA {
-              reserve_a
-            } else {
-              reserve_b
-            }
-          let reservePrincipal =
-            if isCollateralAssetA {
-              reserve_b
-            } else {
-              reserve_a
-            }
-
-          //Minswap v2 formula for amount out
-          let diff = minswapV2DefaultTradingFeeDenominator - tradingFeeNumerator
-          let inWithFee = diff * swappableCollateralAmount
-          let numerator = inWithFee * reservePrincipal
-          let denominator =
-            minswapV2DefaultTradingFeeDenominator * reserveCollateral + inWithFee
-          expect Some(amountOut) = rational.new(numerator, denominator)
-
-          expect Some(collateralPriceIn) =
-            rational.new(reserveCollateral, reservePrincipal)
-          expect Some(collateralPriceOut) =
-            rational.div(
-              rational.sub(rational.from_int(reservePrincipal), amountOut),
-              rational.from_int(reserveCollateral + swappableCollateralAmount),
-            )
 
           and {
             //Lender bond must allow conversion to principal
@@ -331,28 +268,11 @@ validator actionValidator(
               minswapPoolAssetName,
             ) == 1,
             //Ensure the minswap pool is for the correct assets
-            if isCollateralAssetA {
-              asset_a == collateralAsset && asset_b == principalAsset
+            if lpABDirection {
+              asset_b == minswap_conversions.to_minswap_asset(principalAsset)
             } else {
-              asset_a == principalAsset && asset_b == collateralAsset
+              asset_b == minswap_conversions.to_minswap_asset(collateralAsset)
             },
-            //Order covers the minimum required amount
-            rational.round(amountOut) >= finance.get_remaining_debt(
-              repaymentMode,
-              rational.from_int(principalAmount),
-              rational.from_int(interestRate),
-              totalInstallments,
-              repaidInstallments,
-              installmentPeriod,
-              initialGracePeriod,
-              validTo - lendDate,
-            ),
-            //Ensure that slippage is within acceptable limit
-            check_slippage_after_swap(
-              collateralPriceIn,
-              collateralPriceOut,
-              maxAllowedSlippage,
-            ),
             //Output with lender bond must be the same as input
             builtin.equals_data(lenderBondInput.output, lenderBondOutput),
             //Order must have correct datum and value
@@ -389,26 +309,6 @@ validator actionValidator(
     fail
   }
 }
-
-fn check_slippage_after_swap(price_x_final, price_x_init, maxAllowedSlippage) {
-  //slippage = price_x_final / price_x_init - 1.0
-  expect Some(priceRatio) = rational.div(price_x_final, price_x_init)
-  let slippage = rational.sub(priceRatio, rational.from_int(1))
-  rational.compare(
-    rational.abs(slippage),
-    rational.from_int(maxAllowedSlippage),
-  ) == Less
-}
-
-pub fn get_minswap_lp_asset_name(
-  asset_a_unit: ByteArray,
-  asset_b_unit: ByteArray,
-) -> ByteArray {
-  let asset_a_ident = crypto.sha3_256(asset_a_unit)
-  let asset_b_ident = crypto.sha3_256(asset_b_unit)
-  let pair_ident = bytearray.concat(asset_a_ident, asset_b_ident)
-  crypto.sha3_256(pair_ident)
-}
 // test test_prices() {
 //   let reserveCollateral = 100000000
 //   let reservePrincipal = 200000000
@@ -428,7 +328,7 @@ pub fn get_minswap_lp_asset_name(
 //   expect Some(amountOut) = rational.new(numerator, denominator)
 
 //   expect Some(collateralPriceIn) =
-//     rational.new(reserveCollateral, reservePrincipal)
+//     rational.new(reservePrincipal, reserveCollateral)
 //   expect Some(collateralPriceOut) =
 //     rational.div(
 //       rational.sub(rational.from_int(reservePrincipal), amountOut),

@@ -128,6 +128,8 @@ validator actionValidator(
             liquidationFeePerMille,
             ..
           } = inputLenderBondDatum
+          // Ensure liquidationFeePerMille is non-negative
+          expect liquidationFeePerMille >= 0
           let collateralPolicyId = collateral.policyId
           expect Some(collateralAssetName) = collateral.maybeAssetName
           let collateralOracleToken = collateral.oracleTokenAsset
@@ -163,7 +165,9 @@ validator actionValidator(
             )
           let liquidationFee =
             loanCollateralAmount * liquidationFeePerMille / 1000
-          expect Liquidation { .. } = loanInputAction.liquidationMode
+          expect Liquidation { equityInPrincipalCurrency, .. } =
+            loanInputAction.liquidationMode
+          expect equityInPrincipalCurrency == False
           let loanCollateralThatLenderShouldReceive =
             loanCollateralAmount - loanInputAction.equity - liquidationFee
           let convertedLoanCollateralToPrincipalAmount =
@@ -201,7 +205,10 @@ validator actionValidator(
                 policyId: lenderBondPolicyId,
                 assetName: lenderBondAssetName,
               },
-              repaymentAsset: Asset(collateralPolicyId, collateralAssetName),
+              repaymentAsset: Asset(
+                principalAsset.policyId,
+                principalAsset.assetName,
+              ),
               repaymentAmount: convertedLoanCollateralToPrincipalAmount,
               action: constants.converted_to_liquidity_action,
             ),

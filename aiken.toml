@@ -15,4 +15,9 @@ name = "aiken-lang/stdlib"
 version = "v2.1.0"
 source = "github"
 
+[[dependencies]]
+name = "minswap/minswap-dex-v2"
+version = "v2.1"
+source = "github"
+
 [config]

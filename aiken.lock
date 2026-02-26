@@ -6,9 +6,20 @@ name = "aiken-lang/stdlib"
 version = "v2.1.0"
 source = "github"
 
+[[requirements]]
+name = "minswap/minswap-dex-v2"
+version = "v2.1"
+source = "github"
+
 [[packages]]
 name = "aiken-lang/stdlib"
 version = "v2.1.0"
+requirements = []
+source = "github"
+
+[[packages]]
+name = "minswap/minswap-dex-v2"
+version = "v2.1"
 requirements = []
 source = "github"
 

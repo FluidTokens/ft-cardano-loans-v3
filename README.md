@@ -70,6 +70,19 @@ Bots compete to execute these transactions and earn liquidation and compounding 
 * The Lender always has the ability to manually withdraw assets that belong to him from the LenderManager Spend script.
 * The Lender always has the ability to withdraw his bonds from the LenderManager Spend script.
 
+### Bots logic
+A bot runs to earn liquidation and compounding fees, trying to maximize its profits being the first to actually execute these Cardano transactions.
+The general bot steps are:
+1. Scan all the existing lender_manager.ak utxos that contain a Lender bond nft
+2. For each lender bond, look for the existing loan in loan.ak
+3. If the loan exists, check that it allows liquidation and check its Loan-To-Value (LTV) health
+4. If it is unhealthy, it can be liquidated
+5. Check if the lender_manager utxo has shouldLiquidationConvertToPrincipal. If False, liquidate the loan and send the collateral (minus fees) to the lender_manager.ak. If True, continue with the next step
+6. Check if the lender_manager utxo has poolManagerId set. If is empty, just convert the collateral into principal (either paying in advance or through the DEX order) and set lender_manager.ak the result destination. If it's not empty, look for the existing pool_manager.ak utxo.
+7. If it doesn't exist, liquidate as before. If it exists, look for the relative pool in pool.ak
+8. If it doesn't exist, liquidate as before. If it exists, liquidate, convert paying in advance and compound to that pool
+9. For each lender bond, if lender_manager utxo has poolManagerId set and the relative pool in pool.ak exists, scan all the remaining lender_manager.ak utxos and look for utxos with datum RepaymentDatumWithToken where the ownerAsset is the lender bond and where it contains the pool's principal asset. Compound them to the pool.
+
 ## Scripts
 The most important scripts contained are the following:
 * config.ak: global configuration of the whole protocol, upgradable

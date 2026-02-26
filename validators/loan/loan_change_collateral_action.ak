@@ -204,7 +204,7 @@ fn validate_output_to_loan_for_changing_collateral(
     } else {
       expect Some(assetName) = datum.collateral.maybeAssetName
       //As there is no simple way to forcefully set a token amount in a Value, 
-      //we substract the current amount (resulting it as 0) and add the new one.
+      //we subtract the current amount (resulting it as 0) and add the new one.
       //We don't consider lovelace if collateral is a custom token
       let expectedValue =
         add(

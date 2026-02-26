@@ -2,7 +2,7 @@ use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{add, quantity_of}
+use cardano/assets.{add, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/types/general.{Asset}
 use fluidtokens/types/lender_manager.{
@@ -121,6 +121,15 @@ validator actionValidator(
               principalAsset.policyId,
               principalAsset.assetName,
             )
+
+          expect
+            if principalAsset.policyId == "" {
+              // 1. If principal asset is ADA, ensure no other tokens are present
+              list.length(flatten(assetInput.output.value)) == 1
+            } else {
+              // 2. If principal asset is not ADA, ensure only min-ADA and principal token are present
+              list.length(flatten(assetInput.output.value)) == 2
+            }
 
           //Selected lender bond must correspond to the ownerAsset of the datum
           expect

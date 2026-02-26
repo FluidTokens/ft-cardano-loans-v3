@@ -22,7 +22,7 @@ pub type LenderManagerDatum {
   shouldLiquidationConvertToPrincipal: Bool,
   //How much the bot gets of the liquidated collateral, expressed in per mille (1/1000)
   liquidationFeePerMille: Int,
-  //If "", no compouding is allowed
+  //If "", no compounding is allowed
   poolManagerId: ByteArray,
   //The repaid/liquidated loan must have the same principal of the specified pool
   principalAsset: Asset,
