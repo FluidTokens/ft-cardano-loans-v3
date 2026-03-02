@@ -7,7 +7,8 @@ use aiken/math/rational
 use aiken/option
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{PolicyId, Value, flatten, quantity_of, tokens}
+use cardano/assets.{PolicyId,
+  Value, ada_policy_id, flatten, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, find_input}
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/constants
@@ -63,14 +64,9 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
-    list.indexed_foldr(
+    utils.indexed_all(
       poolInputs,
-      True,
-      fn(index, input, result) {
-        //As all inputs must return True, if any of previous input returned False, then fail
-        //The last input is not checked but will return its value at the end, so if False withdraw will fail
-        expect result
-
+      fn(index, input) {
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: PoolDatum = inputDatum
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
@@ -158,12 +154,9 @@ fn check_mint(
     )
 
   let isEachMintedTokenAccountedFor =
-    list.indexed_foldr(
+    utils.indexed_all(
       mintedTokens,
-      True,
-      fn(index, Pair(assetName, quantity), result) {
-        expect result
-
+      fn(index, Pair(assetName, quantity)) {
         let correctAssetName = and {
             bytearray.at(assetName, 0) == index,
             bytearray.drop(assetName, 1) == inputRefHash,
@@ -463,7 +456,7 @@ fn validate_output_to_loan(
   let dosProtection =
     length(flatten(output.value)) == when chosenCollateral.maybeAssetName is {
       Some(_chosenCollateralAssetName) ->
-        if chosenCollateral.policyId == "" {
+        if chosenCollateral.policyId == ada_policy_id {
           2
         } else {
           3

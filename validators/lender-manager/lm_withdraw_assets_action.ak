@@ -15,7 +15,7 @@ use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 validator actionValidator(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
-  lenderSmartManagerSpendScriptHash: ByteArray,
+  lenderManagerSpendScriptHash: ByteArray,
 ) {
   withdraw(
     redeemer: LMWithdrawAssetsWithdrawRedeemer,
@@ -33,7 +33,7 @@ validator actionValidator(
     let lmInputs =
       get_inputs_from_smart_credential(
         self.inputs,
-        Script(lenderSmartManagerSpendScriptHash),
+        Script(lenderManagerSpendScriptHash),
         credential,
         smartTokensSpendScriptHash,
       )

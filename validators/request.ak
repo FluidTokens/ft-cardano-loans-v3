@@ -7,7 +7,8 @@ use aiken/option
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
 use cardano/assets.{
-  PolicyId, Value, add, flatten, quantity_of, tokens, without_lovelace,
+  PolicyId, Value, ada_policy_id, add, flatten, quantity_of, tokens,
+  without_lovelace,
 }
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, find_input,
@@ -70,14 +71,9 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
-    list.indexed_foldr(
+    utils.indexed_all(
       requestInputs,
-      True,
-      fn(index, input, result) {
-        //As all inputs must return True, if any of previous input returned False, then fail
-        //The last input is not checked but will return its value at the end, so if False withdraw will fail
-        expect result
-
+      fn(index, input) {
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: RequestDatum = inputDatum
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
@@ -169,12 +165,9 @@ fn check_mint(
     )
 
   let isEachMintedTokenAccountedFor =
-    list.indexed_foldr(
+    utils.indexed_all(
       mintedTokens,
-      True,
-      fn(index, Pair(assetName, quantity), result) {
-        expect result
-
+      fn(index, Pair(assetName, quantity)) {
         let correctAssetName = and {
             bytearray.at(assetName, 0) == index,
             bytearray.drop(assetName, 1) == inputRefHash,
@@ -443,7 +436,7 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
       principalAsset.policyId,
       principalAsset.assetName,
     ) >= givenPrincipalAmount,
-    length(flatten(outputWithBorrowerToken.value)) == if principalAsset.policyId == "" {
+    length(flatten(outputWithBorrowerToken.value)) == if principalAsset.policyId == ada_policy_id {
       2
     } else {
       3
@@ -467,7 +460,7 @@ fn validate_output_to_loan(
   requestId: ByteArray,
 ) -> Bool {
   let collateralUnchanged =
-    if collateral.policyId == "" {
+    if collateral.policyId == ada_policy_id {
       add(output.value, loanPolicyId, loanId, -1) == add(
         requestValue,
         requestPolicyId,
@@ -525,7 +518,7 @@ fn validate_output_to_loan(
   let dosProtection =
     length(flatten(output.value)) == when collateral.maybeAssetName is {
       Some(_chosenCollateralAssetName) ->
-        if collateral.policyId == "" {
+        if collateral.policyId == ada_policy_id {
           2
         } else {
           3

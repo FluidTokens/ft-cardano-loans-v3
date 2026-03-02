@@ -25,8 +25,7 @@ use smart_tokens/utils.{
 validator actionValidator(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
-  lenderSmartManagerSpendScriptHash: ByteArray,
-  loanWithdrawScriptHash: ByteArray,
+  lenderManagerSpendScriptHash: ByteArray,
   minswapPoolPolicyId: ByteArray,
   minswapPoolSpendScriptHash: ByteArray,
   minswapPoolWithdrawScriptHash: ByteArray,
@@ -50,12 +49,16 @@ validator actionValidator(
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
-    let lmInputs =
-      get_inputs_from_smart_credential(
+    let loanWithdrawScriptHash = loanPolicyId
+    //Lender bonds always reside in lender_manager.ak, so we don't need to consider CIP113 utxos
+    let lenderBondInputs =
+      list.filter(
         self.inputs,
-        Script(lenderSmartManagerSpendScriptHash),
-        credential,
-        smartTokensSpendScriptHash,
+        fn(input) {
+          input.output.address.payment_credential == Script(
+            lenderManagerSpendScriptHash,
+          )
+        },
       )
     let loanInputs =
       get_inputs_from_smart_credential(
@@ -71,11 +74,10 @@ validator actionValidator(
         Script(minswapPoolWithdrawScriptHash),
         smartTokensSpendScriptHash,
       )
-    let lenderBondInputs = lmInputs
     let lenderBondOutputs =
       get_outputs_to_smart_credential(
         self.outputs,
-        Script(lenderSmartManagerSpendScriptHash),
+        Script(lenderManagerSpendScriptHash),
         credential,
         smartTokensSpendScriptHash,
       )
@@ -127,6 +129,8 @@ validator actionValidator(
             lenderStakeCredential,
             ..
           } = inputLenderBondDatum
+          // Ensure liquidationFeePerMille is non-negative
+          expect liquidationFeePerMille >= 0
           let collateralPolicyId = collateral.policyId
           expect Some(collateralAssetName) = collateral.maybeAssetName
           let loanCollateralAmount =
@@ -168,12 +172,9 @@ validator actionValidator(
               assetName: lenderBondAssetName,
             }
 
-          let isCollateralAssetA =
-            asset_a == minswap_conversions.to_minswap_asset(collateralAsset)
-
           let orderType =
             minswap_types.SwapExactIn {
-              a_to_b_direction: isCollateralAssetA,
+              a_to_b_direction: lpABDirection,
               swap_amount_option: minswap_types.SAOSpecificAmount {
                 swap_amount: swappableCollateralAmount,
               },
@@ -206,15 +207,29 @@ validator actionValidator(
               |> builtin.serialise_data
               |> crypto.blake2b_256
 
+          //True if it's cip113-cip113 or native-cip113 or cip113-native pair.
+          //False if it's native-native.
+          let isCIP113Pair =
+            minswapPoolRefInput.output.address.payment_credential == Script(
+              smartTokensSpendScriptHash,
+            )
+
+          let receiver =
+            get_smart_destination_address(
+              isCIP113Pair,
+              lenderManagerSpendScriptHash,
+              smartTokensSpendScriptHash,
+            )
+
           let expectedOrderDatum =
             InlineDatum(
               minswap_types.OrderDatum {
                 canceller: minswap_conversions.to_order_auth_method(lenderAuth),
-                refund_receiver: lenderBondInput.output.address,
+                refund_receiver: receiver,
                 refund_receiver_datum: minswap_types.EODInlineDatum {
                   hash: refundDatumHash,
                 },
-                success_receiver: lenderBondInput.output.address,
+                success_receiver: receiver,
                 success_receiver_datum: minswap_types.EODInlineDatum {
                   hash: conversionDatumHash,
                 },
@@ -279,9 +294,7 @@ validator actionValidator(
             builtin.equals_data(minswapOrderOutput.datum, expectedOrderDatum),
             correctOrderValue,
             //Ensure the order output is sent to the correct address, considering CIP113
-            if loanInput.output.address.payment_credential == Script(
-              smartTokensSpendScriptHash,
-            ) {
+            if isCIP113Pair {
               minswapOrderOutput.address == Address {
                 payment_credential: Script(smartTokensSpendScriptHash),
                 stake_credential: Some(
@@ -307,6 +320,21 @@ validator actionValidator(
 
   else(_) {
     fail
+  }
+}
+
+pub fn get_smart_destination_address(
+  isCIP113: Bool,
+  paymentHash: ByteArray,
+  smartTokensSpendScriptHash: ByteArray,
+) {
+  if isCIP113 {
+    Address(
+      Script(smartTokensSpendScriptHash),
+      Some(Inline(Script(paymentHash))),
+    )
+  } else {
+    Address(Script(paymentHash), None)
   }
 }
 // test test_prices() {

@@ -5,7 +5,7 @@ use aiken/collection/pairs
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use cardano/address.{Address, Credential, PaymentCredential, Script}
-use cardano/assets.{add, flatten, quantity_of}
+use cardano/assets.{ada_policy_id, add, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/finance
 use fluidtokens/oracle.{retrieve_oracle_data}
@@ -25,11 +25,11 @@ use smart_tokens/utils.{
 validator actionValidator(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
-  lenderSmartManagerSpendScriptHash: ByteArray,
-  loanWithdrawScriptHash: ByteArray,
+  lenderManagerSpendScriptHash: ByteArray,
   poolManagerSpendScriptHash: ByteArray,
   poolManagerPolicyId: ByteArray,
   loanClaimPaymentCredential: PaymentCredential,
+  repaymentPolicyId: ByteArray,
 ) {
   withdraw(
     redeemer: LMLiquidatePayInAdvanceAndCompoundWithdrawRedeemer,
@@ -49,6 +49,7 @@ validator actionValidator(
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
+    let loanWithdrawScriptHash = loanPolicyId
     expect (Finite(validFrom), Finite(validTo)) =
       (
         self.validity_range.lower_bound.bound_type,
@@ -57,7 +58,7 @@ validator actionValidator(
     let lmInputs =
       get_inputs_from_smart_credential(
         self.inputs,
-        Script(lenderSmartManagerSpendScriptHash),
+        Script(lenderManagerSpendScriptHash),
         credential,
         smartTokensSpendScriptHash,
       )
@@ -114,12 +115,15 @@ validator actionValidator(
         },
       )
     //Outputs to this sc are all lender bonds, as the compounded assets are sent to the pool
+    //Lender bonds always reside in lender_manager.ak, so we don't need to consider CIP113 utxos
     let lenderBondOutputs =
-      get_outputs_to_smart_credential(
+      list.filter(
         self.outputs,
-        Script(lenderSmartManagerSpendScriptHash),
-        credential,
-        smartTokensSpendScriptHash,
+        fn(output) {
+          output.address.payment_credential == Script(
+            lenderManagerSpendScriptHash,
+          )
+        },
       )
     //Use oracles to convert the collateral to principal asset and sum them up for each pool manager
     let totalConvertedClaimedCollateralForEachPoolManager =
@@ -155,6 +159,8 @@ validator actionValidator(
             liquidationFeePerMille,
             ..
           } = inputLenderBondDatum
+          // Ensure liquidationFeePerMille is non-negative
+          expect liquidationFeePerMille >= 0
           expect Some(loanRedeemer) =
             pairs.get_first(
               self.redeemers,
@@ -273,14 +279,19 @@ validator actionValidator(
               principalAsset.policyId,
               principalAsset.assetName,
             )
+          let receiptNFTCount =
+            utils.quantity_of_policy_id(
+              assetInput.output.value,
+              repaymentPolicyId,
+            )
 
           expect
-            if principalAsset.policyId == "" {
-              // 1. If principal asset is ADA, ensure no other tokens are present
-              list.length(flatten(assetInput.output.value)) == 1
+            if principalAsset.policyId == ada_policy_id {
+              // 1. If principal asset is ADA, ensure no other tokens are present, except eventual receipt NFT
+              list.length(flatten(assetInput.output.value)) == 1 + receiptNFTCount
             } else {
-              // 2. If principal asset is not ADA, ensure only min-ADA and principal token are present
-              list.length(flatten(assetInput.output.value)) == 2
+              // 2. If principal asset is not ADA, ensure only min-ADA and principal token are present, except eventual receipt NFT
+              list.length(flatten(assetInput.output.value)) == 2 + receiptNFTCount
             }
 
           //Selected lender bond must correspond to the ownerAsset of the datum

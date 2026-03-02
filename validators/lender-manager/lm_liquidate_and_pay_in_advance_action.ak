@@ -25,8 +25,7 @@ use smart_tokens/utils.{
 validator actionValidator(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
-  lenderSmartManagerSpendScriptHash: ByteArray,
-  loanWithdrawScriptHash: ByteArray,
+  lenderManagerSpendScriptHash: ByteArray,
   loanClaimPaymentCredential: PaymentCredential,
 ) {
   withdraw(
@@ -45,22 +44,26 @@ validator actionValidator(
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
+    let loanWithdrawScriptHash = loanPolicyId
     expect (Finite(validFrom), Finite(validTo)) =
       (
         self.validity_range.lower_bound.bound_type,
         self.validity_range.upper_bound.bound_type,
       )
-    let lmInputs =
-      get_inputs_from_smart_credential(
+    //Lender bonds always reside in lender_manager.ak, so we don't need to consider CIP113 utxos
+    let lenderBondInputs =
+      list.filter(
         self.inputs,
-        Script(lenderSmartManagerSpendScriptHash),
-        credential,
-        smartTokensSpendScriptHash,
+        fn(input) {
+          input.output.address.payment_credential == Script(
+            lenderManagerSpendScriptHash,
+          )
+        },
       )
     let lmOutputs =
       get_outputs_to_smart_credential(
         self.outputs,
-        Script(lenderSmartManagerSpendScriptHash),
+        Script(lenderManagerSpendScriptHash),
         credential,
         smartTokensSpendScriptHash,
       )
@@ -71,7 +74,6 @@ validator actionValidator(
         Script(loanWithdrawScriptHash),
         smartTokensSpendScriptHash,
       )
-    let lenderBondInputs = lmInputs
     let (lenderBondOutputs, lmAssetsOutputs) =
       list.partition(
         lmOutputs,

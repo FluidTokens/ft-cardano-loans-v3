@@ -1,42 +1,23 @@
-use aiken/builtin
 use aiken/collection/list
 use cardano/address.{Credential, Script}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/authorizer.{authorize_action, create_auth}
-use fluidtokens/types/lender_manager.{
-  LMWithdrawBondsWithdrawRedeemer, LenderManagerDatum,
-} as lm
-use fluidtokens/utils.{safe_list_at}
-use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
+use fluidtokens/types/lender_manager.{LenderManagerDatum} as lm
 
-validator actionValidator(
-  configNFTPolicyId: ByteArray,
-  configNFTAssetName: ByteArray,
-  lenderSmartManagerSpendScriptHash: ByteArray,
-) {
-  withdraw(
-    redeemer: LMWithdrawBondsWithdrawRedeemer,
-    credential: Credential,
-    self: Transaction,
-  ) {
-    let config =
-      utils.get_config_as_data_list(
-        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
-        configNFTPolicyId,
-        configNFTAssetName,
-      )
-    let smartTokensSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(config, 0))
+validator actionValidator(lenderManagerSpendScriptHash: ByteArray) {
+  withdraw(_redeemer: Data, _credential: Credential, self: Transaction) {
+    //Lender bonds always reside in lender_manager.ak, so we don't need to consider CIP113 utxos
     let lmInputs =
-      get_inputs_from_smart_credential(
+      list.filter(
         self.inputs,
-        Script(lenderSmartManagerSpendScriptHash),
-        credential,
-        smartTokensSpendScriptHash,
+        fn(input) {
+          input.output.address.payment_credential == Script(
+            lenderManagerSpendScriptHash,
+          )
+        },
       )
     list.all(
       lmInputs,
-      // the list being traversed (lmInputs or lenderBondInputs)
       fn(input: Input) -> Bool {
         expect InlineDatum(inputDatum) = input.output.datum
         expect LenderManagerDatum { lenderAuth, .. } = inputDatum

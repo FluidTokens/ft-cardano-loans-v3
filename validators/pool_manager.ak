@@ -13,14 +13,13 @@ use fluidtokens/types/pool_manager.{
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 
-validator poolSmartManager(
+validator poolManager(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
-  poolSmartManagerSpendScriptHash: ByteArray,
-  lenderSmartManagerWithdrawScriptHash: ByteArray,
+  poolManagerSpendScriptHash: ByteArray,
+  lenderManagerWithdrawScriptHash: ByteArray,
   poolSpendScriptHash: ByteArray,
   poolWithdrawScriptHash: ByteArray,
-  poolManagerSpendScriptHash: ByteArray,
 ) {
   mint(
     redeemer: PoolManagerMintRedeemer,
@@ -44,32 +43,27 @@ validator poolSmartManager(
     credential: Credential,
     self: Transaction,
   ) {
-    expect Script(poolSmartManagerPolicyId) = credential
+    expect Script(poolManagerPolicyId) = credential
 
-    let poolSmartManagerInputs =
+    let poolManagerInputs =
       list.filter(
         self.inputs,
         fn(input) {
           input.output.address.payment_credential == Script(
-            poolSmartManagerSpendScriptHash,
+            poolManagerSpendScriptHash,
           )
         },
       )
     when redeemer.action is {
-      CancelPoolManager { poolSmartManagerNFTAssetNames } ->
-        list.indexed_foldr(
-          poolSmartManagerInputs,
-          True,
-          fn(index, input, result) {
-            //As all inputs must return True, if any of previous input returned False, then fail
-            //The last input is not checked but will return its value at the end, so if False withdraw will fail
-            expect result
-
+      CancelPoolManager { poolManagerNFTAssetNames } ->
+        utils.indexed_all(
+          poolManagerInputs,
+          fn(index, input) {
             expect InlineDatum(inputDatum) = input.output.datum
             expect PoolManagerDatum { poolOwnerAuth, .. } = inputDatum
 
-            let poolSmartManagerNFTAssetName =
-              safe_list_at(poolSmartManagerNFTAssetNames, index)
+            let poolManagerNFTAssetName =
+              safe_list_at(poolManagerNFTAssetNames, index)
 
             and {
               //Authorize the pool owner to execute this action
@@ -84,13 +78,13 @@ validator poolSmartManager(
               ),
               quantity_of(
                 input.output.value,
-                poolSmartManagerPolicyId,
-                poolSmartManagerNFTAssetName,
+                poolManagerPolicyId,
+                poolManagerNFTAssetName,
               ) == 1,
               quantity_of(
                 self.mint,
-                poolSmartManagerPolicyId,
-                poolSmartManagerNFTAssetName,
+                poolManagerPolicyId,
+                poolManagerNFTAssetName,
               ) == -1,
             }
           },
@@ -105,14 +99,9 @@ validator poolSmartManager(
               )
             },
           )
-        list.indexed_foldr(
-          poolSmartManagerInputs,
-          True,
-          fn(index, input, result) {
-            //As all inputs must return True, if any of previous input returned False, then fail
-            //The last input is not checked but will return its value at the end, so if False withdraw will fail
-            expect result
-
+        utils.indexed_all(
+          poolManagerInputs,
+          fn(index, input) {
             expect InlineDatum(inputDatum) = input.output.datum
             expect PoolManagerDatum { poolOwnerAuth, .. } = inputDatum
 
@@ -143,18 +132,18 @@ validator poolSmartManager(
           },
         )
       }
-      CompoundLiquidity { lenderSmartManagerWithdrawRedeemerIndex } -> {
+      CompoundLiquidity { lenderManagerWithdrawRedeemerIndex } -> {
         //CompoundLiquidity action must be executed
-        let lenderSmartManagerWithdrawRedeemer =
-          safe_list_at(self.redeemers, lenderSmartManagerWithdrawRedeemerIndex)
+        let lenderManagerWithdrawRedeemer =
+          safe_list_at(self.redeemers, lenderManagerWithdrawRedeemerIndex)
         expect
-          lenderSmartManagerWithdrawRedeemer.1st == Withdraw(
-            Script(lenderSmartManagerWithdrawScriptHash),
+          lenderManagerWithdrawRedeemer.1st == Withdraw(
+            Script(lenderManagerWithdrawScriptHash),
           )
-        expect lenderSmartManagerRedeemer: LenderManagerWithdrawRedeemer =
-          lenderSmartManagerWithdrawRedeemer.2nd
+        expect lenderManagerRedeemer: LenderManagerWithdrawRedeemer =
+          lenderManagerWithdrawRedeemer.2nd
 
-        when lenderSmartManagerRedeemer.action is {
+        when lenderManagerRedeemer.action is {
           lm.Compound { .. } -> True
           lm.LiquidatePayInAdvanceAndCompound { .. } -> True
           lm.LiquidateConvertAndCompound { .. } -> True
@@ -190,7 +179,7 @@ fn check_mint(
   let poolPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
 
   //Excluding mint < 0 (ie. burn) means burning is always allowed
-  let poolSmartManagerMintedNFTs =
+  let poolManagerMintedNFTs =
     list.filter(
       dict.to_pairs(tokens(self.mint, policy_id)),
       fn(Pair(_assetName, quantity)) { quantity > 0 },
@@ -213,12 +202,9 @@ fn check_mint(
     )
 
   let isEachMintedTokenAccountedFor =
-    list.indexed_foldr(
-      poolSmartManagerMintedNFTs,
-      True,
-      fn(index, Pair(assetName, quantity), result) {
-        expect result
-
+    utils.indexed_all(
+      poolManagerMintedNFTs,
+      fn(index, Pair(assetName, quantity)) {
         let output = utils.safe_list_at(poolManagerOutputs, index)
         let outputHasUniqueToken = and {
             dict.size(assets.tokens(output.value, policy_id)) == 1,
@@ -251,7 +237,7 @@ fn check_mint(
   //When you modify/compound a pool you also burn and remint this NFT
   and {
     length(poolInputs) == 0,
-    poolSmartManagerMintedNFTs == poolMintedNFTs,
+    poolManagerMintedNFTs == poolMintedNFTs,
     isEachMintedTokenAccountedFor,
   }
 }

@@ -2,7 +2,7 @@ use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{add, flatten, quantity_of}
+use cardano/assets.{ada_policy_id, add, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/types/general.{Asset}
 use fluidtokens/types/lender_manager.{
@@ -19,9 +19,10 @@ use smart_tokens/utils.{
 validator actionValidator(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
-  lenderSmartManagerSpendScriptHash: ByteArray,
+  lenderManagerSpendScriptHash: ByteArray,
   poolManagerSpendScriptHash: ByteArray,
   poolManagerPolicyId: ByteArray,
+  repaymentPolicyId: ByteArray,
 ) {
   withdraw(
     redeemer: LMCompoundWithdrawRedeemer,
@@ -41,7 +42,7 @@ validator actionValidator(
     let lmInputs =
       get_inputs_from_smart_credential(
         self.inputs,
-        Script(lenderSmartManagerSpendScriptHash),
+        Script(lenderManagerSpendScriptHash),
         credential,
         smartTokensSpendScriptHash,
       )
@@ -90,13 +91,15 @@ validator actionValidator(
           }
         },
       )
-    //Outputs to this sc are all lender bonds, as the compounded assets are sent to the pool
+    //Lender bonds always reside in lender_manager.ak, so we don't need to consider CIP113 utxos
     let lenderBondOutputs =
-      get_outputs_to_smart_credential(
+      list.filter(
         self.outputs,
-        Script(lenderSmartManagerSpendScriptHash),
-        credential,
-        smartTokensSpendScriptHash,
+        fn(output) {
+          output.address.payment_credential == Script(
+            lenderManagerSpendScriptHash,
+          )
+        },
       )
     //Add repayments sitting in the lm to the total to compound for each pool manager
     let totalAssetsToCompoundForEachPoolManager =
@@ -122,13 +125,19 @@ validator actionValidator(
               principalAsset.assetName,
             )
 
+          let receiptNFTCount =
+            utils.quantity_of_policy_id(
+              assetInput.output.value,
+              repaymentPolicyId,
+            )
+
           expect
-            if principalAsset.policyId == "" {
-              // 1. If principal asset is ADA, ensure no other tokens are present
-              list.length(flatten(assetInput.output.value)) == 1
+            if principalAsset.policyId == ada_policy_id {
+              // 1. If principal asset is ADA, ensure no other tokens are present, except eventual receipt NFT
+              list.length(flatten(assetInput.output.value)) == 1 + receiptNFTCount
             } else {
-              // 2. If principal asset is not ADA, ensure only min-ADA and principal token are present
-              list.length(flatten(assetInput.output.value)) == 2
+              // 2. If principal asset is not ADA, ensure only min-ADA and principal token are present, except eventual receipt NFT
+              list.length(flatten(assetInput.output.value)) == 2 + receiptNFTCount
             }
 
           //Selected lender bond must correspond to the ownerAsset of the datum

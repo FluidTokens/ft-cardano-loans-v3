@@ -1,6 +1,4 @@
 use aiken/builtin
-//All money to parties are sent here so they can withdraw them along with the repayment NFT.
-//Without the repayment NFT this can be used for depositing other stuff too.
 use aiken/collection/dict
 use aiken/collection/list
 use cardano/address.{Credential, Script}
@@ -126,7 +124,7 @@ validator repayment(
     }
   }
 
-  //TODO: This is OLD, the repayment doesn't need to go here anymore
+  //WARNING: This is OLD, the repayment doesn't go here anymore. This is legacy unused code kept to avoid changing the script hash
   withdraw(
     redeemer: RepaymentWithdrawRedeemer,
     credential: Credential,

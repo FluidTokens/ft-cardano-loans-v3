@@ -20,11 +20,11 @@ pub type PoolManagerMintRedeemer {
 
 pub type PoolManagerAction {
   //As a pool can delegate auth to this withdraw script, we must allow to cancel the pools
-  CancelPoolManager { poolSmartManagerNFTAssetNames: List<ByteArray> }
+  CancelPoolManager { poolManagerNFTAssetNames: List<ByteArray> }
   //Update only the datum that must still have the correct type
   UpdatePoolManager
   //Delegates the security to one of the compounding actions from LenderManager
-  CompoundLiquidity { lenderSmartManagerWithdrawRedeemerIndex: Int }
+  CompoundLiquidity { lenderManagerWithdrawRedeemerIndex: Int }
 }
 
 pub type PoolManagerWithdrawRedeemer {

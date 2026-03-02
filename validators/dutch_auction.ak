@@ -2,7 +2,7 @@ use aiken/builtin
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{flatten, quantity_of}
+use cardano/assets.{ada_policy_id, flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
@@ -50,14 +50,9 @@ validator dutch_auction(
         self.validity_range.upper_bound.bound_type,
       )
 
-    list.indexed_foldr(
+    utils.indexed_all(
       scInputs,
-      True,
-      fn(index, input, result) {
-        //As all inputs must return True, if any of previous input returned False, then fail
-        //The last input is not checked but will return its value at the end, so if False withdraw will fail
-        expect result
-
+      fn(index, input) {
         expect InlineDatum(inputDatum) = input.output.datum
         expect datum: DutchAuctionDatum = inputDatum
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
@@ -168,7 +163,7 @@ fn correctAmountSentToUser(
 
   let correctValue = and {
       quantity_of(userOutput.value, currency.policyId, currency.assetName) >= amount,
-      if currency.policyId == "" {
+      if currency.policyId == ada_policy_id {
         length(flatten(userOutput.value)) == 1
       } else {
         length(flatten(userOutput.value)) == 2

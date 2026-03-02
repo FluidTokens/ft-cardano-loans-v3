@@ -52,10 +52,6 @@ pub type LenderManagerWithdrawRedeemer {
   action: LenderManagerAction,
 }
 
-pub type LMWithdrawBondsWithdrawRedeemer {
-  configRefInputIndex: Int,
-}
-
 pub type LMWithdrawAssetsWithdrawRedeemer {
   configRefInputIndex: Int,
   lenderBondInputIndexes: List<Int>,
