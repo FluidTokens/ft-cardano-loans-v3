@@ -22,7 +22,6 @@ validator actionValidator(
   lenderManagerSpendScriptHash: ByteArray,
   poolManagerSpendScriptHash: ByteArray,
   poolManagerPolicyId: ByteArray,
-  repaymentPolicyId: ByteArray,
 ) {
   withdraw(
     redeemer: LMCompoundWithdrawRedeemer,
@@ -39,6 +38,7 @@ validator actionValidator(
       builtin.un_b_data(utils.safe_list_at(config, 0))
     let poolSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 8))
     let poolPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
+    let repaymentPolicyId = builtin.un_b_data(utils.safe_list_at(config, 7))
     let lmInputs =
       get_inputs_from_smart_credential(
         self.inputs,

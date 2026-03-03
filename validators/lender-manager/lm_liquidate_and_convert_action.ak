@@ -286,7 +286,9 @@ validator actionValidator(
             if lpABDirection {
               asset_b == minswap_conversions.to_minswap_asset(principalAsset)
             } else {
-              asset_b == minswap_conversions.to_minswap_asset(collateralAsset)
+              asset_b == minswap_conversions.to_minswap_asset(collateralAsset) && asset_a == minswap_conversions.to_minswap_asset(
+                principalAsset,
+              )
             },
             //Output with lender bond must be the same as input
             builtin.equals_data(lenderBondInput.output, lenderBondOutput),

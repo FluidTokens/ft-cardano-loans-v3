@@ -29,7 +29,6 @@ validator actionValidator(
   poolManagerSpendScriptHash: ByteArray,
   poolManagerPolicyId: ByteArray,
   loanClaimPaymentCredential: PaymentCredential,
-  repaymentPolicyId: ByteArray,
 ) {
   withdraw(
     redeemer: LMLiquidatePayInAdvanceAndCompoundWithdrawRedeemer,
@@ -49,6 +48,7 @@ validator actionValidator(
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
+    let repaymentPolicyId = builtin.un_b_data(utils.safe_list_at(config, 7))
     let loanWithdrawScriptHash = loanPolicyId
     expect (Finite(validFrom), Finite(validTo)) =
       (
