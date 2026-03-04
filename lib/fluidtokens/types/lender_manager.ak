@@ -82,8 +82,10 @@ pub type LMLiquidateAndConvertActionWithdrawRedeemer {
   configRefInputIndex: Int,
   lenderBondInputIndexes: List<Int>,
   lenderBondAssetNames: List<ByteArray>,
-  minswapRefInputindexes: List<Int>,
+  minswapRefInputIndexes: List<Int>,
   minswapPoolAssetNames: List<ByteArray>,
+  minswapOrderSuccessInlineDatumOutputIndexes: List<Int>,
+  minswapOrderRefundInlineDatumOutputIndexes: List<Int>,
 }
 
 pub type LMLiquidatePayInAdvanceAndCompoundWithdrawRedeemer {

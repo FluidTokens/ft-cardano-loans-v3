@@ -101,13 +101,29 @@ validator actionValidator(
           let minswapPoolRefInput =
             safe_list_at(
               minswapPoolRefInputs,
-              safe_list_at(redeemer.minswapRefInputindexes, index),
+              safe_list_at(redeemer.minswapRefInputIndexes, index),
             )
           let minswapPoolAssetName =
             safe_list_at(redeemer.minswapPoolAssetNames, index)
           let lenderBondOutput =
             safe_list_at(lenderBondOutputs, lenderBondIndex)
           let minswapOrderOutput = safe_list_at(minswapOrderOutputs, index)
+          let minswapOrderSuccessInlineDatumOutput =
+            safe_list_at(
+              self.outputs,
+              safe_list_at(
+                redeemer.minswapOrderSuccessInlineDatumOutputIndexes,
+                index,
+              ),
+            )
+          let minswapOrderRefundInlineDatumOutput =
+            safe_list_at(
+              self.outputs,
+              safe_list_at(
+                redeemer.minswapOrderRefundInlineDatumOutputIndexes,
+                index,
+              ),
+            )
 
           expect InlineDatum(loanInputDatum) = loanInput.output.datum
           expect LoanDatum { collateral, principalAsset, .. } = loanInputDatum
@@ -182,7 +198,7 @@ validator actionValidator(
               killable: True,
             }
 
-          let conversionDatumHash =
+          let successDatumHash =
             crypto.blake2b_256(
               builtin.serialise_data(
                 RepaymentDatumWithToken {
@@ -231,7 +247,7 @@ validator actionValidator(
                 },
                 success_receiver: receiver,
                 success_receiver_datum: minswap_types.EODInlineDatum {
-                  hash: conversionDatumHash,
+                  hash: successDatumHash,
                 },
                 lp_asset: minswap_types.Asset {
                   policy_id: minswapPoolPolicyId,
@@ -292,6 +308,10 @@ validator actionValidator(
             },
             //Output with lender bond must be the same as input
             builtin.equals_data(lenderBondInput.output, lenderBondOutput),
+            //Ensure the InlineDatum of the designated output is hashing correctly
+            get_output_inline_datum_hash(minswapOrderSuccessInlineDatumOutput) == successDatumHash,
+            //Ensure the InlineDatum of the designated output is hashing correctly
+            get_output_inline_datum_hash(minswapOrderRefundInlineDatumOutput) == refundDatumHash,
             //Order must have correct datum and value
             builtin.equals_data(minswapOrderOutput.datum, expectedOrderDatum),
             correctOrderValue,
@@ -338,6 +358,11 @@ pub fn get_smart_destination_address(
   } else {
     Address(Script(paymentHash), None)
   }
+}
+
+pub fn get_output_inline_datum_hash(output: Output) {
+  expect InlineDatum(outputDatum) = output.datum
+  outputDatum |> builtin.serialise_data |> crypto.blake2b_256
 }
 // test test_prices() {
 //   let reserveCollateral = 100000000
