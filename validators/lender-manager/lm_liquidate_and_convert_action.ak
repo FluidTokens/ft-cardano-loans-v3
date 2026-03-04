@@ -364,35 +364,3 @@ pub fn get_output_inline_datum_hash(output: Output) {
   expect InlineDatum(outputDatum) = output.datum
   outputDatum |> builtin.serialise_data |> crypto.blake2b_256
 }
-// test test_prices() {
-//   let reserveCollateral = 100000000
-//   let reservePrincipal = 200000000
-//   let tradingFeeNumerator = 30
-//   let minswapV2DefaultTradingFeeDenominator = 10000
-//   let swappableCollateralAmount = 100000
-
-//   let expectedCollateralPriceIn = rational.from_int(2)
-//   let expectedCollateralPriceOut = rational.from_int(1)
-
-//   //Minswap v2 formula for amount out
-//   let diff = minswapV2DefaultTradingFeeDenominator - tradingFeeNumerator
-//   let inWithFee = diff * swappableCollateralAmount
-//   let numerator = inWithFee * reservePrincipal
-//   let denominator =
-//     minswapV2DefaultTradingFeeDenominator * reserveCollateral + inWithFee
-//   expect Some(amountOut) = rational.new(numerator, denominator)
-
-//   expect Some(collateralPriceIn) =
-//     rational.new(reservePrincipal, reserveCollateral)
-//   expect Some(collateralPriceOut) =
-//     rational.div(
-//       rational.sub(rational.from_int(reservePrincipal), amountOut),
-//       rational.from_int(reserveCollateral + swappableCollateralAmount),
-//     )
-
-//   trace @"amountOut": amountOut
-//   trace @"collateralPriceIn": collateralPriceIn
-//   trace @"collateralPriceOut": collateralPriceOut
-
-//   collateralPriceIn == expectedCollateralPriceIn && collateralPriceOut == expectedCollateralPriceOut
-// }

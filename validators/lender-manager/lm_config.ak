@@ -23,6 +23,7 @@ validator config(tx0: ByteArray, index0: Int) {
     and {
       //First output goes to this address
       output_parameters.address.payment_credential == contractCredential,
+      //Only 1 token of same policy and only the designated AssetName
       assets.tokens(self.mint, policy_id) == dict.from_pairs(
         [Pair(constants.config_asset_name, 1)],
       ),
