@@ -122,31 +122,21 @@ fn check_mint(
         let poolWithdrawRedeemer =
           safe_list_at(self.redeemers, redeemer.originWithdrawRedeemerIndex)
         expect poolWithdrawRedeemer.1st == Withdraw(Script(poolPolicyId))
-        expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
+        expect PoolWithdrawRedeemer { actionType, .. } =
+          poolWithdrawRedeemer.2nd
+        //Loan NFT minted only during the creation of a loan
+        expect actionType == Borrow
         list.indexed_foldr(
           originInputs,
           [],
           fn(index, input, result) {
-            let poolRedeemerAction =
-              safe_list_at(poolRedeemer.actionsForEachInput, index)
-
-            when poolRedeemerAction is {
-              Borrow { .. } -> {
-                let loanAssetName =
-                  utils.hash_output_ref(input.output_reference)
-                let loanOutput = safe_list_at(loanOutputs, index)
-                expect and {
-                    dict.size(assets.tokens(loanOutput.value, policy_id)) == 1,
-                    assets.quantity_of(
-                      loanOutput.value,
-                      policy_id,
-                      loanAssetName,
-                    ) == 1,
-                  }
-                list.push(result, Pair(loanAssetName, 1))
+            let loanAssetName = utils.hash_output_ref(input.output_reference)
+            let loanOutput = safe_list_at(loanOutputs, index)
+            expect and {
+                dict.size(assets.tokens(loanOutput.value, policy_id)) == 1,
+                assets.quantity_of(loanOutput.value, policy_id, loanAssetName) == 1,
               }
-              _ -> result
-            }
+            list.push(result, Pair(loanAssetName, 1))
           },
         )
       } else {

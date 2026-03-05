@@ -71,27 +71,67 @@ pub type PoolMintRedeemer {
   inputRef: OutputReference,
 }
 
-pub type PoolAction {
-  Cancel { poolId: ByteArray }
-  Borrow {
-    borrowerAddress: Address,
-    outputWithLenderTokenIndex: Int,
-    //Ref input index of the principal oracle, if principal is ADA this must be -1
-    principalOracleRefInputIndex: Int,
-    //Index of the Asset that the borrower is providing, must be accepted by the pool
-    chosenCollateralIndex: Int,
-    //If collateral doesn't use oracle or is ADA, this must be -1
-    chosenCollateralOracleRefInputIndex: Int,
-    //How much principal the borrower wants in units. 
-    //For example if borrower wants 123 FLDT he must write 123000000 .
-    //It cannot be completely arbitrary as pools allow only certain amounts.
-    wantedPrincipalAmount: Int,
-    poolId: ByteArray,
-    permissionedConditionWithdrawIndex: Int,
-  }
+pub type ActionType {
+  //Pool's owner can cancel the pool
+  Cancel
+  //Any user can become borrower
+  Borrow
+  //This pool acquires an existing lender position if all loan params are compatible
+  SellLenderPosition
 }
 
 pub type PoolWithdrawRedeemer {
   configRefInputIndex: Int,
-  actionsForEachInput: List<PoolAction>,
+  actionType: ActionType,
+}
+
+pub type CancelData {
+  poolId: ByteArray,
+}
+
+pub type BorrowData {
+  borrowerAddress: Address,
+  outputWithLenderTokenIndex: Int,
+  //Ref input index of the principal oracle, if principal is ADA this must be -1
+  principalOracleRefInputIndex: Int,
+  //Index of the Asset that the borrower is providing, must be accepted by the pool
+  chosenCollateralIndex: Int,
+  //If collateral doesn't use oracle or is ADA, this must be -1
+  chosenCollateralOracleRefInputIndex: Int,
+  //How much principal the borrower wants in units. 
+  //For example if borrower wants 123 FLDT he must write 123000000 .
+  //It cannot be completely arbitrary as pools allow only certain amounts.
+  wantedPrincipalAmount: Int,
+  poolId: ByteArray,
+  permissionedConditionWithdrawIndex: Int,
+}
+
+pub type SellingLenderBondInfo {
+  lenderBondInputIndex: Int,
+  lenderBondAssetName: ByteArray,
+  loanRefInputIndex: Int,
+  outputWithLenderTokenIndex: Int,
+  poolCollateralIndex: Int,
+  collateralOracleRefInputIndex: Int,
+  principalOracleRefInputIndex: Int,
+}
+
+pub type SellLenderPositionData {
+  lenderBondsInfo: List<SellingLenderBondInfo>,
+  poolId: ByteArray,
+}
+
+pub type PoolCancelActionWithdrawRedeemer {
+  configRefInputIndex: Int,
+  actionsForEachInput: List<CancelData>,
+}
+
+pub type PoolBorrowActionWithdrawRedeemer {
+  configRefInputIndex: Int,
+  actionsForEachInput: List<BorrowData>,
+}
+
+pub type PoolSellLenderPositionActionWithdrawRedeemer {
+  configRefInputIndex: Int,
+  actionsForEachInput: List<SellLenderPositionData>,
 }
