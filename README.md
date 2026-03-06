@@ -26,7 +26,7 @@ The following features are supported:
 * Generation of bonds for lender and borrower in order to be flexible with their position
 * Lender bond can have datum to be compatible with PlutusV2 scripts
 * Recast: in case the Amortization formula is used, borrower can repay a number of times the principal to reduce the debt. Recast is allowed also in perpetual loans with 0 installments.
-* Refinancing: repayng in one tx the loan with the liquidity coming from a new loan
+* Refinancing: repaying in one tx the loan with the liquidity coming from a new loan
 * Permissioned pools and loan requests:
     * The pool is spendable if a KYC token is properly added to the tx
     * The request can be accepted if the lender is a specific user (wallet or script)
@@ -38,6 +38,7 @@ The following features are supported:
 * CIP113 (smart tokens) support: principal, collateral and oracle feed support CIP113 tokens
 * Custom field to explain what a particular repayment is referring to
 * Automatic liquidations and compounding (see next section)
+* Lenders can sell their positions to compatible pools to receive the liquidity back when needed
 
 ## Lending and borrowing
 * Pools, requests and loans are all identified by unique NFTs.
@@ -45,6 +46,7 @@ The following features are supported:
 * Repayments are sent directly to the Lender specified address with a specified Datum.
 * The borrower can borrow from multiple pools at the same time.
 * The lender can specify multiple markets to participate at once with his liquidity pool.
+* In any moment, in case of emergency, the lender can sale the loan to another available pool (it must have the same parameters and it must not be a permissioned pool) for the value of the principal lent.
 * Providing ADA in your own liquidity Pool allows you to earn the ADA staking rewards when the liquidity is idle.
 * The contracts are composable with other Cardano DeFi protocols.
 * FluidTokens doesn't have any custody of your assets, they are always fully yours.
