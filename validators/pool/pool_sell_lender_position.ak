@@ -295,7 +295,7 @@ fn is_loan_compatible_with_pool(
           rational.new(loanDatum.interestRate, 10000)
         expect Some(poolInterestRateAsRational) =
           rational.new(poolDatum.commonData.interestRate, 10000)
-        //currenAPY = pyIncreaseLinearCoefficient * passedHoursSoFar + interestRate
+        //currentAPY = apyIncreaseLinearCoefficient * passedHoursSoFar + interestRate
         let currentLoanPerpetualAPY =
           rational.add(
             rational.mul(
