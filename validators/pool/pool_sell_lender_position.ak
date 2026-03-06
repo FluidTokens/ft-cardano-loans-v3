@@ -11,6 +11,7 @@ use fluidtokens/finance.{
   get_needed_collateral_with_oracles, get_needed_collateral_without_oracles,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
+use fluidtokens/types/general.{PerpetualLoan}
 use fluidtokens/types/loan.{LoanDatum} as l
 use fluidtokens/types/pool.{
   PoolDatum, PoolSellLenderPositionActionWithdrawRedeemer, SellingLenderBondInfo,
@@ -280,8 +281,39 @@ fn is_loan_compatible_with_pool(
   and {
     //Permissioned pools CANNOT do this action
     poolDatum.permissionedConditionScriptHash == constants.no_permissioned_condition,
-    //If the loan has a higher interest rate of the pool, the pool owner is happy to receive more
-    loanDatum.interestRate >= poolDatum.commonData.interestRate,
+    //If the loan has a higher interest rate of the pool, the pool owner is happy to receive more.
+    //For Perpetuals, the current interest rate is the one we are interested in, so the loan can
+    //be sold even if the original interest rate was lower than the one of the pool.
+    when loanDatum.repaymentMode is {
+      PerpetualLoan { apyIncreaseLinearCoefficient, .. } -> {
+        let timeSinceLendDate = validTo - loanDatum.lendDate
+        expect Some(passedHoursSoFarAsRational) =
+          rational.new(timeSinceLendDate, 3600000)
+        expect Some(apyIncreaseLinearCoefficientAsRational) =
+          rational.new(apyIncreaseLinearCoefficient, 1000000)
+        expect Some(interestRateAsRational) =
+          rational.new(loanDatum.interestRate, 10000)
+        expect Some(poolInterestRateAsRational) =
+          rational.new(poolDatum.commonData.interestRate, 10000)
+        //currenAPY = pyIncreaseLinearCoefficient * passedHoursSoFar + interestRate
+        let currentLoanPerpetualAPY =
+          rational.add(
+            rational.mul(
+              apyIncreaseLinearCoefficientAsRational,
+              passedHoursSoFarAsRational,
+            ),
+            interestRateAsRational,
+          )
+        when
+          rational.compare(currentLoanPerpetualAPY, poolInterestRateAsRational)
+        is {
+          Greater -> True
+          Equal -> True
+          _ -> False
+        }
+      }
+      _ -> loanDatum.interestRate >= poolDatum.commonData.interestRate
+    },
     loanDatum.totalInstallments == poolDatum.commonData.totalInstallments,
     loanDatum.principalAsset == poolDatum.commonData.principalAsset,
     loanDatum.principalOracleAsset == poolDatum.commonData.principalOracleAsset,
