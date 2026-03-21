@@ -1,11 +1,14 @@
 use aiken/builtin
+use aiken/collection/dict
 use aiken/collection/list.{length}
 use aiken/crypto
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{flatten, quantity_of}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use cardano/assets.{Value, add, flatten, quantity_of}
+use cardano/transaction.{
+  InlineDatum, Input, Output, Redeemer, ScriptPurpose, Transaction,
+}
 use fluidtokens/constants
 use fluidtokens/finance.{
   get_needed_collateral_with_oracles, get_needed_collateral_without_oracles,
@@ -28,9 +31,19 @@ validator pool_sell_lender_position_action(
     _credential: Credential,
     self: Transaction,
   ) {
+    let Transaction {
+      inputs,
+      outputs,
+      reference_inputs,
+      redeemers,
+      validity_range,
+      ..
+    } = self
+    expect Finite(validFrom) = validity_range.lower_bound.bound_type
+    expect Finite(validTo) = validity_range.upper_bound.bound_type
     let config =
       utils.get_config_as_data_list(
-        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
+        safe_list_at(reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
@@ -43,31 +56,34 @@ validator pool_sell_lender_position_action(
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
     let poolInputs =
       get_inputs_from_smart_credential(
-        self.inputs,
+        inputs,
         Script(poolSpendScriptHash),
         Script(poolPolicyId),
         smartTokensSpendScriptHash,
       )
     let loanRefInputs =
       get_inputs_from_smart_credential(
-        self.reference_inputs,
+        reference_inputs,
         Script(loanSpendScriptHash),
         Script(loanPolicyId),
         smartTokensSpendScriptHash,
       )
 
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
-    utils.indexed_all(
+    utils.indexed_all_with_state(
       poolInputs,
-      fn(index, poolInput) {
+      dict.empty,
+      fn(index, poolInput, countedLenderBonds) {
         expect InlineDatum(poolInputDatum) = poolInput.output.datum
         expect poolDatum: PoolDatum = poolInputDatum
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
-        let principalSpent =
+        //Avoid DOS attack in case the passed list is empty
+        expect list.is_empty(redeemerAction.lenderBondsInfo) == False
+        let (principalSpent, newCountedLenderBonds) =
           list.foldr(
             redeemerAction.lenderBondsInfo,
-            0,
-            fn(lenderBondInfo, result) {
+            (0, countedLenderBonds),
+            fn(lenderBondInfo, (result, countedLenderBondsDict)) {
               let SellingLenderBondInfo {
                 lenderBondInputIndex,
                 lenderBondAssetName,
@@ -77,11 +93,10 @@ validator pool_sell_lender_position_action(
                 collateralOracleRefInputIndex,
                 principalOracleRefInputIndex,
               } = lenderBondInfo
-              let lenderBondInput =
-                safe_list_at(self.inputs, lenderBondInputIndex)
+              let lenderBondInput = safe_list_at(inputs, lenderBondInputIndex)
               let loanRefInput = safe_list_at(loanRefInputs, loanRefInputIndex)
               let outputWithLenderToken =
-                safe_list_at(self.outputs, outputWithLenderTokenIndex)
+                safe_list_at(outputs, outputWithLenderTokenIndex)
               expect InlineDatum(loanRefInputDatum) = loanRefInput.output.datum
               expect loanDatum: LoanDatum = loanRefInputDatum
               expect InlineDatum(outputWithLenderTokenDatum) =
@@ -106,7 +121,6 @@ validator pool_sell_lender_position_action(
                   is_loan_compatible_with_pool(
                     loanDatum,
                     poolDatum,
-                    loanValueInPrincipal,
                     poolCollateralIndex,
                     rational.round(
                       finance.get_collateral_amount(
@@ -116,7 +130,10 @@ validator pool_sell_lender_position_action(
                     ),
                     collateralOracleRefInputIndex,
                     principalOracleRefInputIndex,
-                    self,
+                    validFrom,
+                    validTo,
+                    reference_inputs,
+                    redeemers,
                   ),
                   //The bond output must go to the specified address
                   outputWithLenderToken.address == poolDatum.lenderBondAddress,
@@ -134,7 +151,17 @@ validator pool_sell_lender_position_action(
                   length(flatten(outputWithLenderToken.value)) <= 5,
                 }
 
-              result + loanValueInPrincipal
+              (
+                result + loanValueInPrincipal,
+                dict.insert_with(
+                  countedLenderBondsDict,
+                  lenderBondAssetName,
+                  True,
+                  fn(_, _, _) {
+                    fail @"unexpected duplicate key found in dict."
+                  },
+                ),
+              )
             },
           )
         let remainingPrincipalAmountAfterSelling =
@@ -150,26 +177,18 @@ validator pool_sell_lender_position_action(
             redeemerAction.poolId,
           ) == 1,
           validity_range_within_an_hour(self),
-          //Either the pool must be closed or it must return with the remaining liquidity
-          or {
-            and {
-              remainingPrincipalAmountAfterSelling == 0,
-              quantity_of(self.mint, poolPolicyId, redeemerAction.poolId) == -1,
-            },
-            and {
-              remainingPrincipalAmountAfterSelling > 0,
-              validate_eventual_output_to_pool(
-                safe_list_at(self.outputs, index),
-                poolDatum,
-                remainingPrincipalAmountAfterSelling,
-                poolPolicyId,
-                redeemerAction.poolId,
-                poolInput.output.address,
-                length(flatten(poolInput.output.value)),
-              ),
-            },
+          //The pool must return with the remaining liquidity
+          and {
+            remainingPrincipalAmountAfterSelling > 0,
+            validate_eventual_output_to_pool(
+              poolInput.output.value,
+              safe_list_at(outputs, index),
+              poolDatum,
+              poolInput.output.address,
+              principalSpent,
+            ),
           },
-        }
+        } |> fn(result) { (result, newCountedLenderBonds) }
       },
     )
   }
@@ -181,55 +200,41 @@ validator pool_sell_lender_position_action(
 
 //Expects remainingPrincipalAmountAfterSelling > 0
 fn validate_eventual_output_to_pool(
+  inputValue: Value,
   output: Output,
   datum: PoolDatum,
-  remainingPrincipalAmountAfterSelling: Int,
-  poolPolicyId: ByteArray,
-  poolId: ByteArray,
-  poolInputOutputAddress: Address,
-  poolInputAssetsLength: Int,
+  poolOutputAddress: Address,
+  principalSpent: Int,
 ) {
   expect InlineDatum(outputDatum) = output.datum
-
-  let containsCorrectAmount =
-    quantity_of(
-      output.value,
+  let expectedOutputValue =
+    add(
+      inputValue,
       datum.commonData.principalAsset.policyId,
       datum.commonData.principalAsset.assetName,
-    ) == remainingPrincipalAmountAfterSelling
-
-  let containsPoolNFT = quantity_of(output.value, poolPolicyId, poolId) == 1
-
+      -principalSpent,
+    )
   let isDatumCorrect = builtin.equals_data(outputDatum, datum)
-
-  let dosProtection = length(flatten(output.value)) == poolInputAssetsLength
-
-  let correctDestination = poolInputOutputAddress == output.address
-
+  let correctDestination = poolOutputAddress == output.address
   and {
+    expectedOutputValue == output.value,
     correctDestination,
     isDatumCorrect,
-    containsPoolNFT,
-    containsCorrectAmount,
-    dosProtection,
   }
 }
 
 fn is_loan_compatible_with_pool(
   loanDatum: LoanDatum,
   poolDatum: PoolDatum,
-  loanValueInPrincipal: Int,
   collateralIndex: Int,
   loanCollateralAmount: Int,
   collateralOracleRefInputIndex: Int,
   principalOracleRefInputIndex: Int,
-  self: Transaction,
+  validFrom: Int,
+  validTo: Int,
+  reference_inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) {
-  expect (Finite(validFrom), Finite(validTo)) =
-    (
-      self.validity_range.lower_bound.bound_type,
-      self.validity_range.upper_bound.bound_type,
-    )
   let poolCollateral =
     safe_list_at(poolDatum.collateralOptions, collateralIndex)
   expect Some(minCollateral) =
@@ -241,13 +246,13 @@ fn is_loan_compatible_with_pool(
   let neededCollateral =
     if poolDatum.dynamicCollateralPrice {
       let collateralOracleRefInput =
-        safe_list_at(self.reference_inputs, collateralOracleRefInputIndex)
+        safe_list_at(reference_inputs, collateralOracleRefInputIndex)
       let chosenCollateralOracleToken = poolCollateral.oracleTokenAsset
       expect Some(collateralOraclePriceFeed) =
         retrieve_oracle_data(
           collateralOracleRefInput.output.address.payment_credential,
           collateralOracleRefInput.output.value,
-          self.redeemers,
+          redeemers,
           validFrom,
           validTo,
           chosenCollateralOracleToken.policyId,
@@ -256,12 +261,12 @@ fn is_loan_compatible_with_pool(
           poolCollateral.maybeAssetName,
         )
       let principalOracleRefInput =
-        safe_list_at(self.reference_inputs, principalOracleRefInputIndex)
+        safe_list_at(reference_inputs, principalOracleRefInputIndex)
       expect Some(principalOraclePriceFeed) =
         retrieve_oracle_data(
           principalOracleRefInput.output.address.payment_credential,
           principalOracleRefInput.output.value,
-          self.redeemers,
+          redeemers,
           validFrom,
           validTo,
           poolDatum.commonData.principalOracleAsset.policyId,
@@ -270,13 +275,16 @@ fn is_loan_compatible_with_pool(
           Some(poolDatum.commonData.principalAsset.assetName),
         )
       get_needed_collateral_with_oracles(
-        loanValueInPrincipal,
+        loanDatum.principalAmount,
         minCollateral,
         principalOraclePriceFeed,
         collateralOraclePriceFeed,
       )
     } else {
-      get_needed_collateral_without_oracles(loanValueInPrincipal, minCollateral)
+      get_needed_collateral_without_oracles(
+        loanDatum.principalAmount,
+        minCollateral,
+      )
     }
   and {
     //Permissioned pools CANNOT do this action

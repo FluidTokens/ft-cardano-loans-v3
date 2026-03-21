@@ -5,7 +5,7 @@ use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{Value, ada_policy_id, flatten, quantity_of}
+use cardano/assets.{Value, ada_policy_id, add, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/constants
 use fluidtokens/finance.{
@@ -199,23 +199,16 @@ validator pool_borrow_action(
             datum.lenderBondAddress,
             datum.lenderBondInlineDatumHash,
           ),
-          or {
-            and {
-              remainingPrincipalAmountAfterBorrow == 0,
-              quantity_of(self.mint, poolPolicyId, poolId) == -1,
-            },
-            and {
-              remainingPrincipalAmountAfterBorrow > 0,
-              validate_eventual_output_to_pool(
-                safe_list_at(self.outputs, index),
-                datum,
-                remainingPrincipalAmountAfterBorrow,
-                poolPolicyId,
-                poolId,
-                input.output.address,
-                length(flatten(input.output.value)),
-              ),
-            },
+          //The pool must return with the remaining liquidity
+          and {
+            remainingPrincipalAmountAfterBorrow > 0,
+            validate_eventual_output_to_pool(
+              input.output.value,
+              safe_list_at(self.outputs, index),
+              datum,
+              input.output.address,
+              wantedPrincipalAmount,
+            ),
           },
         }
       },
@@ -336,36 +329,25 @@ fn bonds_sent_to_both_parties(
 
 //Expects remainingPrincipalAmountAfterBorrow > 0
 fn validate_eventual_output_to_pool(
+  inputValue: Value,
   output: Output,
   datum: PoolDatum,
-  remainingPrincipalAmountAfterBorrow: Int,
-  poolPolicyId: ByteArray,
-  poolId: ByteArray,
-  poolInputOutputAddress: Address,
-  poolInputAssetsLength: Int,
+  poolOutputAddress: Address,
+  principalSpent: Int,
 ) {
   expect InlineDatum(outputDatum) = output.datum
-
-  let containsCorrectAmount =
-    quantity_of(
-      output.value,
+  let expectedOutputValue =
+    add(
+      inputValue,
       datum.commonData.principalAsset.policyId,
       datum.commonData.principalAsset.assetName,
-    ) == remainingPrincipalAmountAfterBorrow
-
-  let containsPoolNFT = quantity_of(output.value, poolPolicyId, poolId) == 1
-
+      -principalSpent,
+    )
   let isDatumCorrect = builtin.equals_data(outputDatum, datum)
-
-  let dosProtection = length(flatten(output.value)) == poolInputAssetsLength
-
-  let correctDestination = poolInputOutputAddress == output.address
-
+  let correctDestination = poolOutputAddress == output.address
   and {
+    expectedOutputValue == output.value,
     correctDestination,
     isDatumCorrect,
-    containsPoolNFT,
-    containsCorrectAmount,
-    dosProtection,
   }
 }
