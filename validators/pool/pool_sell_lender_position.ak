@@ -79,7 +79,7 @@ validator pool_sell_lender_position_action(
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
         //Avoid DOS attack in case the passed list is empty
         expect list.is_empty(redeemerAction.lenderBondsInfo) == False
-        let (principalSpent, newCountedLenderBonds) =
+        let (lenderBondsValueInPrincipal, newCountedLenderBonds) =
           list.foldr(
             redeemerAction.lenderBondsInfo,
             (0, countedLenderBonds),
@@ -164,12 +164,21 @@ validator pool_sell_lender_position_action(
               )
             },
           )
-        let remainingPrincipalAmountAfterSelling =
+        let principalAmount =
           quantity_of(
             poolInput.output.value,
             poolDatum.commonData.principalAsset.policyId,
             poolDatum.commonData.principalAsset.assetName,
-          ) - principalSpent
+          )
+        let poolOutput = safe_list_at(outputs, index)
+        let principalAmountAfterSelling =
+          quantity_of(
+            poolOutput.value,
+            poolDatum.commonData.principalAsset.policyId,
+            poolDatum.commonData.principalAsset.assetName,
+          )
+        let principalPaid = principalAmount - principalAmountAfterSelling
+
         and {
           quantity_of(
             poolInput.output.value,
@@ -177,15 +186,16 @@ validator pool_sell_lender_position_action(
             redeemerAction.poolId,
           ) == 1,
           validity_range_within_an_hour(self),
-          //The pool must return with the remaining liquidity
+          //The pool must return with the remaining liquidity even if completely emptied.
+          //The principal paid from the pool must at max be the total value of the sold bonds
           and {
-            remainingPrincipalAmountAfterSelling > 0,
-            validate_eventual_output_to_pool(
+            principalPaid <= lenderBondsValueInPrincipal,
+            validate_output_to_pool(
               poolInput.output.value,
               safe_list_at(outputs, index),
               poolDatum,
               poolInput.output.address,
-              principalSpent,
+              principalPaid,
             ),
           },
         } |> fn(result) { (result, newCountedLenderBonds) }
@@ -198,12 +208,11 @@ validator pool_sell_lender_position_action(
   }
 }
 
-//Expects remainingPrincipalAmountAfterSelling > 0
-fn validate_eventual_output_to_pool(
+fn validate_output_to_pool(
   inputValue: Value,
   output: Output,
   datum: PoolDatum,
-  poolOutputAddress: Address,
+  poolInputAddress: Address,
   principalSpent: Int,
 ) {
   expect InlineDatum(outputDatum) = output.datum
@@ -215,7 +224,7 @@ fn validate_eventual_output_to_pool(
       -principalSpent,
     )
   let isDatumCorrect = builtin.equals_data(outputDatum, datum)
-  let correctDestination = poolOutputAddress == output.address
+  let correctDestination = poolInputAddress == output.address
   and {
     expectedOutputValue == output.value,
     correctDestination,

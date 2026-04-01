@@ -91,12 +91,6 @@ validator pool_borrow_action(
           safe_list_at(self.outputs, outputWithLenderTokenIndex)
         let chosenCollateral =
           safe_list_at(datum.collateralOptions, chosenCollateralIndex)
-        let remainingPrincipalAmountAfterBorrow =
-          quantity_of(
-            input.output.value,
-            datum.commonData.principalAsset.policyId,
-            datum.commonData.principalAsset.assetName,
-          ) - wantedPrincipalAmount
 
         expect Some(minCollateral) =
           rational.new(
@@ -199,17 +193,14 @@ validator pool_borrow_action(
             datum.lenderBondAddress,
             datum.lenderBondInlineDatumHash,
           ),
-          //The pool must return with the remaining liquidity
-          and {
-            remainingPrincipalAmountAfterBorrow > 0,
-            validate_eventual_output_to_pool(
-              input.output.value,
-              safe_list_at(self.outputs, index),
-              datum,
-              input.output.address,
-              wantedPrincipalAmount,
-            ),
-          },
+          //The pool must return with the remaining liquidity even if completely emptied.
+          validate_output_to_pool(
+            input.output.value,
+            safe_list_at(self.outputs, index),
+            datum,
+            input.output.address,
+            wantedPrincipalAmount,
+          ),
         }
       },
     )
@@ -327,8 +318,7 @@ fn bonds_sent_to_both_parties(
   }
 }
 
-//Expects remainingPrincipalAmountAfterBorrow > 0
-fn validate_eventual_output_to_pool(
+fn validate_output_to_pool(
   inputValue: Value,
   output: Output,
   datum: PoolDatum,
