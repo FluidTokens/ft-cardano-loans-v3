@@ -34,9 +34,21 @@ validator pool_borrow_action(
     _credential: Credential,
     self: Transaction,
   ) {
+    let Transaction {
+      inputs,
+      outputs,
+      reference_inputs,
+      redeemers,
+      mint,
+      validity_range,
+      withdrawals,
+      ..
+    } = self
+    expect Finite(validFrom) = validity_range.lower_bound.bound_type
+    expect Finite(validTo) = validity_range.upper_bound.bound_type
     let config =
       utils.get_config_as_data_list(
-        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
+        safe_list_at(reference_inputs, redeemer.configRefInputIndex),
         configNFTPolicyId,
         configNFTAssetName,
       )
@@ -50,22 +62,17 @@ validator pool_borrow_action(
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
     let poolInputs =
       get_inputs_from_smart_credential(
-        self.inputs,
+        inputs,
         Script(poolSpendScriptHash),
         Script(poolPolicyId),
         smartTokensSpendScriptHash,
       )
-    expect (Finite(validFrom), Finite(validTo)) =
-      (
-        self.validity_range.lower_bound.bound_type,
-        self.validity_range.upper_bound.bound_type,
-      )
     //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
     utils.indexed_all(
       poolInputs,
-      fn(index, input) {
-        expect InlineDatum(inputDatum) = input.output.datum
-        expect datum: PoolDatum = inputDatum
+      fn(index, poolInput) {
+        expect InlineDatum(inputDatum) = poolInput.output.datum
+        expect poolDatum: PoolDatum = inputDatum
         let BorrowData {
           outputWithLenderTokenIndex,
           chosenCollateralIndex,
@@ -76,11 +83,11 @@ validator pool_borrow_action(
           poolId,
           permissionedConditionWithdrawIndex,
         } = safe_list_at(redeemer.actionsForEachInput, index)
-        let inputUtxoId = utils.hash_output_ref(input.output_reference)
+        let inputUtxoId = utils.hash_output_ref(poolInput.output_reference)
         let loanOutput =
           safe_list_at(
             get_outputs_to_smart_credential(
-              self.outputs,
+              outputs,
               Script(loanSpendScriptHash),
               Script(loanPolicyId),
               smartTokensSpendScriptHash,
@@ -88,20 +95,19 @@ validator pool_borrow_action(
             index,
           )
         let outputWithLenderToken =
-          safe_list_at(self.outputs, outputWithLenderTokenIndex)
+          safe_list_at(outputs, outputWithLenderTokenIndex)
         let chosenCollateral =
-          safe_list_at(datum.collateralOptions, chosenCollateralIndex)
-
+          safe_list_at(poolDatum.collateralOptions, chosenCollateralIndex)
         expect Some(minCollateral) =
           rational.new(
-            safe_list_at(datum.minCollateral, chosenCollateralIndex),
-            safe_list_at(datum.minCollateralDivider, chosenCollateralIndex),
+            safe_list_at(poolDatum.minCollateral, chosenCollateralIndex),
+            safe_list_at(poolDatum.minCollateralDivider, chosenCollateralIndex),
           )
         let isLoanOutputValid =
-          if datum.dynamicCollateralPrice {
+          if poolDatum.dynamicCollateralPrice {
             let collateralOracleRefInput =
               safe_list_at(
-                self.reference_inputs,
+                reference_inputs,
                 chosenCollateralOracleRefInputIndex,
               )
             let chosenCollateralOracleToken = chosenCollateral.oracleTokenAsset
@@ -109,7 +115,7 @@ validator pool_borrow_action(
               retrieve_oracle_data(
                 collateralOracleRefInput.output.address.payment_credential,
                 collateralOracleRefInput.output.value,
-                self.redeemers,
+                redeemers,
                 validFrom,
                 validTo,
                 chosenCollateralOracleToken.policyId,
@@ -118,24 +124,24 @@ validator pool_borrow_action(
                 chosenCollateral.maybeAssetName,
               )
             let principalOracleRefInput =
-              safe_list_at(self.reference_inputs, principalOracleRefInputIndex)
+              safe_list_at(reference_inputs, principalOracleRefInputIndex)
             expect Some(principalOraclePriceFeed) =
               retrieve_oracle_data(
                 principalOracleRefInput.output.address.payment_credential,
                 principalOracleRefInput.output.value,
-                self.redeemers,
+                redeemers,
                 validFrom,
                 validTo,
-                datum.commonData.principalOracleAsset.policyId,
-                datum.commonData.principalOracleAsset.assetName,
-                datum.commonData.principalAsset.policyId,
-                Some(datum.commonData.principalAsset.assetName),
+                poolDatum.commonData.principalOracleAsset.policyId,
+                poolDatum.commonData.principalOracleAsset.assetName,
+                poolDatum.commonData.principalAsset.policyId,
+                Some(poolDatum.commonData.principalAsset.assetName),
               )
             validate_output_to_loan(
               loanOutput,
               loanPolicyId,
               loanSpendScriptHash,
-              datum,
+              poolDatum,
               wantedPrincipalAmount,
               chosenCollateral,
               get_needed_collateral_with_oracles(
@@ -154,7 +160,7 @@ validator pool_borrow_action(
               loanOutput,
               loanPolicyId,
               loanSpendScriptHash,
-              datum,
+              poolDatum,
               wantedPrincipalAmount,
               chosenCollateral,
               get_needed_collateral_without_oracles(
@@ -170,35 +176,32 @@ validator pool_borrow_action(
         and {
           wantedPrincipalAmount > 0,
           or {
-            datum.permissionedConditionScriptHash == constants.no_permissioned_condition,
+            poolDatum.permissionedConditionScriptHash == constants.no_permissioned_condition,
             {
               expect Pair(Script(scriptHash), _amnt) =
-                safe_list_at(
-                  self.withdrawals,
-                  permissionedConditionWithdrawIndex,
-                )
+                safe_list_at(withdrawals, permissionedConditionWithdrawIndex)
 
-              datum.permissionedConditionScriptHash == scriptHash
+              poolDatum.permissionedConditionScriptHash == scriptHash
             },
           },
-          quantity_of(input.output.value, poolPolicyId, poolId) == 1,
+          quantity_of(poolInput.output.value, poolPolicyId, poolId) == 1,
           validity_range_within_an_hour(self),
           isLoanOutputValid,
           bonds_sent_to_both_parties(
-            self.mint,
+            mint,
             outputWithLenderToken,
             borrowerBondPolicyId,
             lenderBondPolicyId,
             inputUtxoId,
-            datum.lenderBondAddress,
-            datum.lenderBondInlineDatumHash,
+            poolDatum.lenderBondAddress,
+            poolDatum.lenderBondInlineDatumHash,
           ),
           //The pool must return with the remaining liquidity even if completely emptied.
           validate_output_to_pool(
-            input.output.value,
-            safe_list_at(self.outputs, index),
-            datum,
-            input.output.address,
+            poolInput.output.value,
+            safe_list_at(outputs, index),
+            poolDatum,
+            poolInput.output.address,
             wantedPrincipalAmount,
           ),
         }
@@ -322,7 +325,7 @@ fn validate_output_to_pool(
   inputValue: Value,
   output: Output,
   datum: PoolDatum,
-  poolOutputAddress: Address,
+  poolInputAddress: Address,
   principalSpent: Int,
 ) {
   expect InlineDatum(outputDatum) = output.datum
@@ -334,7 +337,7 @@ fn validate_output_to_pool(
       -principalSpent,
     )
   let isDatumCorrect = builtin.equals_data(outputDatum, datum)
-  let correctDestination = poolOutputAddress == output.address
+  let correctDestination = poolInputAddress == output.address
   and {
     expectedOutputValue == output.value,
     correctDestination,

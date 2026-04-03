@@ -186,18 +186,16 @@ validator pool_sell_lender_position_action(
             redeemerAction.poolId,
           ) == 1,
           validity_range_within_an_hour(self),
-          //The pool must return with the remaining liquidity even if completely emptied.
           //The principal paid from the pool must at max be the total value of the sold bonds
-          and {
-            principalPaid <= lenderBondsValueInPrincipal,
-            validate_output_to_pool(
-              poolInput.output.value,
-              safe_list_at(outputs, index),
-              poolDatum,
-              poolInput.output.address,
-              principalPaid,
-            ),
-          },
+          principalPaid <= lenderBondsValueInPrincipal,
+          //The pool must return with the remaining liquidity even if completely emptied.
+          validate_output_to_pool(
+            poolInput.output.value,
+            poolOutput,
+            poolDatum,
+            poolInput.output.address,
+            principalPaid,
+          ),
         } |> fn(result) { (result, newCountedLenderBonds) }
       },
     )
