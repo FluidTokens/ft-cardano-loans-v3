@@ -16,10 +16,11 @@ validator actionValidator(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
   lenderManagerSpendScriptHash: ByteArray,
+  lenderManagerWithdrawScriptHash: ByteArray,
 ) {
   withdraw(
     redeemer: LMWithdrawAssetsWithdrawRedeemer,
-    credential: Credential,
+    _credential: Credential,
     self: Transaction,
   ) {
     let config =
@@ -34,7 +35,7 @@ validator actionValidator(
       get_inputs_from_smart_credential(
         self.inputs,
         Script(lenderManagerSpendScriptHash),
-        credential,
+        Script(lenderManagerWithdrawScriptHash),
         smartTokensSpendScriptHash,
       )
     let (lenderBondInputs, lmAssetsInputs) =

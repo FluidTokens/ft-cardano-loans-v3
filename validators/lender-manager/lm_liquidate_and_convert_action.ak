@@ -26,6 +26,7 @@ validator actionValidator(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
   lenderManagerSpendScriptHash: ByteArray,
+  lenderManagerWithdrawScriptHash: ByteArray,
   minswapPoolPolicyId: ByteArray,
   minswapPoolSpendScriptHash: ByteArray,
   minswapPoolWithdrawScriptHash: ByteArray,
@@ -35,7 +36,7 @@ validator actionValidator(
 ) {
   withdraw(
     redeemer: LMLiquidateAndConvertActionWithdrawRedeemer,
-    credential: Credential,
+    _credential: Credential,
     self: Transaction,
   ) {
     let config =
@@ -78,7 +79,7 @@ validator actionValidator(
       get_outputs_to_smart_credential(
         self.outputs,
         Script(lenderManagerSpendScriptHash),
-        credential,
+        Script(lenderManagerWithdrawScriptHash),
         smartTokensSpendScriptHash,
       )
     let minswapOrderOutputs =
