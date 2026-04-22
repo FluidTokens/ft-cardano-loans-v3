@@ -234,7 +234,7 @@ validator actionValidator(
           let receiver =
             get_smart_destination_address(
               isCIP113Pair,
-              lenderManagerSpendScriptHash,
+              lenderManagerWithdrawScriptHash,
               smartTokensSpendScriptHash,
             )
 
