@@ -295,7 +295,7 @@ fn is_loan_compatible_with_pool(
     }
   and {
     //Permissioned pools CANNOT do this action
-    poolDatum.permissionedConditionScriptHash == constants.no_permissioned_condition,
+    poolDatum.permissionedBorrowConditionScriptHash == constants.no_permissioned_condition,
     //If the loan has a higher interest rate of the pool, the pool owner is happy to receive more.
     //For Perpetuals, the current interest rate is the one we are interested in, so the loan can
     //be sold even if the original interest rate was lower than the one of the pool.

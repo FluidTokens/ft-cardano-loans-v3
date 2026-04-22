@@ -37,6 +37,11 @@ pub type LoanDatum {
   //Either the poolId or the requestId
   originId: AssetName,
   collateral: CollateralAsset,
+  //The auth that allows borrower actions
+  borrowerAuth: AuthorizationMethod,
+  //A borrower can sell his debt position or transfer it if this withdraw script validates
+  //Put "NONE" if this transfer should be always allowed
+  permissionedTransferDebtConditionScriptHash: ByteArray,
 }
 
 pub type LoanMintRedeemer {
@@ -55,6 +60,8 @@ pub type ActionType {
   ChangeCollateral
   //Borrower action
   Recast
+  //Borrower action
+  TransferDebt
 }
 
 pub type LoanWithdrawRedeemer {
@@ -67,16 +74,10 @@ pub type ClaimData {
   liquidationMode: LiquidationMode,
   //This is the absolute output index that contains the lender bond
   lenderBondOutputIndex: Int,
-  //This is the absolute ref input index that contains the borrower bond
-  borrowerBondRefInputIndex: Int,
   //If loan doesn't use oracle, this is not used
   collateralOracleRefInputIndex: Int,
   //If loan doesn't use oracle, this is not used
   principalOracleRefInputIndex: Int,
-  //Position in Value of the borrower bond PolicyId
-  borrowerBondRefInputPolicyIdIndex: Int,
-  //Position in Value of the borrower bond AssetName
-  borrowerBondRefInputAssetNameIndex: Int,
   //Used only when an auction must start as part of liquidation
   lenderAuth: AuthorizationMethod,
   //In case of partialLiquidation, it's collateralValue - remainingDebt expressed in principal or collateral currency
@@ -85,11 +86,12 @@ pub type ClaimData {
   loanId: ByteArray,
   //Calculated remaining debt
   remainingDebt: Int,
+  //Liquidation can be performed if this withdraw script validates
+  //Put "NONE" if liquidation should be always allowed
+  permissionedLiquidationConditionWithdrawIndex: Int,
 }
 
 pub type RepayData {
-  //This is the absolute output index that contains the borrower bond
-  borrowerBondOutputIndex: Int,
   lenderBondRefInputIndex: Int,
   lenderBondRefInputPolicyIdIndex: Int,
   lenderBondRefInputAssetNameIndex: Int,
@@ -99,7 +101,6 @@ pub type RepayData {
 }
 
 pub type ChangeCollateralData {
-  borrowerBondOutputIndex: Int,
   //Units of collateral that remain in the loan after the change
   newCollateralAmount: Int,
   loanId: ByteArray,
@@ -108,13 +109,17 @@ pub type ChangeCollateralData {
 }
 
 pub type RecastData {
-  borrowerBondOutputIndex: Int,
   lenderBondRefInputIndex: Int,
   lenderBondRefInputPolicyIdIndex: Int,
   lenderBondRefInputAssetNameIndex: Int,
   //In principal units
   amountPaid: Int,
   loanId: ByteArray,
+}
+
+pub type TransferDebtData {
+  newAuth: AuthorizationMethod,
+  permissionedConditionWithdrawIndex: Int,
 }
 
 pub type LoanClaimActionWithdrawRedeemer {
@@ -135,6 +140,11 @@ pub type LoanChangeCollateralActionWithdrawRedeemer {
 pub type LoanRecastActionWithdrawRedeemer {
   configRefInputIndex: Int,
   actionsForEachInput: List<RecastData>,
+}
+
+pub type LoanTransferDebtActionWithdrawRedeemer {
+  configRefInputIndex: Int,
+  actionsForEachInput: List<TransferDebtData>,
 }
 
 pub type LoanRepaymentData {

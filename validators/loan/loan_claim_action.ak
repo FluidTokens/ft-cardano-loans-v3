@@ -47,7 +47,6 @@ validator loan_claim_action(
       builtin.un_b_data(utils.safe_list_at(config, 0))
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
-    let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
     let dutchAuctionSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 16))
@@ -86,14 +85,8 @@ validator loan_claim_action(
             self.validity_range.lower_bound.bound_type,
             self.validity_range.upper_bound.bound_type,
           )
-        let (lenderBondOutput, borrowerBondRefInput) =
-          (
-            utils.safe_list_at(self.outputs, inputAction.lenderBondOutputIndex),
-            utils.safe_list_at(
-              self.reference_inputs,
-              inputAction.borrowerBondRefInputIndex,
-            ),
-          )
+        let lenderBondOutput =
+          utils.safe_list_at(self.outputs, inputAction.lenderBondOutputIndex)
         let isPerpetualLoan =
           when datum.repaymentMode is {
             PerpetualLoan { .. } -> True
@@ -112,13 +105,6 @@ validator loan_claim_action(
         and {
           inputAction.liquidationMode == datum.liquidationMode,
           quantity_of(input.output.value, loanPolicyId, inputAction.loanId) == 1,
-          utils.efficient_quantity_of(
-            borrowerBondRefInput,
-            borrowerBondPolicyId,
-            inputAction.borrowerBondRefInputPolicyIdIndex,
-            inputAction.loanId,
-            inputAction.borrowerBondRefInputAssetNameIndex,
-          ) == 1,
           quantity_of(self.mint, loanPolicyId, inputAction.loanId) == -1,
           is_nft_in_output(
             lenderBondPolicyId,
@@ -157,7 +143,6 @@ validator loan_claim_action(
                 validate_output_to_dutch_auction(
                   input,
                   dutchAuctionOutput,
-                  borrowerBondRefInput.output.address,
                   lenderBondOutput.address,
                   inputAction.lenderAuth,
                   validTo,
@@ -180,6 +165,7 @@ validator loan_claim_action(
               lTVDivider,
               partialLiquidationPenaltyPerMille,
               equityInPrincipalCurrency,
+              permissionedLiquidationConditionScriptHash,
             } -> {
               let principalAmountAsRational =
                 rational.from_int(datum.principalAmount)
@@ -232,7 +218,18 @@ validator loan_claim_action(
               let collateralAmount =
                 get_collateral_amount(input.output.value, datum.collateral)
               expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
-              let borrowerBondAddress = borrowerBondRefInput.output.address
+              let liquidationAllowed = or {
+                  permissionedLiquidationConditionScriptHash == constants.no_permissioned_condition,
+                  {
+                    expect Pair(Script(scriptHash), _amnt) =
+                      safe_list_at(
+                        self.withdrawals,
+                        inputAction.permissionedLiquidationConditionWithdrawIndex,
+                      )
+
+                    permissionedLiquidationConditionScriptHash == scriptHash
+                  },
+                }
               and {
                 //Ensure remainingDebt value in redeemer is correct
                 remainingDebt == inputAction.remainingDebt,
@@ -285,8 +282,8 @@ validator loan_claim_action(
                       utils.safe_list_at(
                         get_outputs_to_smart_credential(
                           self.outputs,
-                          borrowerBondAddress.payment_credential,
-                          borrowerBondAddress.payment_credential,
+                          borrower.payment_credential,
+                          borrower.payment_credential,
                           smartTokensSpendScriptHash,
                         ),
                         index,
@@ -316,6 +313,7 @@ validator loan_claim_action(
                     )
                   },
                 },
+                liquidationAllowed,
               }
             }
           },
@@ -332,7 +330,6 @@ validator loan_claim_action(
 fn validate_output_to_dutch_auction(
   loanInput: Input,
   dutchAuctionOutput: Output,
-  borrowerAddress: Address,
   lenderAddress: Address,
   lenderAuth: AuthorizationMethod,
   validTo: Int,
@@ -404,7 +401,6 @@ fn equity_sent_to_borrower(
   loanInputOutputReference: OutputReference,
   equityOutput: Output,
   equity: Int,
-  borrowerBondAsset: Asset,
   equityAssetPolicyId: ByteArray,
   equityAssetName: AssetName,
   repaymentReceipts: Bool,

@@ -4,7 +4,7 @@
 //Forgiveness in case of default is accomplished by sending the collateral back to the borrower in case of Full Collateral Claim.
 //If the penalty fee should be sent to an address different from the lender, then the lender nft must be locked in a dedicated contract that says so.
 //Loan refinancing is done spending the new loan and the old loan in the same tx.
-use cardano/address.{Address}
+use cardano/address.{Address, StakeCredential}
 use cardano/transaction.{OutputReference}
 use fluidtokens/types/general.{
   Asset, AuthorizationMethod, CollateralAsset, LiquidationMode, RepaymentMode,
@@ -35,14 +35,22 @@ pub type CommonData {
   penaltyFeeForLateRepayment: Int,
   //If true, each payment for claim, recast and repay must be accompanied by a minted repayment receipt NFT
   repaymentReceipts: Bool,
+  //A borrower can sell his debt position or transfer it if this withdraw script validates
+  //Put "NONE" if this transfer should be always allowed
+  permissionedTransferDebtConditionScriptHash: ByteArray,
 }
 
 pub type PoolDatum {
-  //Permissioned pools use this field to specify an extra Withdraw validator to force the conditions of the Borrow action.
+  //Permissioned pools use this field to specify an extra Withdraw validator to force the conditions 
+  //of the Borrow action.
   //Put "NONE" if it's a permissionless pool
-  permissionedConditionScriptHash: ByteArray,
-  //Extend the pool datum for cases like permissioned pools. It will be parsed properly depending on specific use case.
-  extraData: Data,
+  permissionedBorrowConditionScriptHash: ByteArray,
+  //Extend the pool datum for cases like permissioned pools. 
+  //It will be parsed properly depending on specific use case.
+  //1st is data for permissioned borrow
+  //2nd is data for permissioned debt transfer
+  //3rd is data for permissioned liquidation
+  extraData: List<Data>,
   commonData: CommonData,
   //The auth that can cancel the pool
   lenderAuth: AuthorizationMethod,
@@ -90,7 +98,10 @@ pub type CancelData {
 }
 
 pub type BorrowData {
-  borrowerAddress: Address,
+  //Auth that can do borrower actions
+  borrowerAuth: AuthorizationMethod,
+  //Stake credentials that are assigned to the loan utxo
+  borrowerStakeCredential: Option<StakeCredential>,
   outputWithLenderTokenIndex: Int,
   //Ref input index of the principal oracle, if principal is ADA this must be -1
   principalOracleRefInputIndex: Int,

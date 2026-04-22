@@ -7,6 +7,7 @@ use cardano/assets.{
   Value, ada_policy_id, add, flatten, quantity_of, without_lovelace,
 }
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/finance.{can_liquidate, get_remaining_debt}
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
@@ -41,7 +42,6 @@ validator loan_change_collateral_action(
       builtin.un_b_data(utils.safe_list_at(config, 0))
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
-    let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let loanInputs =
       get_inputs_from_smart_credential(
         self.inputs,
@@ -66,8 +66,7 @@ validator loan_change_collateral_action(
                 self.validity_range.lower_bound.bound_type,
                 self.validity_range.upper_bound.bound_type,
               )
-            let borrowerBondOutput =
-              safe_list_at(self.outputs, inputAction.borrowerBondOutputIndex)
+
             let loanOutput =
               utils.safe_list_at(
                 get_outputs_to_smart_credential(
@@ -130,10 +129,14 @@ validator loan_change_collateral_action(
               )
             and {
               quantity_of(input.output.value, loanPolicyId, inputAction.loanId) == 1,
-              is_nft_in_output(
-                borrowerBondPolicyId,
-                inputAction.loanId,
-                borrowerBondOutput,
+              authorize_action(
+                create_auth(
+                  datum.borrowerAuth,
+                  self.inputs,
+                  self.withdrawals,
+                  self.extra_signatories,
+                  self.mint,
+                ),
               ),
               can_liquidate(
                 remainingDebtAsRational,

@@ -9,7 +9,7 @@ pub type BondRedeemer {
   inputRefs: List<OutputReference>,
 }
 
-//borrower == 0
+//borrower == 0. Not used anymore!
 //lender == 1
 validator bond(_bondType: Int) {
   mint(redeemer: BondRedeemer, policy_id: PolicyId, self: Transaction) {

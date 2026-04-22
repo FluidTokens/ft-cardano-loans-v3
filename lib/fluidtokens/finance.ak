@@ -8,7 +8,6 @@ use fluidtokens/types/general.{
 }
 use fluidtokens/types/oracle.{
   Aggregated, Dedicated, OraclePriceFeed, Pooled, PriceDataCharlie,
-  PriceDataOrcfax,
 }
 use fluidtokens/utils.{quantity_of_policy_id}
 
@@ -46,11 +45,6 @@ fn get_token_amount_in_lovelace(
         rational.new(price_in_lovelaces, price_denominator)
       rational.mul(tokenPrice, tokenAmount)
     }
-    PriceDataOrcfax { price_in_lovelaces, price_denominator, .. } -> {
-      expect Some(tokenPrice) =
-        rational.new(price_in_lovelaces, price_denominator)
-      rational.mul(tokenPrice, tokenAmount)
-    }
   }
 }
 
@@ -73,12 +67,6 @@ fn get_lovelace_amount_in_token_currency(
       tokensAmount
     }
     PriceDataCharlie { price_in_lovelaces, price_denominator, .. } -> {
-      expect Some(tokenPrice) =
-        rational.new(price_in_lovelaces, price_denominator)
-      expect Some(tokensAmount) = rational.div(lovelaces, tokenPrice)
-      tokensAmount
-    }
-    PriceDataOrcfax { price_in_lovelaces, price_denominator, .. } -> {
       expect Some(tokenPrice) =
         rational.new(price_in_lovelaces, price_denominator)
       expect Some(tokensAmount) = rational.div(lovelaces, tokenPrice)

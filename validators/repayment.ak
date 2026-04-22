@@ -8,7 +8,7 @@ use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/types/general.{Asset, Liquidation}
 use fluidtokens/types/loan.{
   ChangeCollateral, Claim, ClaimData, LoanClaimActionWithdrawRedeemer,
-  LoanWithdrawRedeemer, Recast, Repay,
+  LoanWithdrawRedeemer, Recast, Repay, TransferDebt,
 }
 use fluidtokens/types/repayment.{
   RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
@@ -115,6 +115,7 @@ validator repayment(
                 list.push(result, Pair(repaymentAssetName, 1))
               },
             )
+          TransferDebt -> fail
         }
       }
 

@@ -4,7 +4,7 @@ use aiken/crypto
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use aiken/primitive/bytearray
-use cardano/address.{Address, Credential, Script}
+use cardano/address.{Address, Credential, Script, StakeCredential}
 use cardano/assets.{Value, ada_policy_id, add, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/constants
@@ -12,7 +12,9 @@ use fluidtokens/finance.{
   get_needed_collateral_with_oracles, get_needed_collateral_without_oracles,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
-use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
+use fluidtokens/types/general.{
+  Asset, AuthorizationMethod, CollateralAsset, Liquidation,
+}
 use fluidtokens/types/loan.{LoanDatum}
 use fluidtokens/types/pool.{
   BorrowData, PoolBorrowActionWithdrawRedeemer, PoolDatum,
@@ -39,7 +41,6 @@ validator pool_borrow_action(
       outputs,
       reference_inputs,
       redeemers,
-      mint,
       validity_range,
       withdrawals,
       ..
@@ -58,7 +59,6 @@ validator pool_borrow_action(
     let poolPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
-    let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
     let poolInputs =
       get_inputs_from_smart_credential(
@@ -74,12 +74,13 @@ validator pool_borrow_action(
         expect InlineDatum(inputDatum) = poolInput.output.datum
         expect poolDatum: PoolDatum = inputDatum
         let BorrowData {
+          borrowerAuth,
+          borrowerStakeCredential,
           outputWithLenderTokenIndex,
           chosenCollateralIndex,
           wantedPrincipalAmount,
           chosenCollateralOracleRefInputIndex,
           principalOracleRefInputIndex,
-          borrowerAddress,
           poolId,
           permissionedConditionWithdrawIndex,
         } = safe_list_at(redeemer.actionsForEachInput, index)
@@ -152,8 +153,9 @@ validator pool_borrow_action(
               ),
               inputUtxoId,
               validTo,
-              borrowerAddress,
               poolId,
+              borrowerAuth,
+              borrowerStakeCredential,
             )
           } else {
             validate_output_to_loan(
@@ -169,28 +171,27 @@ validator pool_borrow_action(
               ),
               inputUtxoId,
               validTo,
-              borrowerAddress,
               poolId,
+              borrowerAuth,
+              borrowerStakeCredential,
             )
           }
         and {
           wantedPrincipalAmount > 0,
           or {
-            poolDatum.permissionedConditionScriptHash == constants.no_permissioned_condition,
+            poolDatum.permissionedBorrowConditionScriptHash == constants.no_permissioned_condition,
             {
               expect Pair(Script(scriptHash), _amnt) =
                 safe_list_at(withdrawals, permissionedConditionWithdrawIndex)
 
-              poolDatum.permissionedConditionScriptHash == scriptHash
+              poolDatum.permissionedBorrowConditionScriptHash == scriptHash
             },
           },
           quantity_of(poolInput.output.value, poolPolicyId, poolId) == 1,
           validity_range_within_an_hour(self),
           isLoanOutputValid,
-          bonds_sent_to_both_parties(
-            mint,
+          bond_sent_to_lender(
             outputWithLenderToken,
-            borrowerBondPolicyId,
             lenderBondPolicyId,
             inputUtxoId,
             poolDatum.lenderBondAddress,
@@ -224,8 +225,9 @@ fn validate_output_to_loan(
   minNeededCollateralAmount: Int,
   loanId: ByteArray,
   end: Int,
-  borrowerAddress: Address,
   poolId: ByteArray,
+  borrowerAuth: AuthorizationMethod,
+  borrowerStakeCredential: Option<StakeCredential>,
 ) -> Bool {
   let containsEnoughCollateral =
     when chosenCollateral.maybeAssetName is {
@@ -260,6 +262,8 @@ fn validate_output_to_loan(
       lendDate: end,
       repaidInstallments: 0,
       doneRecasts: 0,
+      borrowerAuth,
+      permissionedTransferDebtConditionScriptHash: poolDatum.commonData.permissionedTransferDebtConditionScriptHash,
     }
 
   let isLiquidationCorrectlySet =
@@ -273,7 +277,7 @@ fn validate_output_to_loan(
 
   let correctDestination =
     if is_output_to_spend_validator(output, loanSpendScriptHash) {
-      output.address.stake_credential == borrowerAddress.stake_credential
+      output.address.stake_credential == borrowerStakeCredential
     } else {
       //outputs have been already filtered at the beginning
       True
@@ -302,10 +306,8 @@ fn validate_output_to_loan(
 //- the AssetName is hash of a tx input
 //- the quantity is strictly 1
 //We force that the lender output contains a InlineDatum to allow PlutusV2 contracts to use it
-fn bonds_sent_to_both_parties(
-  mintedValue: Value,
+fn bond_sent_to_lender(
   outputWithLenderToken: Output,
-  borrowerBondPolicyId: ByteArray,
   lenderBondPolicyId: ByteArray,
   bondId: ByteArray,
   lenderBondAddress: Address,
@@ -315,7 +317,6 @@ fn bonds_sent_to_both_parties(
   and {
     outputWithLenderToken.address == lenderBondAddress,
     crypto.blake2b_256(builtin.serialise_data(outputWithLenderTokenDatum)) == lenderBondInlineDatumHash,
-    quantity_of(mintedValue, borrowerBondPolicyId, bondId) == 1,
     quantity_of(outputWithLenderToken.value, lenderBondPolicyId, bondId) == 1,
     length(flatten(outputWithLenderToken.value)) <= 5,
   }

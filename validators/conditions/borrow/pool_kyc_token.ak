@@ -6,11 +6,12 @@ use aiken/crypto.{
   blake2b_224, blake2b_256, verify_ed25519_signature,
 }
 use aiken/interval.{Finite, Interval, IntervalBound}
-use cardano/address.{Address, Credential, Script}
+use cardano/address.{Credential, Script}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, ValidityRange,
   Withdraw,
 }
+use fluidtokens/types/general.{CardanoSignature}
 use fluidtokens/types/pool.{
   Borrow, BorrowData, PoolBorrowActionWithdrawRedeemer, PoolWithdrawRedeemer,
 }
@@ -92,7 +93,7 @@ validator kyc_token(
         poolInputsAndActions,
         fn(inputAndAction) {
           expect InlineDatum(inputDatum) = inputAndAction.1st.output.datum
-          //First field of datum is permissionedConditionScriptHash
+          //First field of datum is permissionedBorrowConditionScriptHash
           (
             inputDatum
               |> builtin.unconstr_fields
@@ -107,17 +108,20 @@ validator kyc_token(
       poolInputsAndActionsThatNeedThisCondition,
       fn(index, inputAndAction) {
         expect InlineDatum(inputDatum) = inputAndAction.1st.output.datum
-        //Second field of datum is extraData
+        //Second field of datum is extraData, retrieving first element for permissioned borrowing
         let extraData =
           inputDatum
             |> builtin.unconstr_fields
             |> builtin.tail_list
             |> builtin.head_list
+            |> builtin.un_list_data
+            |> builtin.head_list
         let compliance = safe_list_at(redeemer.complianceForEachInput, index)
 
         expect
           compliance.token.origin_output_reference == inputAndAction.1st.output_reference
-        let BorrowData { borrowerAddress, .. } = inputAndAction.2nd
+        let BorrowData { borrowerAuth, .. } = inputAndAction.2nd
+        expect CardanoSignature { hash } = borrowerAuth
 
         expect Interval {
           lower_bound: IntervalBound { bound_type: Finite(tx_from), .. },
@@ -135,7 +139,7 @@ validator kyc_token(
         expect Some(..) =
           list.find(whitelisted_oracles, fn(o) { o == oracle_key_hash })
         and {
-          address.VerificationKey(compliance.token.user_key) == borrowerAddress.payment_credential,
+          compliance.token.user_key == hash,
           //The hash of the Borrow action must be the one in the compliance token
           blake2b_256(serialise(inputAndAction.2nd)) == compliance.token.borrow_action_hash,
           //The valid range of the token entirely contains the valid range of the transaction

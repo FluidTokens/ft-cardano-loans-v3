@@ -18,14 +18,8 @@ pub const converted_to_liquidity_action = "converted_to_liquidity"
 
 pub const charlie_identifier_asset_name = "OracleFeed"
 
-pub const orcfax_identifier_pointer_asset_name = #"000de140"
-
-//feed is empty
-pub const orcfax_identifier_feed_asset_name = ""
-
-//7 hours max time heartbeat
-pub const max_orcfax_tolerance = 25200000
-
 pub const hour_to_millis = 3600000
 
 pub const no_oracle_token_asset = Asset { policyId: "NONE", assetName: "NONE" }
+
+pub const pyth_policy_id = "TODO"

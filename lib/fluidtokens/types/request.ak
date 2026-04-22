@@ -5,9 +5,13 @@ use fluidtokens/types/pool.{CommonData}
 
 pub type RequestDatum {
   //Same considerations of PoolDatum
-  permissionedConditionScriptHash: ByteArray,
-  //Same considerations of PoolDatum
-  extraData: Data,
+  permissionedLendConditionScriptHash: ByteArray,
+  //Extend the pool datum for cases like permissioned pools. 
+  //It will be parsed properly depending on specific use case.
+  //1st is data for permissioned lend
+  //2nd is data for permissioned debt transfer
+  //3rd is data for permissioned liquidation
+  extraData: List<Data>,
   commonData: CommonData,
   borrowerAuth: AuthorizationMethod,
   borrowerAddress: Address,

@@ -5,6 +5,7 @@ pub type ConfigDatum {
   adminCredential: Credential,
   poolPolicyId: ByteArray,
   requestPolicyId: ByteArray,
+  //TODO Remove but be careful about builtin traversals
   borrowerBondPolicyId: ByteArray,
   lenderBondPolicyId: ByteArray,
   loanPolicyId: ByteArray,
@@ -26,4 +27,5 @@ pub type ConfigDatum {
   poolCancelActionScriptHash: ByteArray,
   poolBorrowActionScriptHash: ByteArray,
   poolSellLenderPositionActionScriptHash: ByteArray,
+  loanTransferDebtActionScriptHash: ByteArray,
 }

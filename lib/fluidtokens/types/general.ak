@@ -69,5 +69,8 @@ pub type LiquidationMode {
     // If `true`, equity is computed in principal currency.
     // If `false`, equity is computed in collateral currency.
     equityInPrincipalCurrency: Bool,
+    //A liquidator can liquidate the loan only if this withdraw script validates
+    //Put "NONE" if anyone can liquidate the loan
+    permissionedLiquidationConditionScriptHash: ByteArray,
   }
 }

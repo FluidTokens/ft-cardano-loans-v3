@@ -52,7 +52,7 @@ validator specific_lenders(
           expect InlineDatum(inputDatum) = inputAndAction.1st.output.datum
           when inputAndAction.2nd is {
             Lend { .. } ->
-              //First field of datum is permissionedConditionScriptHash
+              //First field of datum is permissionedLendConditionScriptHash
               (
                 inputDatum
                   |> builtin.unconstr_fields
@@ -69,11 +69,13 @@ validator specific_lenders(
       requestInputsAndActionsThatNeedThisCondition,
       fn(index, inputAndAction) {
         expect InlineDatum(inputDatum) = inputAndAction.1st.output.datum
-        //Second field of datum is extraData
+        //Second field of datum is extraData, retrieving first element for permissioned lending
         let extraData =
           inputDatum
             |> builtin.unconstr_fields
             |> builtin.tail_list
+            |> builtin.head_list
+            |> builtin.un_list_data
             |> builtin.head_list
         expect permissionedDatum: PermissionedDatum = extraData
         let authorizationMethodIndex =

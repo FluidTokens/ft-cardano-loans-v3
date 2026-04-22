@@ -7,6 +7,7 @@ use cardano/assets.{ada_policy_id, flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
+use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/constants
 use fluidtokens/finance.{
   get_next_installment_amount, get_remaining_debt, is_repayment_late,
@@ -42,7 +43,6 @@ validator loan_repay_action(
       builtin.un_b_data(utils.safe_list_at(config, 0))
     let loanSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 10))
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
-    let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
     let repaymentPolicyId = builtin.un_b_data(utils.safe_list_at(config, 7))
     let loanInputs =
@@ -66,8 +66,6 @@ validator loan_repay_action(
           rational.new(datum.interestRate, 10000)
 
         expect Finite(validTo) = self.validity_range.upper_bound.bound_type
-        let borrowerBondOutput =
-          safe_list_at(self.outputs, inputAction.borrowerBondOutputIndex)
         let lenderBondRefInput =
           safe_list_at(
             self.reference_inputs,
@@ -137,10 +135,14 @@ validator loan_repay_action(
             inputAction.loanId,
             inputAction.lenderBondRefInputAssetNameIndex,
           ) == 1,
-          is_nft_in_output(
-            borrowerBondPolicyId,
-            inputAction.loanId,
-            borrowerBondOutput,
+          authorize_action(
+            create_auth(
+              datum.borrowerAuth,
+              self.inputs,
+              self.withdrawals,
+              self.extra_signatories,
+              self.mint,
+            ),
           ),
           validate_repayment_output(
             loanInputOutputReference: input.output_reference,

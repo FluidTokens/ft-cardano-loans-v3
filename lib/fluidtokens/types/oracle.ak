@@ -43,13 +43,6 @@ pub type OraclePriceFeed {
     price_in_lovelaces: Int,
     price_denominator: Int,
   }
-  PriceDataOrcfax {
-    pointer_ref_input_index: Int,
-    provider_ref_input_index: Int,
-    common: CommonFeedData,
-    price_in_lovelaces: Int,
-    price_denominator: Int,
-  }
 }
 
 //Charlie 3 is index 0 because defined by standard
@@ -86,31 +79,3 @@ pub type OracleDatum {
 //For each token we support from charlie3 we get have a PolicyId from charlie3 and also a decimals of the token 
 pub type CharlieTokenSpecs =
   Pairs<PolicyId, Pairs<AssetName, (PolicyId, Int)>>
-
-//----------- ORCFAX LIBRARY -----------------
-
-//FSP Datum, the contract that points at the feed
-pub type FspDat =
-  ByteArray
-
-//the FS feed Datum is of type RationalDatum
-
-pub type OrcfaxRational {
-  num: Int,
-  denom: Int,
-}
-
-pub type RationalStatement {
-  feed_id: ByteArray,
-  created_at: Int,
-  body: OrcfaxRational,
-}
-
-pub type RationalDatum {
-  statement: RationalStatement,
-  context: Data,
-}
-
-//Each token has a FSP pointer hash policy AND decimals but also FeedID
-pub type OrcfaxTokenSpecs =
-  Pairs<PolicyId, Pairs<AssetName, (PolicyId, Int, ByteArray)>>

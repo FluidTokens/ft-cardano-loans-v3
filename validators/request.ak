@@ -60,7 +60,6 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
     let requestSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 9))
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
-    let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
     let requestInputs =
       get_inputs_from_smart_credential(
@@ -118,7 +117,6 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
               loanSpendScriptHash,
               loanPolicyId,
               smartTokensSpendScriptHash,
-              borrowerBondPolicyId,
               lenderBondPolicyId,
             )
         }
@@ -255,7 +253,6 @@ fn check_lend(
   loanSpendScriptHash: ByteArray,
   loanPolicyId: ByteArray,
   smartTokensSpendScriptHash: ByteArray,
-  borrowerBondPolicyId: ByteArray,
   lenderBondPolicyId: ByteArray,
 ) {
   expect (Finite(validFrom), Finite(validTo)) =
@@ -358,23 +355,22 @@ fn check_lend(
     }
   and {
     or {
-      datum.permissionedConditionScriptHash == constants.no_permissioned_condition,
+      datum.permissionedLendConditionScriptHash == constants.no_permissioned_condition,
       {
         expect Pair(Script(scriptHash), _amnt) =
           safe_list_at(self.withdrawals, permissionedConditionWithdrawIndex)
 
-        datum.permissionedConditionScriptHash == scriptHash
+        datum.permissionedLendConditionScriptHash == scriptHash
       },
     },
     quantity_of(input.output.value, requestPolicyId, requestId) == 1,
     quantity_of(self.mint, requestPolicyId, requestId) == -1,
     validity_range_within_an_hour(self),
     isLoanOutputValid,
-    bonds_sent_to_both_parties_and_principal_sent_to_borrower(
+    bond_sent_to_lender_and_principal_sent_to_borrower(
       input.output_reference,
       self.mint,
       outputWithBorrowerToken,
-      borrowerBondPolicyId,
       lenderBondPolicyId,
       inputUtxoId,
       datum.borrowerAddress,
@@ -415,11 +411,10 @@ fn validate_collateral_less_penalty_output(
 //- the AssetName is hash of a tx input
 //- the quantity is strictly 1
 //We force that the borrower output contains a InlineDatum to allow PlutusV2 contracts to use it
-fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
+fn bond_sent_to_lender_and_principal_sent_to_borrower(
   requestRef: OutputReference,
   mintedValue: Value,
   outputWithBorrowerToken: Output,
-  borrowerBondPolicyId: ByteArray,
   lenderBondPolicyId: ByteArray,
   bondId: ByteArray,
   borrowerAddress: Address,
@@ -430,7 +425,6 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
   and {
     outputWithBorrowerToken.address == borrowerAddress,
     outputWithBorrowerToken.datum == InlineDatum(requestRef),
-    quantity_of(outputWithBorrowerToken.value, borrowerBondPolicyId, bondId) == 1,
     quantity_of(
       outputWithBorrowerToken.value,
       principalAsset.policyId,
@@ -497,6 +491,8 @@ fn validate_output_to_loan(
       lendDate: end,
       repaidInstallments: 0,
       doneRecasts: 0,
+      borrowerAuth: requestDatum.borrowerAuth,
+      permissionedTransferDebtConditionScriptHash: requestDatum.commonData.permissionedTransferDebtConditionScriptHash,
     }
 
   let isLiquidationCorrectlySet =

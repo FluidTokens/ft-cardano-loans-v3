@@ -6,6 +6,7 @@ use cardano/assets.{PolicyId, tokens}
 use cardano/transaction.{Input, Output, Transaction, Withdraw}
 use fluidtokens/types/loan.{
   ChangeCollateral, Claim, LoanMintRedeemer, LoanWithdrawRedeemer, Recast, Repay,
+  TransferDebt,
 } as l
 use fluidtokens/types/pool.{Borrow, PoolWithdrawRedeemer}
 use fluidtokens/types/request.{Lend, RequestWithdrawRedeemer}
@@ -39,6 +40,8 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
       builtin.un_b_data(utils.safe_list_at(config, 13))
     let loanRecastActionScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 14))
+    let loanTransferDebtActionScriptHash =
+      builtin.un_b_data(utils.safe_list_at(config, 26))
 
     let actionWithdrawScriptHash =
       when redeemer.actionType is {
@@ -46,6 +49,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
         Repay { .. } -> loanRepayActionScriptHash
         ChangeCollateral { .. } -> loanChangeCollateralActionScriptHash
         Recast { .. } -> loanRecastActionScriptHash
+        TransferDebt { .. } -> loanTransferDebtActionScriptHash
       }
 
     list.any(
