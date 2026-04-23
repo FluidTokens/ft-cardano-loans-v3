@@ -1,22 +1,17 @@
 use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
-use cardano/address.{Credential, Script}
-use cardano/assets.{PolicyId, quantity_of, tokens}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
-use fluidtokens/authorizer.{authorize_action, create_auth}
-use fluidtokens/types/general.{Asset, Liquidation}
+use cardano/address.{Script}
+use cardano/assets.{PolicyId, tokens}
+use cardano/transaction.{Input, Transaction, Withdraw}
+use fluidtokens/types/general.{Liquidation}
 use fluidtokens/types/loan.{
   ChangeCollateral, Claim, ClaimData, LoanClaimActionWithdrawRedeemer,
   LoanWithdrawRedeemer, Recast, Repay,
 }
-use fluidtokens/types/repayment.{
-  RepaymentDatum, RepaymentDatumWithHash, RepaymentDatumWithToken,
-  RepaymentMintRedeemer, RepaymentWithdrawRedeemer, WithdrawWithHash,
-  WithdrawWithToken,
-} as r
-use fluidtokens/utils.{is_nft_in_output, quantity_of_policy_id, safe_list_at}
-use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
+use fluidtokens/types/repayment.{RepaymentMintRedeemer} as r
+use fluidtokens/utils.{safe_list_at}
+use smart_tokens/utils as st_utils
 
 validator repayment(
   configNFTPolicyId: PolicyId,
@@ -122,84 +117,6 @@ validator repayment(
     } else {
       True
     }
-  }
-
-  //WARNING: This is OLD, the repayment doesn't go here anymore. This is legacy unused code kept to avoid changing the script hash
-  withdraw(
-    redeemer: RepaymentWithdrawRedeemer,
-    credential: Credential,
-    self: Transaction,
-  ) {
-    expect Script(policyId) = credential
-    let config =
-      utils.get_config_as_data_list(
-        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
-        configNFTPolicyId,
-        configNFTAssetName,
-      )
-    let smartTokensSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(config, 0))
-    let repaymentSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(config, 15))
-    let repaymentInputs =
-      get_inputs_from_smart_credential(
-        self.inputs,
-        Script(repaymentSpendScriptHash),
-        credential,
-        smartTokensSpendScriptHash,
-      )
-    //As we loop through the inputs we DO NOT need to ensure that the number of actions is equal to the number of inputs
-    list.indexed_foldr(
-      repaymentInputs,
-      True,
-      fn(index, input, result) {
-        //As all inputs must return True, if any of previous input returned False, then fail
-        //The last input is not checked but will return its value at the end, so if False withdraw will fail
-        expect result
-
-        expect InlineDatum(inputDatum) = input.output.datum
-        expect datum: RepaymentDatum = inputDatum
-        let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
-
-        let repaymentId = redeemerAction.2nd
-        //Either the utxo doesn't have a repayment NFT OR it burns it
-        let eventualRepaymentTokenBurnt = or {
-            quantity_of_policy_id(input.output.value, policyId) == 0,
-            and {
-              quantity_of(input.output.value, policyId, repaymentId) == 1,
-              quantity_of(self.mint, policyId, repaymentId) == -1,
-            },
-          }
-
-        and {
-          eventualRepaymentTokenBurnt,
-          when redeemerAction.1st is {
-            WithdrawWithToken { tokenOutputIndex } -> {
-              expect RepaymentDatumWithToken { ownerAsset, .. } = datum
-              let tokenOutput =
-                utils.safe_list_at(self.outputs, tokenOutputIndex)
-              is_nft_in_output(
-                ownerAsset.policyId,
-                ownerAsset.assetName,
-                tokenOutput,
-              )
-            }
-            WithdrawWithHash -> {
-              expect RepaymentDatumWithHash { ownerAuth, .. } = datum
-              authorize_action(
-                create_auth(
-                  ownerAuth,
-                  self.inputs,
-                  self.withdrawals,
-                  self.extra_signatories,
-                  self.mint,
-                ),
-              )
-            }
-          },
-        }
-      },
-    )
   }
 
   else(_) {

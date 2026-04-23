@@ -31,6 +31,8 @@ use smart_tokens/utils.{
 validator loan_claim_action(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
+  lenderManagerSpendScriptHash: ByteArray,
+  lenderManagerWithdrawScriptHash: ByteArray,
 ) {
   withdraw(
     redeemer: LoanClaimActionWithdrawRedeemer,
@@ -232,7 +234,6 @@ validator loan_claim_action(
               let collateralAmount =
                 get_collateral_amount(input.output.value, datum.collateral)
               expect Some(ltvAsRational) = rational.new(lTV, lTVDivider)
-              let borrowerBondAddress = borrowerBondRefInput.output.address
               and {
                 //Ensure remainingDebt value in redeemer is correct
                 remainingDebt == inputAction.remainingDebt,
@@ -285,8 +286,8 @@ validator loan_claim_action(
                       utils.safe_list_at(
                         get_outputs_to_smart_credential(
                           self.outputs,
-                          borrowerBondAddress.payment_credential,
-                          borrowerBondAddress.payment_credential,
+                          Script(lenderManagerSpendScriptHash),
+                          Script(lenderManagerWithdrawScriptHash),
                           smartTokensSpendScriptHash,
                         ),
                         index,
