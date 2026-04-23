@@ -11,7 +11,9 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, ValidityRange,
   Withdraw,
 }
-use fluidtokens/types/pool.{Borrow, PoolWithdrawRedeemer}
+use fluidtokens/types/pool.{
+  Borrow, BorrowData, PoolBorrowActionWithdrawRedeemer, PoolWithdrawRedeemer,
+}
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 
@@ -42,12 +44,14 @@ pub type ComplianceToken {
 
 pub type KycTokenWithdrawRedeemer {
   poolWithdrawRedeemerIndex: Int,
+  poolBorrowWithdrawRedeemerIndex: Int,
   complianceForEachInput: List<ComplianceToken>,
 }
 
 validator kyc_token(
   poolPolicyId: ByteArray,
   poolSpendScriptHash: ByteArray,
+  poolBorrowActionScriptHash: ByteArray,
   smartTokensSpendScriptHash: ByteArray,
 ) {
   withdraw(
@@ -60,7 +64,18 @@ validator kyc_token(
     let poolWithdrawRedeemer =
       safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
     expect poolWithdrawRedeemer.1st == Withdraw(Script(poolPolicyId))
-    expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
+    expect PoolWithdrawRedeemer { actionType, .. } = poolWithdrawRedeemer.2nd
+    //Pools must do borrow action
+    expect actionType == Borrow
+
+    let poolBorrowWithdrawRedeemer =
+      safe_list_at(self.redeemers, redeemer.poolBorrowWithdrawRedeemerIndex)
+    expect
+      poolBorrowWithdrawRedeemer.1st == Withdraw(
+        Script(poolBorrowActionScriptHash),
+      )
+    expect PoolBorrowActionWithdrawRedeemer { actionsForEachInput, .. } =
+      poolBorrowWithdrawRedeemer.2nd
     let poolInputsAndActions =
       list.zip(
         get_inputs_from_smart_credential(
@@ -69,7 +84,7 @@ validator kyc_token(
           Script(poolPolicyId),
           smartTokensSpendScriptHash,
         ),
-        poolRedeemer.actionsForEachInput,
+        actionsForEachInput,
       )
 
     let poolInputsAndActionsThatNeedThisCondition =
@@ -77,17 +92,13 @@ validator kyc_token(
         poolInputsAndActions,
         fn(inputAndAction) {
           expect InlineDatum(inputDatum) = inputAndAction.1st.output.datum
-          when inputAndAction.2nd is {
-            Borrow { .. } ->
-              //First field of datum is permissionedConditionScriptHash
-              (
-                inputDatum
-                  |> builtin.unconstr_fields
-                  |> builtin.head_list
-                  |> builtin.un_b_data
-              ) == scriptHash
-            _ -> False
-          }
+          //First field of datum is permissionedConditionScriptHash
+          (
+            inputDatum
+              |> builtin.unconstr_fields
+              |> builtin.head_list
+              |> builtin.un_b_data
+          ) == scriptHash
         },
       )
 
@@ -106,7 +117,7 @@ validator kyc_token(
 
         expect
           compliance.token.origin_output_reference == inputAndAction.1st.output_reference
-        expect Borrow { borrowerAddress, .. } = inputAndAction.2nd
+        let BorrowData { borrowerAddress, .. } = inputAndAction.2nd
 
         expect Interval {
           lower_bound: IntervalBound { bound_type: Finite(tx_from), .. },

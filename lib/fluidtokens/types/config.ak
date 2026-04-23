@@ -23,4 +23,7 @@ pub type ConfigDatum {
   dutchAuctionLoweringAmount: Int,
   dutchAuctionLoweringFrequency: Int,
   dutchAuctionMinPriceToCancel: Int,
+  poolCancelActionScriptHash: ByteArray,
+  poolBorrowActionScriptHash: ByteArray,
+  poolSellLenderPositionActionScriptHash: ByteArray,
 }
