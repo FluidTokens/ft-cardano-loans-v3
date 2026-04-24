@@ -1,14 +1,14 @@
 use cardano/transaction.{OutputReference}
 use fluidtokens/types/general.{Asset, AuthorizationMethod}
 
-pub type RepaymentDatum {
-  RepaymentDatumWithToken {
+pub type AssetManagerDatum {
+  AssetManagerDatumWithToken {
     inputOutputReference: OutputReference,
     action: ByteArray,
     data: Data,
     ownerAsset: Asset,
   }
-  RepaymentDatumWithHash {
+  AssetManagerDatumWithHash {
     inputOutputReference: OutputReference,
     action: ByteArray,
     data: Data,
@@ -16,12 +16,16 @@ pub type RepaymentDatum {
   }
 }
 
-pub type RepaymentMintRedeemer {
+pub type AssetManagerMintRedeemer {
   configRefInputIndex: Int,
   inputRef: OutputReference,
   loanWithdrawRedeemerIndex: Int,
   //This is used only if the loan action is Claim, otherwise it is ignored
   loanClaimActionWithdrawRedeemerIndex: Int,
+}
+
+pub type AssetManagerWithdrawRedeemer {
+  AssetManagerWithdrawRedeemer
 }
 
 pub type RepaymentAction {

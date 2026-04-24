@@ -4,13 +4,13 @@ use aiken/collection/list
 use cardano/address.{Address, Credential, Script}
 use cardano/assets.{ada_policy_id, add, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use fluidtokens/types/asset_manager.{AssetManagerDatumWithToken} as r
 use fluidtokens/types/general.{Asset}
 use fluidtokens/types/lender_manager.{
   LMCompoundWithdrawRedeemer, LenderManagerDatum,
 } as lm
 use fluidtokens/types/pool.{PoolDatum}
 use fluidtokens/types/pool_manager.{PoolManagerDatum}
-use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{
   get_inputs_from_smart_credential, get_outputs_to_smart_credential,
@@ -21,6 +21,8 @@ validator actionValidator(
   configNFTAssetName: ByteArray,
   lenderManagerSpendScriptHash: ByteArray,
   lenderManagerWithdrawScriptHash: ByteArray,
+  assetManagerSpendScriptHash: ByteArray,
+  assetManagerWithdrawScriptHash: ByteArray,
   poolManagerSpendScriptHash: ByteArray,
   poolManagerPolicyId: ByteArray,
 ) {
@@ -40,11 +42,18 @@ validator actionValidator(
     let poolSpendScriptHash = builtin.un_b_data(utils.safe_list_at(config, 8))
     let poolPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
     let repaymentPolicyId = builtin.un_b_data(utils.safe_list_at(config, 7))
-    let lmInputs =
+    let lenderBondInputs =
       get_inputs_from_smart_credential(
         self.inputs,
         Script(lenderManagerSpendScriptHash),
         Script(lenderManagerWithdrawScriptHash),
+        smartTokensSpendScriptHash,
+      )
+    let assetInputs =
+      get_inputs_from_smart_credential(
+        self.inputs,
+        Script(assetManagerSpendScriptHash),
+        Script(assetManagerWithdrawScriptHash),
         smartTokensSpendScriptHash,
       )
     let poolManagerInputs =
@@ -79,19 +88,6 @@ validator actionValidator(
         Script(poolPolicyId),
         smartTokensSpendScriptHash,
       )
-    let (lenderBondInputs, lmAssetsInputs) =
-      list.partition(
-        lmInputs,
-        fn(input) {
-          expect InlineDatum(inputDatum) = input.output.datum
-          if inputDatum is LenderManagerDatum {
-            True
-          } else {
-            //We still expect the datum to be RepaymentDatumWithToken here
-            False
-          }
-        },
-      )
     //Lender bonds always reside in lender_manager.ak, so we don't need to consider CIP113 utxos
     let lenderBondOutputs =
       list.filter(
@@ -105,11 +101,11 @@ validator actionValidator(
     //Add repayments sitting in the lm to the total to compound for each pool manager
     let totalAssetsToCompoundForEachPoolManager =
       list.indexed_foldr(
-        lmAssetsInputs,
+        assetInputs,
         dict.empty,
         fn(index, assetInput, result) {
           expect InlineDatum(assetInputDatum) = assetInput.output.datum
-          expect RepaymentDatumWithToken { ownerAsset, .. } = assetInputDatum
+          expect AssetManagerDatumWithToken { ownerAsset, .. } = assetInputDatum
 
           let lenderBondIndex =
             safe_list_at(redeemer.lenderBondInputIndexes, index)

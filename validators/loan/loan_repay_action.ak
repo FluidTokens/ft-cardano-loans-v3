@@ -11,11 +11,11 @@ use fluidtokens/constants
 use fluidtokens/finance.{
   get_next_installment_amount, get_remaining_debt, is_repayment_late,
 }
+use fluidtokens/types/asset_manager.{AssetManagerDatumWithToken}
 use fluidtokens/types/general.{Asset, PerpetualLoan}
 use fluidtokens/types/loan.{
   LoanDatum, LoanRepayActionWithdrawRedeemer, LoanRepaymentData,
 } as l
-use fluidtokens/types/repayment.{RepaymentDatumWithToken}
 use fluidtokens/utils.{
   is_nft_in_output, is_output_to_spend_validator, safe_list_at,
 }
@@ -26,8 +26,8 @@ use smart_tokens/utils.{
 validator loan_repay_action(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
-  lenderManagerSpendScriptHash: ByteArray,
-  lenderManagerWithdrawScriptHash: ByteArray,
+  assetManagerSpendScriptHash: ByteArray,
+  assetManagerWithdrawScriptHash: ByteArray,
 ) {
   withdraw(
     redeemer: LoanRepayActionWithdrawRedeemer,
@@ -79,8 +79,8 @@ validator loan_repay_action(
           utils.safe_list_at(
             get_outputs_to_smart_credential(
               self.outputs,
-              Script(lenderManagerSpendScriptHash),
-              Script(lenderManagerWithdrawScriptHash),
+              Script(assetManagerSpendScriptHash),
+              Script(assetManagerWithdrawScriptHash),
               smartTokensSpendScriptHash,
             ),
             index,
@@ -216,7 +216,7 @@ fn validate_repayment_output(
 ) {
   expect InlineDatum(outputDatum) = repaymentOutput.datum
   let newDatum =
-    RepaymentDatumWithToken {
+    AssetManagerDatumWithToken {
       inputOutputReference: loanInputOutputReference,
       action,
       data: extra_data,

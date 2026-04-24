@@ -1,26 +1,36 @@
 use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
-use cardano/address.{Script}
+use cardano/address.{Credential, Script}
 use cardano/assets.{PolicyId, tokens}
 use cardano/transaction.{Input, Transaction, Withdraw}
+use fluidtokens/types/asset_manager.{
+  AssetManagerMintRedeemer, AssetManagerWithdrawRedeemer,
+} as r
 use fluidtokens/types/general.{Liquidation}
 use fluidtokens/types/loan.{
   ChangeCollateral, Claim, ClaimData, LoanClaimActionWithdrawRedeemer,
   LoanWithdrawRedeemer, Recast, Repay,
 }
-use fluidtokens/types/repayment.{RepaymentMintRedeemer} as r
 use fluidtokens/utils.{safe_list_at}
-use smart_tokens/utils as st_utils
+use smart_tokens/utils.{
+  get_inputs_from_smart_credential, get_outputs_to_smart_credential,
+} as st_utils
 
-validator repayment(
+validator assetManager(
   configNFTPolicyId: PolicyId,
   configNFTAssetName: ByteArray,
+  assetManagerSpendScriptHash: ByteArray,
 ) {
-  //Repayment outputs are already checked by the loan validator, here we just ensure we don't mint additional undesired tokens
+  //Receipt NFTs for specific loan actions to track the operations on-chain.
+  //These outputs are already checked by the loan validator, here we just ensure we don't mint additional undesired tokens
   //Burning is always allowed
   //Each output has a unique NFT
-  mint(redeemer: RepaymentMintRedeemer, policy_id: PolicyId, self: Transaction) {
+  mint(
+    redeemer: AssetManagerMintRedeemer,
+    policy_id: PolicyId,
+    self: Transaction,
+  ) {
     let config =
       utils.get_config_as_data_list(
         safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
@@ -117,6 +127,38 @@ validator repayment(
     } else {
       True
     }
+  }
+
+  withdraw(
+    redeemer: AssetManagerWithdrawRedeemer,
+    credential: Credential,
+    self: Transaction,
+  ) {
+    let assetInputs =
+      get_inputs_from_smart_credential(
+        self.inputs,
+        Script(assetManagerSpendScriptHash),
+        credential,
+        smartTokensSpendScriptHash,
+      )
+    utils.indexed_all(
+      assetsInputs,
+      fn(index, input) {
+        expect InlineDatum(inputDatum) = input.output.datum
+        expect RepaymentDatumWithToken { ownerAsset, .. } = inputDatum
+
+        let lenderBondIndex =
+          safe_list_at(redeemer.lenderBondInputIndexes, index)
+
+        let lenderBondInput = safe_list_at(lenderBondInputs, lenderBondIndex)
+
+        quantity_of(
+          lenderBondInput.output.value,
+          ownerAsset.policyId,
+          ownerAsset.assetName,
+        ) == 1
+      },
+    )
   }
 
   else(_) {

@@ -10,13 +10,13 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, Withdraw,
 }
 use fluidtokens/constants
+use fluidtokens/types/asset_manager.{AssetManagerDatumWithToken} as r
 use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
 use fluidtokens/types/lender_manager.{
   LMLiquidateAndConvertActionWithdrawRedeemer, LenderManagerDatum,
 } as lm
 use fluidtokens/types/loan.{LoanDatum} as loan
 use fluidtokens/types/minswap_conversions
-use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{
   get_inputs_from_smart_credential, get_outputs_to_smart_credential,
@@ -26,7 +26,8 @@ validator actionValidator(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
   lenderManagerSpendScriptHash: ByteArray,
-  lenderManagerWithdrawScriptHash: ByteArray,
+  assetManagerSpendScriptHash: ByteArray,
+  assetManagerWithdrawScriptHash: ByteArray,
   minswapPoolPolicyId: ByteArray,
   minswapPoolSpendScriptHash: ByteArray,
   minswapPoolWithdrawScriptHash: ByteArray,
@@ -75,12 +76,15 @@ validator actionValidator(
         Script(minswapPoolWithdrawScriptHash),
         smartTokensSpendScriptHash,
       )
+    //Lender bonds always reside in lender_manager.ak, so we don't need to consider CIP113 utxos
     let lenderBondOutputs =
-      get_outputs_to_smart_credential(
+      list.filter(
         self.outputs,
-        Script(lenderManagerSpendScriptHash),
-        Script(lenderManagerWithdrawScriptHash),
-        smartTokensSpendScriptHash,
+        fn(output) {
+          output.address.payment_credential == Script(
+            lenderManagerSpendScriptHash,
+          )
+        },
       )
     let minswapOrderOutputs =
       get_outputs_to_smart_credential(
@@ -202,7 +206,7 @@ validator actionValidator(
           let successDatumHash =
             crypto.blake2b_256(
               builtin.serialise_data(
-                RepaymentDatumWithToken {
+                AssetManagerDatumWithToken {
                   inputOutputReference: OutputReference {
                     transaction_id: "",
                     output_index: 0,
@@ -215,7 +219,7 @@ validator actionValidator(
             )
 
           let refundDatumHash =
-            RepaymentDatumWithToken {
+            AssetManagerDatumWithToken {
               inputOutputReference: loanInput.output_reference,
               action: constants.claimed_collateral_action,
               data: None,
@@ -234,7 +238,8 @@ validator actionValidator(
           let receiver =
             get_smart_destination_address(
               isCIP113Pair,
-              lenderManagerWithdrawScriptHash,
+              assetManagerSpendScriptHash,
+              assetManagerWithdrawScriptHash,
               smartTokensSpendScriptHash,
             )
 
@@ -349,12 +354,13 @@ validator actionValidator(
 pub fn get_smart_destination_address(
   isCIP113: Bool,
   paymentHash: ByteArray,
+  withdrawHash: ByteArray,
   smartTokensSpendScriptHash: ByteArray,
 ) {
   if isCIP113 {
     Address(
       Script(smartTokensSpendScriptHash),
-      Some(Inline(Script(paymentHash))),
+      Some(Inline(Script(withdrawHash))),
     )
   } else {
     Address(Script(paymentHash), None)

@@ -14,6 +14,7 @@ use fluidtokens/finance.{
   get_equity_in_collateral_currency, get_remaining_debt, is_repayment_late,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
+use fluidtokens/types/asset_manager.{AssetManagerDatumWithToken}
 use fluidtokens/types/dutch_auction.{DutchAuctionDatum}
 use fluidtokens/types/general.{
   Asset, AuthorizationMethod, CollateralAsset, Liquidation,
@@ -21,7 +22,6 @@ use fluidtokens/types/general.{
   PerpetualLoan,
 }
 use fluidtokens/types/loan.{LoanClaimActionWithdrawRedeemer, LoanDatum} as l
-use fluidtokens/types/repayment.{RepaymentDatumWithToken}
 use fluidtokens/utils.{is_nft_in_output, quantity_of_policy_id, safe_list_at}
 use smart_tokens/utils.{
   get_inputs_from_smart_credential, get_outputs_to_smart_credential,
@@ -31,8 +31,8 @@ use smart_tokens/utils.{
 validator loan_claim_action(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
-  lenderManagerSpendScriptHash: ByteArray,
-  lenderManagerWithdrawScriptHash: ByteArray,
+  assetManagerSpendScriptHash: ByteArray,
+  assetManagerWithdrawScriptHash: ByteArray,
 ) {
   withdraw(
     redeemer: LoanClaimActionWithdrawRedeemer,
@@ -286,8 +286,8 @@ validator loan_claim_action(
                       utils.safe_list_at(
                         get_outputs_to_smart_credential(
                           self.outputs,
-                          Script(lenderManagerSpendScriptHash),
-                          Script(lenderManagerWithdrawScriptHash),
+                          Script(assetManagerSpendScriptHash),
+                          Script(assetManagerWithdrawScriptHash),
                           smartTokensSpendScriptHash,
                         ),
                         index,
@@ -413,7 +413,7 @@ fn equity_sent_to_borrower(
 ) {
   expect InlineDatum(outputDatum) = equityOutput.datum
   let newDatum =
-    RepaymentDatumWithToken {
+    AssetManagerDatumWithToken {
       inputOutputReference: loanInputOutputReference,
       action: constants.repayment_action_partial_liquidation,
       data: None,

@@ -11,12 +11,12 @@ use cardano/transaction.{
 use fluidtokens/constants
 use fluidtokens/finance
 use fluidtokens/oracle.{retrieve_oracle_data}
+use fluidtokens/types/asset_manager.{AssetManagerDatumWithToken} as r
 use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
 use fluidtokens/types/lender_manager.{
   LMLiquidateAndPayInAdvanceWithdrawRedeemer, LenderManagerDatum,
 } as lm
 use fluidtokens/types/loan.{LoanDatum} as loan
-use fluidtokens/types/repayment.{RepaymentDatumWithToken} as r
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{
   get_inputs_from_smart_credential, get_outputs_to_smart_credential,
@@ -26,7 +26,8 @@ validator actionValidator(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
   lenderManagerSpendScriptHash: ByteArray,
-  lenderManagerWithdrawScriptHash: ByteArray,
+  assetManagerSpendScriptHash: ByteArray,
+  assetManagerWithdrawScriptHash: ByteArray,
   loanClaimPaymentCredential: PaymentCredential,
 ) {
   withdraw(
@@ -61,12 +62,15 @@ validator actionValidator(
           )
         },
       )
-    let lmOutputs =
-      get_outputs_to_smart_credential(
+    //Lender bonds always reside in lender_manager.ak, so we don't need to consider CIP113 utxos
+    let lenderBondOutputs =
+      list.filter(
         self.outputs,
-        Script(lenderManagerSpendScriptHash),
-        Script(lenderManagerWithdrawScriptHash),
-        smartTokensSpendScriptHash,
+        fn(output) {
+          output.address.payment_credential == Script(
+            lenderManagerSpendScriptHash,
+          )
+        },
       )
     let loanInputs =
       get_inputs_from_smart_credential(
@@ -75,18 +79,12 @@ validator actionValidator(
         Script(loanWithdrawScriptHash),
         smartTokensSpendScriptHash,
       )
-    let (lenderBondOutputs, lmAssetsOutputs) =
-      list.partition(
-        lmOutputs,
-        fn(output) {
-          expect InlineDatum(outputDatum) = output.datum
-          if outputDatum is LenderManagerDatum {
-            True
-          } else {
-            //We still expect the datum to be RepaymentDatumWithToken here
-            False
-          }
-        },
+    let assetOutputs =
+      get_outputs_to_smart_credential(
+        self.outputs,
+        Script(assetManagerSpendScriptHash),
+        Script(assetManagerWithdrawScriptHash),
+        smartTokensSpendScriptHash,
       )
     let liquidatedCollateralOutputsAreCorrect =
       utils.indexed_all(
@@ -100,7 +98,7 @@ validator actionValidator(
           let lenderBondIndex =
             safe_list_at(redeemer.lenderBondInputIndexes, index)
           let lenderBondInput = safe_list_at(lenderBondInputs, lenderBondIndex)
-          let lmAssetsOutput = safe_list_at(lmAssetsOutputs, index)
+          let assetOutput = safe_list_at(assetOutputs, index)
           let lenderBondOutput =
             safe_list_at(lenderBondOutputs, lenderBondIndex)
           let collateralOracleRefInput =
@@ -203,7 +201,7 @@ validator actionValidator(
             //Ensures lender receives the correct assets, the eventual output to borrower is already checked by loan.ak
             validate_repayment_output(
               loanInputOutputReference: loanInput.output_reference,
-              repaymentOutput: lmAssetsOutput,
+              repaymentOutput: assetOutput,
               lenderBondAsset: Asset {
                 policyId: lenderBondPolicyId,
                 assetName: lenderBondAssetName,
@@ -241,7 +239,7 @@ fn validate_repayment_output(
 ) {
   expect InlineDatum(outputDatum) = repaymentOutput.datum
   let newDatum =
-    RepaymentDatumWithToken {
+    AssetManagerDatumWithToken {
       inputOutputReference: loanInputOutputReference,
       action,
       data: None,
