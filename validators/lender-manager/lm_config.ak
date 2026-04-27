@@ -18,7 +18,8 @@ validator config(tx0: ByteArray, index0: Int) {
     let one_time_utxo = OutputReference(tx0, index0)
     //we won't use input_present, we just need it to be there, otherwise error
     expect Some(_input_present) = find_input(self.inputs, one_time_utxo)
-    let output_parameters = utils.safe_list_at(self.outputs, 0)
+    //Here index 1 to allow 1 tx to mint both configs at once
+    let output_parameters = utils.safe_list_at(self.outputs, 1)
 
     and {
       //First output goes to this address
