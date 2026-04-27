@@ -24,7 +24,7 @@ validator actionValidator(
   lenderManagerSpendScriptHash: ByteArray,
   assetManagerSpendScriptHash: ByteArray,
   assetManagerWithdrawScriptHash: ByteArray,
-  loanClaimPaymentCredential: PaymentCredential,
+  loanClaimCredential: PaymentCredential,
 ) {
   withdraw(
     redeemer: LMLiquidateWithdrawRedeemer,
@@ -91,10 +91,7 @@ validator actionValidator(
           expect InlineDatum(loanInputDatum) = loanInput.output.datum
           expect LoanDatum { collateral, .. } = loanInputDatum
           expect Some(loanRedeemer) =
-            pairs.get_first(
-              self.redeemers,
-              Withdraw(loanClaimPaymentCredential),
-            )
+            pairs.get_first(self.redeemers, Withdraw(loanClaimCredential))
           expect parsedLoanRedeemer: loan.LoanClaimActionWithdrawRedeemer =
             loanRedeemer
           let loanInputAction =

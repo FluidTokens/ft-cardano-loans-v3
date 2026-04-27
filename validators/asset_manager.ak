@@ -2,10 +2,11 @@ use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use cardano/address.{Credential, Script}
-use cardano/assets.{PolicyId, tokens}
-use cardano/transaction.{Input, Transaction, Withdraw}
+use cardano/assets.{PolicyId, quantity_of, tokens}
+use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/types/asset_manager.{
-  AssetManagerMintRedeemer, AssetManagerWithdrawRedeemer,
+  AssetManagerDatumWithToken, AssetManagerMintRedeemer,
+  AssetManagerWithdrawRedeemer,
 } as r
 use fluidtokens/types/general.{Liquidation}
 use fluidtokens/types/loan.{
@@ -13,14 +14,11 @@ use fluidtokens/types/loan.{
   LoanWithdrawRedeemer, Recast, Repay,
 }
 use fluidtokens/utils.{safe_list_at}
-use smart_tokens/utils.{
-  get_inputs_from_smart_credential, get_outputs_to_smart_credential,
-} as st_utils
+use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 
 validator assetManager(
   configNFTPolicyId: PolicyId,
   configNFTAssetName: ByteArray,
-  assetManagerSpendScriptHash: ByteArray,
 ) {
   //Receipt NFTs for specific loan actions to track the operations on-chain.
   //These outputs are already checked by the loan validator, here we just ensure we don't mint additional undesired tokens
@@ -134,6 +132,17 @@ validator assetManager(
     credential: Credential,
     self: Transaction,
   ) {
+    let config =
+      utils.get_config_as_data_list(
+        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
+        configNFTPolicyId,
+        configNFTAssetName,
+      )
+    let smartTokensSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(config, 0))
+    let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
+    let assetManagerSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(config, 26))
     let assetInputs =
       get_inputs_from_smart_credential(
         self.inputs,
@@ -141,11 +150,19 @@ validator assetManager(
         credential,
         smartTokensSpendScriptHash,
       )
+    //Lender Bonds can be in a smart contract or in a wallet, so we just check that are spent
+    let lenderBondInputs =
+      list.filter(
+        self.inputs,
+        fn(input) {
+          utils.quantity_of_policy_id(input.output.value, lenderBondPolicyId) > 0
+        },
+      )
     utils.indexed_all(
-      assetsInputs,
+      assetInputs,
       fn(index, input) {
         expect InlineDatum(inputDatum) = input.output.datum
-        expect RepaymentDatumWithToken { ownerAsset, .. } = inputDatum
+        expect AssetManagerDatumWithToken { ownerAsset, .. } = inputDatum
 
         let lenderBondIndex =
           safe_list_at(redeemer.lenderBondInputIndexes, index)

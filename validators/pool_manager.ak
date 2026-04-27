@@ -16,7 +16,6 @@ use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 validator poolManager(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
-  poolManagerSpendScriptHash: ByteArray,
   lenderManagerWithdrawScriptHash: ByteArray,
   poolSpendScriptHash: ByteArray,
   poolWithdrawScriptHash: ByteArray,
@@ -32,7 +31,6 @@ validator poolManager(
       policy_id,
       configNFTPolicyId,
       configNFTAssetName,
-      poolManagerSpendScriptHash,
       poolSpendScriptHash,
       poolWithdrawScriptHash,
     )
@@ -44,6 +42,14 @@ validator poolManager(
     self: Transaction,
   ) {
     expect Script(poolManagerPolicyId) = credential
+    let config =
+      utils.get_config_as_data_list(
+        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
+        configNFTPolicyId,
+        configNFTAssetName,
+      )
+    let poolManagerSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(config, 25))
 
     let poolManagerInputs =
       list.filter(
@@ -164,7 +170,6 @@ fn check_mint(
   policy_id: PolicyId,
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
-  poolManagerSpendScriptHash: ByteArray,
   poolSpendScriptHash: ByteArray,
   poolWithdrawScriptHash: ByteArray,
 ) {
@@ -177,6 +182,8 @@ fn check_mint(
   let smartTokensSpendScriptHash =
     builtin.un_b_data(utils.safe_list_at(config, 0))
   let poolPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
+  let poolManagerSpendScriptHash =
+    builtin.un_b_data(utils.safe_list_at(config, 25))
 
   //Excluding mint < 0 (ie. burn) means burning is always allowed
   let poolManagerMintedNFTs =
