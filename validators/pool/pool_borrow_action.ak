@@ -10,6 +10,7 @@ use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/constants
 use fluidtokens/finance.{
   get_needed_collateral_with_oracles, get_needed_collateral_without_oracles,
+  is_valid_installment_loan_params,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
@@ -175,6 +176,11 @@ validator pool_borrow_action(
           }
         and {
           wantedPrincipalAmount > 0,
+          is_valid_installment_loan_params(
+            poolDatum.commonData.repaymentMode,
+            poolDatum.commonData.totalInstallments,
+            poolDatum.commonData.installmentPeriod,
+          ),
           or {
             poolDatum.permissionedConditionScriptHash == constants.no_permissioned_condition,
             {
