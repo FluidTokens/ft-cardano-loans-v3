@@ -5,7 +5,7 @@ use cardano/transaction.{Transaction}
 use fluidtokens/types/lender_manager.{
   Compound, LenderManagerWithdrawRedeemer, Liquidate, LiquidateAndConvert,
   LiquidateAndPayInAdvance, LiquidateConvertAndCompound,
-  LiquidatePayInAdvanceAndCompound, WithdrawAssets, WithdrawBonds,
+  LiquidatePayInAdvanceAndCompound, WithdrawBonds,
 } as lm
 use fluidtokens/utils.{safe_list_at}
 
@@ -26,24 +26,21 @@ validator lenderManager(
       )
     let lmWithdrawBondsActionScriptHash =
       builtin.un_b_data(utils.safe_list_at(lmConfig, 1))
-    let lmWithdrawAssetsActionScriptHash =
-      builtin.un_b_data(utils.safe_list_at(lmConfig, 2))
     let lmLiquidateActionScriptHash =
-      builtin.un_b_data(utils.safe_list_at(lmConfig, 3))
+      builtin.un_b_data(utils.safe_list_at(lmConfig, 2))
     let lmCompoundActionScriptHash =
-      builtin.un_b_data(utils.safe_list_at(lmConfig, 4))
+      builtin.un_b_data(utils.safe_list_at(lmConfig, 3))
     let lmLiquidateAndPayInAdvanceActionScriptHash =
-      builtin.un_b_data(utils.safe_list_at(lmConfig, 5))
+      builtin.un_b_data(utils.safe_list_at(lmConfig, 4))
     let lmLiquidateAndConvertActionScriptHash =
-      builtin.un_b_data(utils.safe_list_at(lmConfig, 6))
+      builtin.un_b_data(utils.safe_list_at(lmConfig, 5))
     let lmLiquidatePayInAdvanceAndCompoundActionScriptHash =
-      builtin.un_b_data(utils.safe_list_at(lmConfig, 7))
+      builtin.un_b_data(utils.safe_list_at(lmConfig, 6))
     let lmLiquidateConvertAndCompoundActionScriptHash =
-      builtin.un_b_data(utils.safe_list_at(lmConfig, 8))
+      builtin.un_b_data(utils.safe_list_at(lmConfig, 7))
     let actionWithdrawScriptHash =
       when redeemer.action is {
         WithdrawBonds -> lmWithdrawBondsActionScriptHash
-        WithdrawAssets { .. } -> lmWithdrawAssetsActionScriptHash
         Liquidate { .. } -> lmLiquidateActionScriptHash
         Compound { .. } -> lmCompoundActionScriptHash
         LiquidateAndPayInAdvance { .. } ->

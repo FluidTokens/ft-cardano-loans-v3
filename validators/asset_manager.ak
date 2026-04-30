@@ -140,7 +140,7 @@ validator assetManager(
       )
     let smartTokensSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 0))
-    let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
+    let ownerAssetPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
     let assetManagerSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 26))
     let assetInputs =
@@ -151,11 +151,11 @@ validator assetManager(
         smartTokensSpendScriptHash,
       )
     //Lender Bonds can be in a smart contract or in a wallet, so we just check that are spent
-    let lenderBondInputs =
+    let ownerAssetInputs =
       list.filter(
         self.inputs,
         fn(input) {
-          utils.quantity_of_policy_id(input.output.value, lenderBondPolicyId) > 0
+          utils.quantity_of_policy_id(input.output.value, ownerAssetPolicyId) > 0
         },
       )
     utils.indexed_all(
@@ -164,13 +164,13 @@ validator assetManager(
         expect InlineDatum(inputDatum) = input.output.datum
         expect AssetManagerDatumWithToken { ownerAsset, .. } = inputDatum
 
-        let lenderBondIndex =
-          safe_list_at(redeemer.lenderBondInputIndexes, index)
+        let ownerAssetIndex =
+          safe_list_at(redeemer.ownerAssetInputIndexes, index)
 
-        let lenderBondInput = safe_list_at(lenderBondInputs, lenderBondIndex)
+        let ownerAssetInput = safe_list_at(ownerAssetInputs, ownerAssetIndex)
 
         quantity_of(
-          lenderBondInput.output.value,
+          ownerAssetInput.output.value,
           ownerAsset.policyId,
           ownerAsset.assetName,
         ) == 1

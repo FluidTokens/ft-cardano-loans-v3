@@ -26,7 +26,7 @@ pub type AssetManagerMintRedeemer {
 
 pub type AssetManagerWithdrawRedeemer {
   configRefInputIndex: Int,
-  lenderBondInputIndexes: List<Int>,
+  ownerAssetInputIndexes: List<Int>,
 }
 
 pub type RepaymentAction {

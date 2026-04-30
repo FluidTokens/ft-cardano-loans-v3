@@ -4,7 +4,6 @@ use fluidtokens/types/general.{Asset, AuthorizationMethod}
 pub type LMConfigDatum {
   adminCredential: Credential,
   lmWithdrawBondsActionScriptHash: ByteArray,
-  lmWithdrawAssetsActionScriptHash: ByteArray,
   lmLiquidateActionScriptHash: ByteArray,
   lmCompoundActionScriptHash: ByteArray,
   lmLiquidateAndPayInAdvanceActionScriptHash: ByteArray,
@@ -31,8 +30,6 @@ pub type LenderManagerDatum {
 pub type LenderManagerAction {
   //Lender can withdraw his bond any time
   WithdrawBonds
-  //Lender can get his assets that point to his bond as long as the bond is in this contract
-  WithdrawAssets
   //Liquidate loans and put the collaterals in this contract
   Liquidate
   //Compound available assets into the pool
@@ -50,11 +47,6 @@ pub type LenderManagerAction {
 pub type LenderManagerWithdrawRedeemer {
   configRefInputIndex: Int,
   action: LenderManagerAction,
-}
-
-pub type LMWithdrawAssetsWithdrawRedeemer {
-  configRefInputIndex: Int,
-  lenderBondInputIndexes: List<Int>,
 }
 
 pub type LMLiquidateWithdrawRedeemer {
