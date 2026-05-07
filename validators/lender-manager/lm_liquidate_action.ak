@@ -53,6 +53,13 @@ validator actionValidator(
           )
         },
       )
+    let assetInputs =
+      get_inputs_from_smart_credential(
+        self.inputs,
+        Script(assetManagerSpendScriptHash),
+        Script(assetManagerWithdrawScriptHash),
+        smartTokensSpendScriptHash,
+      )
     //Lender bonds always reside in lender_manager.ak, so we don't need to consider CIP113 utxos
     let lenderBondOutputs =
       list.filter(
@@ -160,6 +167,8 @@ validator actionValidator(
       )
 
     and {
+      //No asset input should be spent
+      assetInputs == [],
       //No additional lender bonds (or other utxos from lender_manager.ak) should be spent
       list.length(loanInputs) == list.length(lenderBondInputs),
       liquidatedCollateralOutputsAreCorrect,
