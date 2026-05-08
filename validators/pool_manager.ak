@@ -185,9 +185,8 @@ fn check_mint(
   let poolManagerSpendScriptHash =
     builtin.un_b_data(utils.safe_list_at(config, 25))
 
-  //Excluding mint < 0 (ie. burn) means burning is always allowed
-  let poolManagerMintedNFTs =
-    list.filter(
+  let (poolManagerMintedNFTs, poolManagerBurntNFTs) =
+    list.partition(
       dict.to_pairs(tokens(self.mint, policy_id)),
       fn(Pair(_assetName, quantity)) { quantity > 0 },
     )
@@ -243,7 +242,7 @@ fn check_mint(
   //When you cancel (burn) a pool you also burn this NFT
   //When you modify/compound a pool you also burn and remint this NFT
   and {
-    length(poolInputs) == 0,
+    length(poolInputs) == length(poolManagerBurntNFTs),
     poolManagerMintedNFTs == poolMintedNFTs,
     isEachMintedTokenAccountedFor,
   }
