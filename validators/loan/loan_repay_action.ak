@@ -70,11 +70,6 @@ validator loan_repay_action(
         expect Finite(validTo) = self.validity_range.upper_bound.bound_type
         let borrowerBondOutput =
           safe_list_at(self.outputs, inputAction.borrowerBondOutputIndex)
-        let lenderBondRefInput =
-          safe_list_at(
-            self.reference_inputs,
-            inputAction.lenderBondRefInputIndex,
-          )
         let repaymentOutput =
           utils.safe_list_at(
             get_outputs_to_smart_credential(
@@ -131,13 +126,6 @@ validator loan_repay_action(
           }
         and {
           quantity_of(input.output.value, loanPolicyId, inputAction.loanId) == 1,
-          utils.efficient_quantity_of(
-            lenderBondRefInput,
-            lenderBondPolicyId,
-            inputAction.lenderBondRefInputPolicyIdIndex,
-            inputAction.loanId,
-            inputAction.lenderBondRefInputAssetNameIndex,
-          ) == 1,
           is_nft_in_output(
             borrowerBondPolicyId,
             inputAction.loanId,
@@ -152,7 +140,7 @@ validator loan_repay_action(
             },
             repaymentAsset: datum.principalAsset,
             repaymentAmount: nextRepaymentAmount,
-            action: constants.repayment_action_installment,
+            action: constants.action_installment_repayment,
             extra_data: LoanRepaymentData {
               loanId: inputAction.loanId,
               principalAmount: datum.principalAmount,

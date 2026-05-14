@@ -90,9 +90,6 @@ pub type ClaimData {
 pub type RepayData {
   //This is the absolute output index that contains the borrower bond
   borrowerBondOutputIndex: Int,
-  lenderBondRefInputIndex: Int,
-  lenderBondRefInputPolicyIdIndex: Int,
-  lenderBondRefInputAssetNameIndex: Int,
   loanId: ByteArray,
   //Used only in Perpetual Loans to signal the last repayment that will close the loan
   isFinalRepayment: Bool,
@@ -109,9 +106,6 @@ pub type ChangeCollateralData {
 
 pub type RecastData {
   borrowerBondOutputIndex: Int,
-  lenderBondRefInputIndex: Int,
-  lenderBondRefInputPolicyIdIndex: Int,
-  lenderBondRefInputAssetNameIndex: Int,
   //In principal units
   amountPaid: Int,
   loanId: ByteArray,

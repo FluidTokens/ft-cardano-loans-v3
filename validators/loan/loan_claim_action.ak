@@ -88,14 +88,9 @@ validator loan_claim_action(
             self.validity_range.lower_bound.bound_type,
             self.validity_range.upper_bound.bound_type,
           )
-        let (lenderBondOutput, borrowerBondRefInput) =
-          (
-            utils.safe_list_at(self.outputs, inputAction.lenderBondOutputIndex),
-            utils.safe_list_at(
-              self.reference_inputs,
-              inputAction.borrowerBondRefInputIndex,
-            ),
-          )
+        let lenderBondOutput =
+          utils.safe_list_at(self.outputs, inputAction.lenderBondOutputIndex)
+
         let isPerpetualLoan =
           when datum.repaymentMode is {
             PerpetualLoan { .. } -> True
@@ -114,13 +109,6 @@ validator loan_claim_action(
         and {
           inputAction.liquidationMode == datum.liquidationMode,
           quantity_of(input.output.value, loanPolicyId, inputAction.loanId) == 1,
-          utils.efficient_quantity_of(
-            borrowerBondRefInput,
-            borrowerBondPolicyId,
-            inputAction.borrowerBondRefInputPolicyIdIndex,
-            inputAction.loanId,
-            inputAction.borrowerBondRefInputAssetNameIndex,
-          ) == 1,
           quantity_of(self.mint, loanPolicyId, inputAction.loanId) == -1,
           is_nft_in_output(
             lenderBondPolicyId,
@@ -159,7 +147,6 @@ validator loan_claim_action(
                 validate_output_to_dutch_auction(
                   input,
                   dutchAuctionOutput,
-                  borrowerBondRefInput.output.address,
                   lenderBondOutput.address,
                   inputAction.lenderAuth,
                   validTo,
@@ -173,6 +160,9 @@ validator loan_claim_action(
                   dutchAuctionSpendScriptHash,
                   dutchAuctionWithdrawScriptHash,
                   smartTokensSpendScriptHash,
+                  lenderBondPolicyId,
+                  borrowerBondPolicyId,
+                  inputAction.loanId,
                 ),
               }
             }
@@ -333,7 +323,6 @@ validator loan_claim_action(
 fn validate_output_to_dutch_auction(
   loanInput: Input,
   dutchAuctionOutput: Output,
-  borrowerAddress: Address,
   lenderAddress: Address,
   lenderAuth: AuthorizationMethod,
   validTo: Int,
@@ -347,20 +336,38 @@ fn validate_output_to_dutch_auction(
   dutchAuctionSpendScriptHash: ByteArray,
   dutchAuctionWithdrawScriptHash: ByteArray,
   smartTokensSpendScriptHash: ByteArray,
+  lenderBondPolicyId: ByteArray,
+  borrowerBondPolicyId: ByteArray,
+  loanId: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = dutchAuctionOutput.datum
 
   let newDatum =
     DutchAuctionDatum {
       ownerAuth: lenderAuth,
-      ownerAddress: lenderAddress,
+      ownerAssetManagerDatum: AssetManagerDatumWithToken {
+        inputOutputReference: loanInput.output_reference,
+        action: constants.action_dutch_auction_claimed_collateral,
+        data: None,
+        ownerAsset: Asset { policyId: lenderBondPolicyId, assetName: loanId },
+      },
       currency: principalAsset,
       startingPrice: remainingDebt * dutchAuctionStartingIncreasePerMille / 1000,
       loweringAmount: dutchAuctionLoweringAmount,
       loweringFrequency: dutchAuctionLoweringFrequency,
       minPriceToCancel: dutchAuctionMinPriceToCancel,
       startDate: validTo,
-      borrowerAddress: Some(borrowerAddress),
+      borrowerAssetManagerDatum: Some(
+        AssetManagerDatumWithToken {
+          inputOutputReference: loanInput.output_reference,
+          action: constants.action_dutch_auction_partial_liquidation_compensation,
+          data: None,
+          ownerAsset: Asset {
+            policyId: borrowerBondPolicyId,
+            assetName: loanId,
+          },
+        },
+      ),
       debtAmount: remainingDebt,
     }
   let isDatumCorrect = builtin.equals_data(outputDatum, newDatum)
@@ -415,7 +422,7 @@ fn equity_sent_to_borrower(
   let newDatum =
     AssetManagerDatumWithToken {
       inputOutputReference: loanInputOutputReference,
-      action: constants.repayment_action_partial_liquidation,
+      action: constants.action_partial_liquidation_compensation,
       data: None,
       ownerAsset: borrowerBondAsset,
     }

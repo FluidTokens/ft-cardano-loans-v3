@@ -1,24 +1,30 @@
 use aiken/builtin
 use aiken/collection/list.{length}
 use aiken/interval.{Finite, Interval}
-use cardano/address.{Address, Credential, Script}
+use cardano/address.{Credential, Script}
 use cardano/assets.{ada_policy_id, flatten, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use fluidtokens/authorizer
+use fluidtokens/constants
+use fluidtokens/types/asset_manager.{
+  AssetManagerDatum, AssetManagerDatumWithHash, AssetManagerDatumWithToken,
+}
 use fluidtokens/types/dutch_auction.{
   Buy, Cancel, DutchAuctionDatum, DutchAuctionRedeemer,
 } as da
 use fluidtokens/types/general.{Asset}
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{
-  get_inputs_from_smart_credential, is_output_to_user_smart_credential,
+  get_inputs_from_smart_credential, get_outputs_to_smart_credential,
 } as st_utils
 
 validator dutch_auction(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
+  assetManagerSpendScriptHash: ByteArray,
+  assetManagerWithdrawScriptHash: ByteArray,
 ) {
   withdraw(
     redeemer: DutchAuctionRedeemer,
@@ -78,46 +84,55 @@ validator dutch_auction(
               ),
               or {
                 and {
-                  datum.borrowerAddress == None,
+                  datum.borrowerAssetManagerDatum == None,
                   validTo < datum.startDate,
                 },
                 currentPrice <= datum.minPriceToCancel,
               },
             }
           Buy -> {
-            let ownerOutput = utils.safe_list_at(self.outputs, index * 2)
+            let asset_manager_outputs =
+              get_outputs_to_smart_credential(
+                self.outputs,
+                Script(assetManagerSpendScriptHash),
+                Script(assetManagerWithdrawScriptHash),
+                smartTokensSpendScriptHash,
+              )
+            let ownerOutput =
+              utils.safe_list_at(asset_manager_outputs, index * 2)
             and {
               datum.startDate <= validFrom,
-              if datum.borrowerAddress != None && currentPrice > datum.debtAmount {
-                expect Some(borrowerAddress) = datum.borrowerAddress
+              if datum.borrowerAssetManagerDatum != None && currentPrice > datum.debtAmount {
+                expect Some(borrowerAssetManagerDatum) =
+                  datum.borrowerAssetManagerDatum
                 let borrowerOutput =
                   utils.safe_list_at(self.outputs, index * 2 + 1)
                 and {
                   correctAmountSentToUser(
                     input.output_reference,
+                    constants.dutch_auction_owner_revenue,
                     datum.currency,
                     datum.debtAmount,
-                    datum.ownerAddress,
+                    datum.ownerAssetManagerDatum,
                     ownerOutput,
-                    smartTokensSpendScriptHash,
                   ),
                   correctAmountSentToUser(
                     input.output_reference,
+                    constants.dutch_auction_borrower_compensation,
                     datum.currency,
                     currentPrice - datum.debtAmount,
-                    borrowerAddress,
+                    borrowerAssetManagerDatum,
                     borrowerOutput,
-                    smartTokensSpendScriptHash,
                   ),
                 }
               } else {
                 correctAmountSentToUser(
                   input.output_reference,
+                  constants.dutch_auction_owner_revenue,
                   datum.currency,
                   currentPrice,
-                  datum.ownerAddress,
+                  datum.ownerAssetManagerDatum,
                   ownerOutput,
-                  smartTokensSpendScriptHash,
                 )
               },
             }
@@ -144,23 +159,33 @@ fn get_current_price(
 
 fn correctAmountSentToUser(
   auctionRef: OutputReference,
+  action: ByteArray,
   currency: Asset,
   amount: Int,
-  userAddress: Address,
+  userAssetManagerDatum: AssetManagerDatum,
   userOutput: Output,
-  smartTokensSpendScriptHash: ByteArray,
 ) {
-  let correctDestination =
-    is_output_to_user_smart_credential(
-      userOutput,
-      userAddress.payment_credential,
-      userAddress.stake_credential,
-      smartTokensSpendScriptHash,
-    )
-
-  let crossScriptDoubleSpendProtectionDatum =
-    userOutput.datum == InlineDatum(auctionRef)
-
+  let correctDatum =
+    when userAssetManagerDatum is {
+      AssetManagerDatumWithToken { ownerAsset, .. } ->
+        InlineDatum(
+          AssetManagerDatumWithToken {
+            inputOutputReference: auctionRef,
+            action,
+            data: userAssetManagerDatum,
+            ownerAsset,
+          },
+        )
+      AssetManagerDatumWithHash { ownerAuth, .. } ->
+        InlineDatum(
+          AssetManagerDatumWithHash {
+            inputOutputReference: auctionRef,
+            action,
+            data: userAssetManagerDatum,
+            ownerAuth,
+          },
+        )
+    } == userOutput.datum
   let correctValue = and {
       quantity_of(userOutput.value, currency.policyId, currency.assetName) >= amount,
       if currency.policyId == ada_policy_id {
@@ -170,8 +195,7 @@ fn correctAmountSentToUser(
       },
     }
   and {
-    correctDestination,
-    crossScriptDoubleSpendProtectionDatum,
+    correctDatum,
     correctValue,
   }
 }

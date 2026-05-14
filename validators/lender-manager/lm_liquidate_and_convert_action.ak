@@ -228,7 +228,7 @@ validator actionValidator(
           let refundDatumHash =
             AssetManagerDatumWithToken {
               inputOutputReference: loanInput.output_reference,
-              action: constants.claimed_collateral_action,
+              action: constants.action_claimed_collateral,
               data: None,
               ownerAsset,
             }

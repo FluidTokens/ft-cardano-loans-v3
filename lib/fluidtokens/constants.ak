@@ -6,15 +6,26 @@ pub const max_oracle_validity_range = 3600000
 
 pub const no_permissioned_condition = "NONE"
 
-pub const repayment_action_installment = "installment_repayment"
+pub const action_installment_repayment = "installment_repayment"
 
-pub const repayment_action_recast = "recast"
+pub const action_recast = "recast"
 
-pub const repayment_action_partial_liquidation = "partial_liquidation"
+pub const action_partial_liquidation_compensation = "partial_liquidation"
 
-pub const claimed_collateral_action = "claimed_collateral"
+pub const action_claimed_collateral = "claimed_collateral"
+
+pub const action_dutch_auction_partial_liquidation_compensation =
+  "dutch_auction_partial_liquidation_compensation"
+
+pub const action_dutch_auction_claimed_collateral =
+  "dutch_auction_claimed_collateral"
 
 pub const converted_to_liquidity_action = "converted_to_liquidity"
+
+pub const dutch_auction_owner_revenue = "dutch_auction_owner_revenue"
+
+pub const dutch_auction_borrower_compensation =
+  "dutch_auction_borrower_compensation"
 
 pub const charlie_identifier_asset_name = "OracleFeed"
 

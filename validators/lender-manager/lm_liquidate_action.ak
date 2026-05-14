@@ -160,7 +160,7 @@ validator actionValidator(
               },
               repaymentAsset: Asset(collateralPolicyId, collateralAssetName),
               repaymentAmount: loanCollateralThatLenderShouldReceive,
-              action: constants.claimed_collateral_action,
+              action: constants.action_claimed_collateral,
             ),
           }
         },
