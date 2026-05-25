@@ -6,6 +6,7 @@ use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/types/lender_manager.{LenderManagerWithdrawRedeemer} as lm
+use fluidtokens/types/pool.{PoolWithdrawRedeemer} as pw
 use fluidtokens/types/pool_manager.{
   CancelPoolManager, CompoundLiquidity, PoolManagerDatum,
   PoolManagerMintRedeemer, PoolManagerWithdrawRedeemer, UpdatePoolManager,
@@ -232,6 +233,18 @@ fn check_mint(
       },
     )
 
+  //Only pool cancel (or edit) must allow burning of the PoolManager NFT
+  let poolManagerBurntOnlyInAllowedActions = {
+    let poolWithdrawRedeemer =
+      safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
+    expect poolWithdrawRedeemer.1st == Withdraw(Script(poolWithdrawScriptHash))
+    expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
+    when poolRedeemer.actionType is {
+      pw.Cancel { .. } -> True
+      _ -> False
+    }
+  }
+
   let poolMintedNFTs =
     list.filter(
       dict.to_pairs(tokens(self.mint, poolPolicyId)),
@@ -243,6 +256,7 @@ fn check_mint(
   //When you modify/compound a pool you also burn and remint this NFT
   and {
     length(poolInputs) == length(poolManagerBurntNFTs),
+    poolManagerBurntOnlyInAllowedActions,
     poolManagerMintedNFTs == poolMintedNFTs,
     isEachMintedTokenAccountedFor,
   }

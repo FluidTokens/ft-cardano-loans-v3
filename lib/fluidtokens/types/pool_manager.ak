@@ -16,6 +16,7 @@ pub type PoolManagerDatum {
 
 pub type PoolManagerMintRedeemer {
   configRefInputIndex: Int,
+  poolWithdrawRedeemerIndex: Int,
 }
 
 pub type PoolManagerAction {
