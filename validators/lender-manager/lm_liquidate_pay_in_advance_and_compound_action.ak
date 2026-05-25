@@ -391,6 +391,11 @@ validator actionValidator(
       )
 
     and {
+      //The following 2 equalities prevent unauthorized spending of LenderManager utxos
+      list.length(list.unique(redeemer.lenderBondInputIndexes)) == list.length(
+        lenderBondInputs,
+      ),
+      list.length(redeemer.lenderBondInputIndexes) == list.length(loanInputs),
       //All pool managers in input must have been used for compounding
       list.length(poolManagerInputs) == list.length(
         dict.to_pairs(totalAssetsToCompoundForEachPoolManager),

@@ -351,8 +351,11 @@ validator actionValidator(
           }
         },
       ) == None,
-      //No additional lender bonds should be spent
-      list.length(loanInputs) == list.length(lenderBondInputs),
+      //The following 2 equalities prevent unauthorized spending of LenderManager utxos
+      list.length(list.unique(redeemer.lenderBondInputIndexes)) == list.length(
+        lenderBondInputs,
+      ),
+      list.length(redeemer.lenderBondInputIndexes) == list.length(loanInputs),
       liquidatedCollateralOutputsAreCorrect,
     }
   }
