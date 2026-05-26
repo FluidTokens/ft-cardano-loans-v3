@@ -67,16 +67,10 @@ pub type ClaimData {
   liquidationMode: LiquidationMode,
   //This is the absolute output index that contains the lender bond
   lenderBondOutputIndex: Int,
-  //This is the absolute ref input index that contains the borrower bond
-  borrowerBondRefInputIndex: Int,
   //If loan doesn't use oracle, this is not used
   collateralOracleRefInputIndex: Int,
   //If loan doesn't use oracle, this is not used
   principalOracleRefInputIndex: Int,
-  //Position in Value of the borrower bond PolicyId
-  borrowerBondRefInputPolicyIdIndex: Int,
-  //Position in Value of the borrower bond AssetName
-  borrowerBondRefInputAssetNameIndex: Int,
   //Used only when an auction must start as part of liquidation
   lenderAuth: AuthorizationMethod,
   //In case of partialLiquidation, it's collateralValue - remainingDebt expressed in principal or collateral currency
