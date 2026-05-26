@@ -4,9 +4,10 @@ use aiken/collection/list
 use cardano/address.{Credential, Script}
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
+use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/types/asset_manager.{
-  AssetManagerDatumWithToken, AssetManagerMintRedeemer,
-  AssetManagerWithdrawRedeemer,
+  AssetManagerDatum, AssetManagerDatumWithHash, AssetManagerDatumWithToken,
+  AssetManagerMintRedeemer, AssetManagerWithdrawRedeemer,
 } as r
 use fluidtokens/types/general.{Liquidation}
 use fluidtokens/types/loan.{
@@ -140,7 +141,6 @@ validator assetManager(
       )
     let smartTokensSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 0))
-    let ownerAssetPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
     let assetManagerSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 26))
     let assetInputs =
@@ -150,30 +150,34 @@ validator assetManager(
         credential,
         smartTokensSpendScriptHash,
       )
-    //Lender Bonds can be in a smart contract or in a wallet, so we just check that are spent
-    let ownerAssetInputs =
-      list.filter(
-        self.inputs,
-        fn(input) {
-          utils.quantity_of_policy_id(input.output.value, ownerAssetPolicyId) > 0
-        },
-      )
     utils.indexed_all(
       assetInputs,
       fn(index, input) {
         expect InlineDatum(inputDatum) = input.output.datum
-        expect AssetManagerDatumWithToken { ownerAsset, .. } = inputDatum
-
-        let ownerAssetIndex =
-          safe_list_at(redeemer.ownerAssetInputIndexes, index)
-
-        let ownerAssetInput = safe_list_at(ownerAssetInputs, ownerAssetIndex)
-
-        quantity_of(
-          ownerAssetInput.output.value,
-          ownerAsset.policyId,
-          ownerAsset.assetName,
-        ) == 1
+        expect datum: AssetManagerDatum = inputDatum
+        when datum is {
+          AssetManagerDatumWithToken { ownerAsset, .. } -> {
+            let ownerAssetInputIndex =
+              safe_list_at(redeemer.ownerAssetInputIndexes, index)
+            let ownerAssetInput =
+              safe_list_at(self.inputs, ownerAssetInputIndex)
+            quantity_of(
+              ownerAssetInput.output.value,
+              ownerAsset.policyId,
+              ownerAsset.assetName,
+            ) > 0
+          }
+          AssetManagerDatumWithHash { ownerAuth, .. } ->
+            authorize_action(
+              create_auth(
+                ownerAuth,
+                self.inputs,
+                self.withdrawals,
+                self.extra_signatories,
+                self.mint,
+              ),
+            )
+        }
       },
     )
   }
