@@ -22,7 +22,7 @@ pub type LenderManagerDatum {
   //How much the bot gets of the liquidated collateral, expressed in per mille (1/1000)
   liquidationFeePerMille: Int,
   //If "", no compounding is allowed
-  poolManagerId: ByteArray,
+  poolId: ByteArray,
   //The repaid/liquidated loan must have the same principal of the specified pool
   principalAsset: Asset,
 }
@@ -57,7 +57,7 @@ pub type LMLiquidateWithdrawRedeemer {
 
 pub type LMCompoundWithdrawRedeemer {
   configRefInputIndex: Int,
-  poolManagerIds: List<ByteArray>,
+  poolIds: List<ByteArray>,
   poolInputIndexes: List<Int>,
   lenderBondInputIndexes: List<Int>,
   compoundedPoolNewIds: List<ByteArray>,
@@ -84,7 +84,7 @@ pub type LMLiquidatePayInAdvanceAndCompoundWithdrawRedeemer {
   configRefInputIndex: Int,
   lenderBondInputIndexes: List<Int>,
   lenderBondAssetNames: List<ByteArray>,
-  poolManagerIds: List<ByteArray>,
+  poolIds: List<ByteArray>,
   poolInputIndexes: List<Int>,
   principalAndCollateralOracleRefInputIndexes: List<(Int, Int)>,
   compoundedPoolNewIds: List<ByteArray>,

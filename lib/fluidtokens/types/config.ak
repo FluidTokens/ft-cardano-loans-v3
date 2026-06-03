@@ -26,6 +26,7 @@ pub type ConfigDatum {
   poolCancelActionScriptHash: ByteArray,
   poolBorrowActionScriptHash: ByteArray,
   poolSellLenderPositionActionScriptHash: ByteArray,
+  poolCompoundActionScriptHash: ByteArray,
   poolManagerSpendScriptHash: ByteArray,
   assetManagerSpendScriptHash: ByteArray,
 }

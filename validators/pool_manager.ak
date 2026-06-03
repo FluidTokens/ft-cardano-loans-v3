@@ -50,7 +50,7 @@ validator poolManager(
         configNFTAssetName,
       )
     let poolManagerSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(config, 25))
+      builtin.un_b_data(utils.safe_list_at(config, 26))
 
     let poolManagerInputs =
       list.filter(
@@ -184,7 +184,7 @@ fn check_mint(
     builtin.un_b_data(utils.safe_list_at(config, 0))
   let poolPolicyId = builtin.un_b_data(utils.safe_list_at(config, 2))
   let poolManagerSpendScriptHash =
-    builtin.un_b_data(utils.safe_list_at(config, 25))
+    builtin.un_b_data(utils.safe_list_at(config, 26))
 
   let (poolManagerMintedNFTs, poolManagerBurntNFTs) =
     list.partition(
@@ -253,7 +253,7 @@ fn check_mint(
   //NOTE: We don't check the destination of the minted NFTs, as it's the pool owner interest to put them in this SC
   //When you mint a pool you also mint this NFT with same AssetName
   //When you cancel (burn) a pool you also burn this NFT
-  //When you modify/compound a pool you also burn and remint this NFT
+  //When you edit (cancel+recreate) a pool you also burn and remint this NFT
   and {
     length(poolInputs) == length(poolManagerBurntNFTs),
     poolManagerBurntOnlyInAllowedActions,

@@ -78,6 +78,8 @@ pub type ActionType {
   Borrow
   //This pool acquires an existing lender position if all loan params are compatible
   SellLenderPosition
+  //Bots can compound to the pool
+  Compound
 }
 
 pub type PoolWithdrawRedeemer {

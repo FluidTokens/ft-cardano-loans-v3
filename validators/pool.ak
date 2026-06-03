@@ -7,7 +7,8 @@ use cardano/address.{Credential, Script}
 use cardano/assets.{PolicyId, tokens}
 use cardano/transaction.{Output, Transaction, find_input}
 use fluidtokens/types/pool.{
-  Borrow, Cancel, PoolMintRedeemer, PoolWithdrawRedeemer, SellLenderPosition,
+  Borrow, Cancel, Compound, PoolMintRedeemer, PoolWithdrawRedeemer,
+  SellLenderPosition,
 } as p
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils as st_utils
@@ -34,11 +35,14 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
       builtin.un_b_data(utils.safe_list_at(config, 23))
     let poolSellLenderPositionActionScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 24))
+    let poolCompoundActionScriptHash =
+      builtin.un_b_data(utils.safe_list_at(config, 27))
     let actionWithdrawScriptHash =
       when redeemer.actionType is {
         Cancel { .. } -> poolCancelActionScriptHash
         Borrow { .. } -> poolBorrowActionScriptHash
         SellLenderPosition { .. } -> poolSellLenderPositionActionScriptHash
+        Compound { .. } -> poolCompoundActionScriptHash
       }
 
     list.any(

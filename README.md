@@ -60,7 +60,7 @@ Bots compete to execute these transactions and earn liquidation and compounding 
     2) The pool lenderBondAddress field must be set as the Spend script hash of the LenderManager.
     3) The pool lenderBondInlineDatumHash field must be the blake2b_256 hash of the LenderManagerDatum.
     4) The field shouldLiquidationConvertToPrincipal must be set to True if bots should convert the liquidated collateral into principal (either paying it in advance or converting it through DEX), otherwise they will simply liquidate the collateral and put it in the LenderManager Spend script.
-    5) For automatic compounding, the field PoolManagerId must be set as the NFT AssetName of the newly created PoolManager, otherwise leave it empty.
+    5) For automatic compounding, the field poolId must be set as the NFT AssetName of the newly created PoolManager, otherwise leave it empty.
 * When a new loan is created, the Lender's bond will now get locked in LenderManager Spend script.
 * Each borrower repayment (installment, full amount, recast) will be sent to the LenderManager Spend script.
 * To cancel/edit a pool, the Lender now has to also burn the corresponding PoolManager.
@@ -80,10 +80,10 @@ The general bot steps are:
 3. If the loan exists, check that it allows liquidation and check its Loan-To-Value (LTV) health
 4. If it is unhealthy, it can be liquidated
 5. Check if the lender_manager utxo has shouldLiquidationConvertToPrincipal. If False, liquidate the loan and send the collateral (minus fees) to the lender_manager.ak. If True, continue with the next step
-6. Check if the lender_manager utxo has poolManagerId set. If is empty, just convert the collateral into principal (either paying in advance or through the DEX order) and set lender_manager.ak the result destination. If it's not empty, look for the existing pool_manager.ak utxo.
+6. Check if the lender_manager utxo has poolId set. If is empty, just convert the collateral into principal (either paying in advance or through the DEX order) and set lender_manager.ak the result destination. If it's not empty, look for the existing pool_manager.ak utxo.
 7. If it doesn't exist, liquidate as before. If it exists, look for the relative pool in pool.ak
 8. If it doesn't exist, liquidate as before. If it exists, you have 2 options: either liquidate and convert as before or convert, pay in advance and compound to that pool.
-9. For each lender bond, if lender_manager utxo has poolManagerId set and the relative pool in pool.ak exists, scan all the remaining lender_manager.ak utxos and look for utxos with datum AssetManagerDatumWithToken where the ownerAsset is the lender bond and where it contains the pool's principal asset. Compound them to the pool.
+9. For each lender bond, if lender_manager utxo has poolId set and the relative pool in pool.ak exists, scan all the remaining lender_manager.ak utxos and look for utxos with datum AssetManagerDatumWithToken where the ownerAsset is the lender bond and where it contains the pool's principal asset. Compound them to the pool.
 
 ## Scripts
 The most important scripts contained are the following:

@@ -49,6 +49,16 @@ validator actionValidator(
         Script(lenderManagerWithdrawScriptHash),
         smartTokensSpendScriptHash,
       )
+    //Lender bonds always reside in lender_manager.ak, so we don't need to consider CIP113 utxos
+    let lenderBondOutputs =
+      list.filter(
+        self.outputs,
+        fn(output) {
+          output.address.payment_credential == Script(
+            lenderManagerSpendScriptHash,
+          )
+        },
+      )
     let assetInputs =
       get_inputs_from_smart_credential(
         self.inputs,
@@ -88,16 +98,7 @@ validator actionValidator(
         Script(poolPolicyId),
         smartTokensSpendScriptHash,
       )
-    //Lender bonds always reside in lender_manager.ak, so we don't need to consider CIP113 utxos
-    let lenderBondOutputs =
-      list.filter(
-        self.outputs,
-        fn(output) {
-          output.address.payment_credential == Script(
-            lenderManagerSpendScriptHash,
-          )
-        },
-      )
+
     //Add repayments sitting in the lm to the total to compound for each pool manager
     let totalAssetsToCompoundForEachPoolManager =
       list.indexed_foldr(
@@ -113,7 +114,7 @@ validator actionValidator(
           let lenderBondInput = safe_list_at(lenderBondInputs, lenderBondIndex)
           expect InlineDatum(inputLenderBondDatum) =
             lenderBondInput.output.datum
-          expect LenderManagerDatum { principalAsset, poolManagerId, .. } =
+          expect LenderManagerDatum { principalAsset, poolId, .. } =
             inputLenderBondDatum
           let assetAmount =
             quantity_of(
@@ -147,7 +148,7 @@ validator actionValidator(
 
           dict.insert_with(
             result,
-            poolManagerId,
+            poolId,
             assetAmount,
             fn(_k, a, b) { Some(a + b) },
           )
@@ -158,22 +159,18 @@ validator actionValidator(
       utils.indexed_all(
         poolManagerInputs,
         fn(index, poolManagerInput) {
-          let poolManagerId = safe_list_at(redeemer.poolManagerIds, index)
+          let poolId = safe_list_at(redeemer.poolIds, index)
           expect Some(addedLiquidity) =
-            dict.get(totalAssetsToCompoundForEachPoolManager, poolManagerId)
+            dict.get(totalAssetsToCompoundForEachPoolManager, poolId)
           let poolManagerOutput = safe_list_at(poolManagerOutputs, index)
           let poolInputIndex = safe_list_at(redeemer.poolInputIndexes, index)
           let poolInput = safe_list_at(poolInputs, poolInputIndex)
           let poolOutput = safe_list_at(poolOutputs, poolInputIndex)
           expect InlineDatum(poolManagerDatum) = poolManagerInput.output.datum
-          expect PoolManagerDatum {
-            poolId,
-            poolOwnerAuth,
-            compoudingFeePerMille,
-          } = poolManagerDatum
+          expect PoolManagerDatum { compoudingFeePerMille, .. } =
+            poolManagerDatum
           expect InlineDatum(oldPoolDatum) = poolInput.output.datum
           expect PoolDatum { commonData, .. } = oldPoolDatum
-          let newPoolId = safe_list_at(redeemer.compoundedPoolNewIds, index)
           let compoundingFee = addedLiquidity * compoudingFeePerMille / 1000
           //Replace old liquidity with new one and replace old pool nft with new one
           let expectedNewPoolValue =
@@ -183,43 +180,24 @@ validator actionValidator(
                   commonData.principalAsset.assetName,
                   addedLiquidity - compoundingFee,
                 )
-              |> add(poolPolicyId, poolId, -1)
-              |> add(poolPolicyId, newPoolId, 1)
 
           and {
-            //If poolManagerId is "", no compounding allowed so the whole action must fail
-            poolManagerId != "",
-            //Input poolManager must contain the NFT specified in the lender bond datums
+            //If poolId is "", no compounding allowed so the whole action must fail
+            poolId != "",
+            //Input poolManager must contain the NFT specified in the lender bond datum
             quantity_of(
               poolManagerInput.output.value,
               poolManagerPolicyId,
-              poolManagerId,
+              poolId,
             ) == 1,
-            //Pool must be the one specified in the poolManager datum
+            //Input pool must have same PoolManager asset name
             quantity_of(poolInput.output.value, poolPolicyId, poolId) == 1,
             //Pool must be same in address and datum except for value
             builtin.equals_data(poolOutput.datum, poolInput.output.datum),
             builtin.equals_data(poolOutput.value, expectedNewPoolValue),
             builtin.equals_data(poolOutput.address, poolInput.output.address),
-            //PoolManager must be same in input and output except for the poolId
-            builtin.equals_data(
-              poolManagerOutput.address,
-              poolManagerInput.output.address,
-            ),
-            builtin.equals_data(
-              poolManagerOutput.value,
-              poolManagerInput.output.value,
-            ),
-            builtin.equals_data(
-              poolManagerOutput.datum,
-              InlineDatum(
-                PoolManagerDatum {
-                  poolOwnerAuth,
-                  poolId: newPoolId,
-                  compoudingFeePerMille,
-                },
-              ),
-            ),
+            //PoolManager must be same in input and output
+            builtin.equals_data(poolManagerOutput, poolManagerInput.output),
           }
         },
       )
