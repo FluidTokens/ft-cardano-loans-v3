@@ -234,16 +234,28 @@ fn check_mint(
     )
 
   //Only pool cancel (or edit) must allow burning of the PoolManager NFT
-  let poolManagerBurntOnlyInAllowedActions = {
-    let poolWithdrawRedeemer =
-      safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
-    expect poolWithdrawRedeemer.1st == Withdraw(Script(poolWithdrawScriptHash))
-    expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
-    when poolRedeemer.actionType is {
-      pw.Cancel { .. } -> True
-      _ -> False
+  let poolManagerBurntOnlyInAllowedActions =
+    if length(poolManagerBurntNFTs) > 0 {
+      let poolWithdrawRedeemer =
+        safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
+      expect
+        poolWithdrawRedeemer.1st == Withdraw(Script(poolWithdrawScriptHash))
+      expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
+      when poolRedeemer.actionType is {
+        pw.Cancel { .. } -> {
+          let poolBurntNFTs =
+            list.filter(
+              dict.to_pairs(tokens(self.mint, poolPolicyId)),
+              fn(Pair(_assetName, quantity)) { quantity < 0 },
+            )
+          //All pool manager NFTs burnt must have same asset name of all pool NFTs burnt
+          poolManagerBurntNFTs == poolBurntNFTs
+        }
+        _ -> False
+      }
+    } else {
+      True
     }
-  }
 
   let poolMintedNFTs =
     list.filter(

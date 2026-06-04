@@ -123,6 +123,10 @@ pub type SellLenderPositionData {
   poolId: ByteArray,
 }
 
+pub type CompoundData {
+  poolId: ByteArray,
+}
+
 pub type PoolCancelActionWithdrawRedeemer {
   configRefInputIndex: Int,
   actionsForEachInput: List<CancelData>,
@@ -136,4 +140,9 @@ pub type PoolBorrowActionWithdrawRedeemer {
 pub type PoolSellLenderPositionActionWithdrawRedeemer {
   configRefInputIndex: Int,
   actionsForEachInput: List<SellLenderPositionData>,
+}
+
+pub type PoolCompoundActionWithdrawRedeemer {
+  configRefInputIndex: Int,
+  actionsForEachInput: List<CompoundData>,
 }

@@ -1,20 +1,20 @@
 use aiken/builtin
 use cardano/address.{Credential, Script}
-use cardano/assets.{quantity_of}
+use cardano/assets.{add, quantity_of, without_lovelace}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/authorizer.{authorize_action, create_auth}
-use fluidtokens/types/pool.{PoolCancelActionWithdrawRedeemer, PoolDatum}
+use fluidtokens/types/pool.{PoolCompoundActionWithdrawRedeemer, PoolDatum}
 use fluidtokens/utils.{safe_list_at}
 use smart_tokens/utils.{
   get_inputs_from_smart_credential, get_outputs_to_smart_credential,
 } as st_utils
 
-validator pool_cancel_action(
+validator pool_compound_action(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
 ) {
   withdraw(
-    redeemer: PoolCancelActionWithdrawRedeemer,
+    redeemer: PoolCompoundActionWithdrawRedeemer,
     _credential: Credential,
     self: Transaction,
   ) {
@@ -51,13 +51,49 @@ validator pool_cancel_action(
         expect datum: PoolDatum = inputDatum
         let redeemerAction = safe_list_at(redeemer.actionsForEachInput, index)
         let output = safe_list_at(poolOutputs, index)
+        let principal = datum.commonData.principalAsset
+
+        let inputPrincipal =
+          quantity_of(
+            input.output.value,
+            principal.policyId,
+            principal.assetName,
+          )
+
+        let outputPrincipal =
+          quantity_of(output.value, principal.policyId, principal.assetName)
+
+        let addedPrincipal = outputPrincipal - inputPrincipal
         and {
           //Pool NFT is kept in the Pool contract
           quantity_of(input.output.value, poolPolicyId, redeemerAction.poolId) == 1,
-          quantity_of(output.value, poolPolicyId, redeemerAction.poolId) == 1,
+          //You must only add principal to the pool during compound
+          addedPrincipal > 0,
+          //Value must be same except for the added principal
+          if principal.policyId == "" {
+            builtin.equals_data(
+              output.value,
+              input.output.value
+                |> add(principal.policyId, principal.assetName, addedPrincipal),
+            )
+          } else {
+            builtin.equals_data(
+              without_lovelace(output.value),
+              without_lovelace(
+                input.output.value
+                  |> add(
+                      principal.policyId,
+                      principal.assetName,
+                      addedPrincipal,
+                    ),
+              ),
+            )
+          },
+          //No change of pool address
+          builtin.equals_data(output.address, input.output.address),
           //Datum doesn't change, value can change and it's not checked here
-          input.output.datum == output.datum,
-          //You must be authorized to compound (for ex. the Pool Manager)
+          builtin.equals_data(output.datum, input.output.datum),
+          //You must be authorized to compound (for ex. the Pool Manager NFT)
           authorize_action(
             create_auth(
               datum.lenderAuth,

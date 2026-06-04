@@ -60,7 +60,6 @@ pub type LMCompoundWithdrawRedeemer {
   poolIds: List<ByteArray>,
   poolInputIndexes: List<Int>,
   lenderBondInputIndexes: List<Int>,
-  compoundedPoolNewIds: List<ByteArray>,
 }
 
 pub type LMLiquidateAndPayInAdvanceWithdrawRedeemer {
