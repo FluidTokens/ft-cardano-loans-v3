@@ -1,6 +1,6 @@
 use aiken/builtin
 use cardano/address.{Credential, Script}
-use cardano/assets.{add, quantity_of, without_lovelace}
+use cardano/assets.{ada_policy_id, add, quantity_of, without_lovelace}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/types/pool.{PoolCompoundActionWithdrawRedeemer, PoolDatum}
@@ -70,7 +70,7 @@ validator pool_compound_action(
           //You must only add principal to the pool during compound
           addedPrincipal > 0,
           //Value must be same except for the added principal
-          if principal.policyId == "" {
+          if principal.policyId == ada_policy_id {
             builtin.equals_data(
               output.value,
               input.output.value

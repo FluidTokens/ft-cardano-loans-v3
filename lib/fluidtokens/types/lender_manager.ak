@@ -86,7 +86,6 @@ pub type LMLiquidatePayInAdvanceAndCompoundWithdrawRedeemer {
   poolIds: List<ByteArray>,
   poolInputIndexes: List<Int>,
   principalAndCollateralOracleRefInputIndexes: List<(Int, Int)>,
-  compoundedPoolNewIds: List<ByteArray>,
 }
 
 pub type LMLiquidatConvertAndCompoundWithdrawRedeemer {
@@ -94,5 +93,4 @@ pub type LMLiquidatConvertAndCompoundWithdrawRedeemer {
   lenderBondInputIndexes: List<Int>,
   lenderBondAssetNames: List<ByteArray>,
   minswapV2InfoRefInputIndex: Int,
-  compoundedPoolNewIds: List<ByteArray>,
 }

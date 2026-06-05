@@ -2,7 +2,7 @@ use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{ada_policy_id, add, flatten, quantity_of}
+use cardano/assets.{ada_policy_id, add, flatten, quantity_of, without_lovelace}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/types/asset_manager.{AssetManagerDatumWithToken} as r
 use fluidtokens/types/general.{Asset}
@@ -171,15 +171,33 @@ validator actionValidator(
             poolManagerDatum
           expect InlineDatum(oldPoolDatum) = poolInput.output.datum
           expect PoolDatum { commonData, .. } = oldPoolDatum
+          let principal = commonData.principalAsset
           let compoundingFee = addedLiquidity * compoudingFeePerMille / 1000
-          //Replace old liquidity with new one and replace old pool nft with new one
-          let expectedNewPoolValue =
-            poolInput.output.value
-              |> add(
-                  commonData.principalAsset.policyId,
-                  commonData.principalAsset.assetName,
-                  addedLiquidity - compoundingFee,
-                )
+          //Value must be same except for the added principal
+          let correctOutputValue =
+            if principal.policyId == ada_policy_id {
+              builtin.equals_data(
+                poolOutput.value,
+                poolInput.output.value
+                  |> add(
+                      principal.policyId,
+                      principal.assetName,
+                      addedLiquidity - compoundingFee,
+                    ),
+              )
+            } else {
+              builtin.equals_data(
+                without_lovelace(poolOutput.value),
+                without_lovelace(
+                  poolInput.output.value
+                    |> add(
+                        principal.policyId,
+                        principal.assetName,
+                        addedLiquidity - compoundingFee,
+                      ),
+                ),
+              )
+            }
 
           and {
             //If poolId is "", no compounding allowed so the whole action must fail
@@ -192,10 +210,8 @@ validator actionValidator(
             ) == 1,
             //Input pool must have same PoolManager asset name
             quantity_of(poolInput.output.value, poolPolicyId, poolId) == 1,
-            //Pool must be same in address and datum except for value
-            builtin.equals_data(poolOutput.datum, poolInput.output.datum),
-            builtin.equals_data(poolOutput.value, expectedNewPoolValue),
-            builtin.equals_data(poolOutput.address, poolInput.output.address),
+            //Pool compound action already ensures datum and address are correct
+            correctOutputValue,
             //PoolManager must be same in input and output
             builtin.equals_data(poolManagerOutput, poolManagerInput.output),
           }
