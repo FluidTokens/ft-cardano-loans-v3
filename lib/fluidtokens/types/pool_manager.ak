@@ -14,14 +14,30 @@ pub type PoolManagerMintRedeemer {
 
 pub type PoolManagerAction {
   //As a pool can delegate auth to this withdraw script, we must allow to burn PMs
-  CancelPoolManager { poolManagerNFTAssetNames: List<ByteArray> }
+  CancelPoolManager
   //Update only the datum that must still have the correct type
   UpdatePoolManager
   //Delegates the security to one of the compounding actions from LenderManager
-  CompoundLiquidity { lenderManagerWithdrawRedeemerIndex: Int }
+  CompoundLiquidity
 }
 
 pub type PoolManagerWithdrawRedeemer {
   configRefInputIndex: Int,
   action: PoolManagerAction,
+}
+
+pub type CancelPoolManagerActionWithdrawRedeemer {
+  configRefInputIndex: Int,
+  poolWithdrawRedeemerIndex: Int,
+  poolManagerNFTAssetNames: List<ByteArray>,
+}
+
+pub type UpdatePoolManagerActionWithdrawRedeemer {
+  configRefInputIndex: Int,
+}
+
+pub type CompoundLiquidityActionWithdrawRedeemer {
+  configRefInputIndex: Int,
+  poolWithdrawRedeemerIndex: Int,
+  lenderManagerWithdrawRedeemerIndex: Int,
 }

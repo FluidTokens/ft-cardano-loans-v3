@@ -64,9 +64,9 @@ validator kyc_token(
     let poolWithdrawRedeemer =
       safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
     expect poolWithdrawRedeemer.1st == Withdraw(Script(poolPolicyId))
-    expect PoolWithdrawRedeemer { actionType, .. } = poolWithdrawRedeemer.2nd
+    expect PoolWithdrawRedeemer { action, .. } = poolWithdrawRedeemer.2nd
     //Pools must do borrow action
-    expect actionType == Borrow
+    expect action == Borrow
 
     let poolBorrowWithdrawRedeemer =
       safe_list_at(self.redeemers, redeemer.poolBorrowWithdrawRedeemerIndex)

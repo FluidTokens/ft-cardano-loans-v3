@@ -71,7 +71,7 @@ pub type PoolMintRedeemer {
   inputRef: OutputReference,
 }
 
-pub type ActionType {
+pub type Action {
   //Pool's owner can cancel the pool
   Cancel
   //Any user can become borrower
@@ -84,7 +84,7 @@ pub type ActionType {
 
 pub type PoolWithdrawRedeemer {
   configRefInputIndex: Int,
-  actionType: ActionType,
+  action: Action,
 }
 
 pub type CancelData {

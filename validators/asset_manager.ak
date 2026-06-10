@@ -67,7 +67,7 @@ validator assetManager(
         expect loanWithdrawRedeemer.1st == Withdraw(Script(loanPolicyId))
         expect loanRedeemer: LoanWithdrawRedeemer = loanWithdrawRedeemer.2nd
 
-        when loanRedeemer.actionType is {
+        when loanRedeemer.action is {
           Claim -> {
             let loanClaimActionWithdrawRedeemer =
               safe_list_at(
@@ -142,7 +142,7 @@ validator assetManager(
     let smartTokensSpendScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 0))
     let assetManagerSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(config, 27))
+      builtin.un_b_data(utils.safe_list_at(config, 28))
     let assetInputs =
       get_inputs_from_smart_credential(
         self.inputs,

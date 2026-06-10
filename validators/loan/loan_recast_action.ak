@@ -264,33 +264,21 @@ validator loan_recast_action(
                       )
                     }
                     PerpetualLoan { .. } -> {
-                      expect Finite(validFrom) =
-                        self.validity_range.lower_bound.bound_type
-                      let newLendDate = validFrom
-                      let newRepaidInstallments = 0
-                      //Loan datum except the first 4 fields
+                      //Loan datum except the first 2 fields
                       let datumUnchangedPart =
                         datum
                           |> builtin.unconstr_fields
                           |> builtin.tail_list
                           |> builtin.tail_list
-                          |> builtin.tail_list
-                          |> builtin.tail_list
 
-                      //Adding the new first 4 fields and remaking it a constructor
+                      //Adding the new first 2 fields and remaking it a constructor
                       builtin.constr_data(
                         0,
                         builtin.cons_list(
                           builtin.i_data(datum.doneRecasts + 1),
                           builtin.cons_list(
                             builtin.i_data(principalAfterRecasting),
-                            builtin.cons_list(
-                              builtin.i_data(newLendDate),
-                              builtin.cons_list(
-                                builtin.i_data(newRepaidInstallments),
-                                datumUnchangedPart,
-                              ),
-                            ),
+                            datumUnchangedPart,
                           ),
                         ),
                       )

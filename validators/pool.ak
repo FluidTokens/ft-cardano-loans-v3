@@ -38,7 +38,7 @@ validator pool(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
     let poolCompoundActionScriptHash =
       builtin.un_b_data(utils.safe_list_at(config, 25))
     let actionWithdrawScriptHash =
-      when redeemer.actionType is {
+      when redeemer.action is {
         Cancel { .. } -> poolCancelActionScriptHash
         Borrow { .. } -> poolBorrowActionScriptHash
         SellLenderPosition { .. } -> poolSellLenderPositionActionScriptHash

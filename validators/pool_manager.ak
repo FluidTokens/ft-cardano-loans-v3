@@ -2,11 +2,9 @@ use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list.{length}
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{PolicyId, quantity_of, tokens}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction, Withdraw}
-use fluidtokens/authorizer.{authorize_action, create_auth}
-use fluidtokens/types/lender_manager.{LenderManagerWithdrawRedeemer} as lm
-use fluidtokens/types/pool.{PoolWithdrawRedeemer} as pw
+use cardano/assets.{PolicyId, tokens}
+use cardano/transaction.{InlineDatum, Output, Transaction, Withdraw}
+use fluidtokens/types/pool.{Cancel, PoolWithdrawRedeemer} as pw
 use fluidtokens/types/pool_manager.{
   CancelPoolManager, CompoundLiquidity, PoolManagerDatum,
   PoolManagerMintRedeemer, PoolManagerWithdrawRedeemer, UpdatePoolManager,
@@ -17,9 +15,11 @@ use smart_tokens/utils.{get_inputs_from_smart_credential} as st_utils
 validator poolManager(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
-  lenderManagerWithdrawScriptHash: ByteArray,
   poolSpendScriptHash: ByteArray,
   poolWithdrawScriptHash: ByteArray,
+  poolManagerCancelPoolManagerScriptHash: ByteArray,
+  poolManagerUpdatePoolManagerScriptHash: ByteArray,
+  poolManagerCompoundLiquidityScriptHash: ByteArray,
 ) {
   mint(
     redeemer: PoolManagerMintRedeemer,
@@ -39,125 +39,26 @@ validator poolManager(
 
   withdraw(
     redeemer: PoolManagerWithdrawRedeemer,
-    credential: Credential,
+    _credential: Credential,
     self: Transaction,
   ) {
-    expect Script(poolManagerPolicyId) = credential
-    let config =
-      utils.get_config_as_data_list(
-        safe_list_at(self.reference_inputs, redeemer.configRefInputIndex),
-        configNFTPolicyId,
-        configNFTAssetName,
-      )
-    let poolManagerSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(config, 26))
-
-    let poolManagerInputs =
-      list.filter(
-        self.inputs,
-        fn(input) {
-          input.output.address.payment_credential == Script(
-            poolManagerSpendScriptHash,
-          )
-        },
-      )
-    when redeemer.action is {
-      CancelPoolManager { poolManagerNFTAssetNames } ->
-        utils.indexed_all(
-          poolManagerInputs,
-          fn(index, input) {
-            expect InlineDatum(inputDatum) = input.output.datum
-            expect PoolManagerDatum { poolOwnerAuth, .. } = inputDatum
-
-            let poolManagerNFTAssetName =
-              safe_list_at(poolManagerNFTAssetNames, index)
-
-            and {
-              //Authorize the pool owner to execute this action
-              authorize_action(
-                create_auth(
-                  poolOwnerAuth,
-                  self.inputs,
-                  self.withdrawals,
-                  self.extra_signatories,
-                  self.mint,
-                ),
-              ),
-              quantity_of(
-                input.output.value,
-                poolManagerPolicyId,
-                poolManagerNFTAssetName,
-              ) == 1,
-              quantity_of(
-                self.mint,
-                poolManagerPolicyId,
-                poolManagerNFTAssetName,
-              ) == -1,
-            }
-          },
-        )
-      UpdatePoolManager -> {
-        let poolManagerOutputs =
-          list.filter(
-            self.outputs,
-            fn(output) {
-              output.address.payment_credential == Script(
-                poolManagerSpendScriptHash,
-              )
-            },
-          )
-        utils.indexed_all(
-          poolManagerInputs,
-          fn(index, input) {
-            expect InlineDatum(inputDatum) = input.output.datum
-            expect PoolManagerDatum { poolOwnerAuth, .. } = inputDatum
-
-            let poolManagerOutput = safe_list_at(poolManagerOutputs, index)
-
-            //Ensure the output has the correct datum type
-            expect InlineDatum(outputDatum) = poolManagerOutput.datum
-            expect PoolManagerDatum { .. } = outputDatum
-
-            and {
-              //Authorize the pool owner to execute this action
-              authorize_action(
-                create_auth(
-                  poolOwnerAuth,
-                  self.inputs,
-                  self.withdrawals,
-                  self.extra_signatories,
-                  self.mint,
-                ),
-              ),
-              //Output must have same value and address as input
-              builtin.equals_data(input.output.value, poolManagerOutput.value),
-              builtin.equals_data(
-                input.output.address,
-                poolManagerOutput.address,
-              ),
-            }
-          },
-        )
+    let actionWithdrawScriptHash =
+      when redeemer.action is {
+        CancelPoolManager { .. } -> poolManagerCancelPoolManagerScriptHash
+        UpdatePoolManager { .. } -> poolManagerUpdatePoolManagerScriptHash
+        CompoundLiquidity { .. } -> poolManagerCompoundLiquidityScriptHash
       }
-      CompoundLiquidity { lenderManagerWithdrawRedeemerIndex } -> {
-        //CompoundLiquidity action must be executed
-        let lenderManagerWithdrawRedeemer =
-          safe_list_at(self.redeemers, lenderManagerWithdrawRedeemerIndex)
-        expect
-          lenderManagerWithdrawRedeemer.1st == Withdraw(
-            Script(lenderManagerWithdrawScriptHash),
-          )
-        expect lenderManagerRedeemer: LenderManagerWithdrawRedeemer =
-          lenderManagerWithdrawRedeemer.2nd
 
-        when lenderManagerRedeemer.action is {
-          lm.Compound { .. } -> True
-          lm.LiquidatePayInAdvanceAndCompound { .. } -> True
-          lm.LiquidateConvertAndCompound { .. } -> True
+    list.any(
+      self.withdrawals,
+      fn(withdrawal) {
+        when withdrawal is {
+          Pair(Script(scriptHash), _amnt) ->
+            scriptHash == actionWithdrawScriptHash
           _ -> False
         }
-      }
-    }
+      },
+    )
   }
 
   else(_) {
@@ -241,7 +142,7 @@ fn check_mint(
       expect
         poolWithdrawRedeemer.1st == Withdraw(Script(poolWithdrawScriptHash))
       expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
-      when poolRedeemer.actionType is {
+      when poolRedeemer.action is {
         pw.Cancel { .. } -> {
           let poolBurntNFTs =
             list.filter(

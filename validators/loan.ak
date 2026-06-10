@@ -41,7 +41,7 @@ validator loan(configNFTPolicyId: ByteArray, configNFTAssetName: ByteArray) {
       builtin.un_b_data(utils.safe_list_at(config, 14))
 
     let actionWithdrawScriptHash =
-      when redeemer.actionType is {
+      when redeemer.action is {
         Claim { .. } -> loanClaimActionScriptHash
         Repay { .. } -> loanRepayActionScriptHash
         ChangeCollateral { .. } -> loanChangeCollateralActionScriptHash
@@ -122,10 +122,9 @@ fn check_mint(
         let poolWithdrawRedeemer =
           safe_list_at(self.redeemers, redeemer.originWithdrawRedeemerIndex)
         expect poolWithdrawRedeemer.1st == Withdraw(Script(poolPolicyId))
-        expect PoolWithdrawRedeemer { actionType, .. } =
-          poolWithdrawRedeemer.2nd
+        expect PoolWithdrawRedeemer { action, .. } = poolWithdrawRedeemer.2nd
         //Loan NFT minted only during the creation of a loan
-        expect actionType == Borrow
+        expect action == Borrow
         list.indexed_foldr(
           originInputs,
           [],

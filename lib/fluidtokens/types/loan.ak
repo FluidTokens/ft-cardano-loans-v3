@@ -46,7 +46,7 @@ pub type LoanMintRedeemer {
   originWithdrawRedeemerIndex: Int,
 }
 
-pub type ActionType {
+pub type Action {
   //Lender action (or anyone who has the permission to spend the lender's bond)
   Claim
   //Borrower action
@@ -59,7 +59,7 @@ pub type ActionType {
 
 pub type LoanWithdrawRedeemer {
   configRefInputIndex: Int,
-  actionType: ActionType,
+  action: Action,
 }
 
 pub type ClaimData {
