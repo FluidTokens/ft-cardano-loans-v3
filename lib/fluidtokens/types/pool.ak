@@ -35,6 +35,9 @@ pub type CommonData {
   penaltyFeeForLateRepayment: Int,
   //If true, each payment for claim, recast and repay must be accompanied by a minted repayment receipt NFT
   repaymentReceipts: Bool,
+  //True if the borrower bond should stay locked in a smart contract to avoid transferability
+  //False if the bond should go in the borrower wallet
+  shouldBorrowerBondBeLocked: Bool,
 }
 
 pub type PoolDatum {
@@ -94,6 +97,7 @@ pub type CancelData {
 pub type BorrowData {
   borrowerAddress: Address,
   outputWithLenderTokenIndex: Int,
+  outputWithBorrowerTokenIndex: Int,
   //Ref input index of the principal oracle, if principal is ADA this must be -1
   principalOracleRefInputIndex: Int,
   //Index of the Asset that the borrower is providing, must be accepted by the pool

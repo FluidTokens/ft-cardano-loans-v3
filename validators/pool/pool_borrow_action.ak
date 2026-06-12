@@ -4,16 +4,21 @@ use aiken/crypto
 use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use aiken/primitive/bytearray
-use cardano/address.{Address, Credential, Script}
+use cardano/address.{Address, Credential, Script, VerificationKey}
 use cardano/assets.{Value, ada_policy_id, add, flatten, quantity_of}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction}
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Transaction,
+}
 use fluidtokens/constants
 use fluidtokens/finance.{
   get_needed_collateral_with_oracles, get_needed_collateral_without_oracles,
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
-use fluidtokens/types/general.{Asset, CollateralAsset, Liquidation}
+use fluidtokens/types/general.{
+  Asset, CardanoSignature, CollateralAsset, Liquidation,
+}
 use fluidtokens/types/loan.{LoanDatum}
+use fluidtokens/types/locked_borrower_manager.{LockedBorrowerManagerDatum}
 use fluidtokens/types/pool.{
   BorrowData, PoolBorrowActionWithdrawRedeemer, PoolDatum,
 }
@@ -60,6 +65,8 @@ validator pool_borrow_action(
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
+    let lockedBorrowerManagerSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(config, 29))
     let poolInputs =
       get_inputs_from_smart_credential(
         inputs,
@@ -74,12 +81,13 @@ validator pool_borrow_action(
         expect InlineDatum(inputDatum) = poolInput.output.datum
         expect poolDatum: PoolDatum = inputDatum
         let BorrowData {
-          outputWithLenderTokenIndex,
-          chosenCollateralIndex,
-          wantedPrincipalAmount,
-          chosenCollateralOracleRefInputIndex,
-          principalOracleRefInputIndex,
           borrowerAddress,
+          outputWithLenderTokenIndex,
+          outputWithBorrowerTokenIndex,
+          principalOracleRefInputIndex,
+          chosenCollateralIndex,
+          chosenCollateralOracleRefInputIndex,
+          wantedPrincipalAmount,
           poolId,
           permissionedConditionWithdrawIndex,
         } = safe_list_at(redeemer.actionsForEachInput, index)
@@ -96,6 +104,8 @@ validator pool_borrow_action(
           )
         let outputWithLenderToken =
           safe_list_at(outputs, outputWithLenderTokenIndex)
+        let outputWithBorrowerToken =
+          safe_list_at(outputs, outputWithBorrowerTokenIndex)
         let chosenCollateral =
           safe_list_at(poolDatum.collateralOptions, chosenCollateralIndex)
         expect Some(minCollateral) =
@@ -195,6 +205,11 @@ validator pool_borrow_action(
             inputUtxoId,
             poolDatum.lenderBondAddress,
             poolDatum.lenderBondInlineDatumHash,
+            outputWithBorrowerToken,
+            borrowerAddress,
+            poolDatum.commonData.shouldBorrowerBondBeLocked,
+            lockedBorrowerManagerSpendScriptHash,
+            poolInput.output_reference,
           ),
           //The pool must return with the remaining liquidity even if completely emptied.
           validate_output_to_pool(
@@ -310,9 +325,32 @@ fn bonds_sent_to_both_parties(
   bondId: ByteArray,
   lenderBondAddress: Address,
   lenderBondInlineDatumHash: ByteArray,
+  outputWithBorrowerToken: Output,
+  borrowerAddress: Address,
+  shouldBorrowerBondBeLocked: Bool,
+  lockedBorrowerManagerSpendScriptHash: ByteArray,
+  poolRef: OutputReference,
 ) {
   expect InlineDatum(outputWithLenderTokenDatum) = outputWithLenderToken.datum
   and {
+    if shouldBorrowerBondBeLocked {
+      expect VerificationKey(payment_credential_hash) =
+        borrowerAddress.payment_credential
+      and {
+        outputWithBorrowerToken.address == Address(
+          Script(lockedBorrowerManagerSpendScriptHash),
+          borrowerAddress.stake_credential,
+        ),
+        outputWithBorrowerToken.datum == InlineDatum(
+          LockedBorrowerManagerDatum {
+            originRef: poolRef,
+            borrowerAuth: CardanoSignature { hash: payment_credential_hash },
+          },
+        ),
+      }
+    } else {
+      True
+    },
     outputWithLenderToken.address == lenderBondAddress,
     crypto.blake2b_256(builtin.serialise_data(outputWithLenderTokenDatum)) == lenderBondInlineDatumHash,
     quantity_of(mintedValue, borrowerBondPolicyId, bondId) == 1,

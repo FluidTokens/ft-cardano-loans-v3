@@ -5,7 +5,7 @@ use aiken/interval.{Finite, Interval}
 use aiken/math/rational
 use aiken/option
 use aiken/primitive/bytearray
-use cardano/address.{Address, Credential, Script}
+use cardano/address.{Address, Credential, Script, VerificationKey}
 use cardano/assets.{
   PolicyId, Value, ada_policy_id, add, flatten, quantity_of, tokens,
   without_lovelace,
@@ -21,9 +21,10 @@ use fluidtokens/finance.{
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/general.{
-  Asset, AuthorizationMethod, CollateralAsset, Liquidation,
+  Asset, AuthorizationMethod, CardanoSignature, CollateralAsset, Liquidation,
 }
 use fluidtokens/types/loan.{LoanDatum}
+use fluidtokens/types/locked_borrower_manager.{LockedBorrowerManagerDatum}
 use fluidtokens/types/pool.{CommonData}
 use fluidtokens/types/request.{
   Cancel, CancelAfterExpiration, Lend, RequestDatum, RequestMintRedeemer,
@@ -62,6 +63,8 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
+    let lockedBorrowerManagerSpendScriptHash =
+      builtin.un_b_data(utils.safe_list_at(config, 29))
     let requestInputs =
       get_inputs_from_smart_credential(
         self.inputs,
@@ -120,6 +123,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
               smartTokensSpendScriptHash,
               borrowerBondPolicyId,
               lenderBondPolicyId,
+              lockedBorrowerManagerSpendScriptHash,
             )
         }
       },
@@ -257,6 +261,7 @@ fn check_lend(
   smartTokensSpendScriptHash: ByteArray,
   borrowerBondPolicyId: ByteArray,
   lenderBondPolicyId: ByteArray,
+  lockedBorrowerManagerSpendScriptHash: ByteArray,
 ) {
   expect (Finite(validFrom), Finite(validTo)) =
     (
@@ -380,6 +385,8 @@ fn check_lend(
       datum.borrowerAddress,
       givenPrincipalAmount,
       datum.commonData.principalAsset,
+      datum.commonData.shouldBorrowerBondBeLocked,
+      lockedBorrowerManagerSpendScriptHash,
     ),
   }
 }
@@ -397,9 +404,9 @@ fn validate_collateral_less_penalty_output(
     add(without_lovelace(requestValue), requestPolicyId, requestAssetName, -1)
   let outputValueNoAda = without_lovelace(borrowerOutput.value)
   let outputAdaCorrect =
-    quantity_of(borrowerOutput.value, "", "") >= quantity_of(
+    quantity_of(borrowerOutput.value, ada_policy_id, "") >= quantity_of(
       requestValue,
-      "",
+      ada_policy_id,
       "",
     ) - requestExpirationPenalty
 
@@ -425,11 +432,32 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
   borrowerAddress: Address,
   givenPrincipalAmount: Int,
   principalAsset: Asset,
+  shouldBorrowerBondBeLocked: Bool,
+  lockedBorrowerManagerSpendScriptHash: ByteArray,
 ) {
   expect InlineDatum(_) = outputWithBorrowerToken.datum
   and {
-    outputWithBorrowerToken.address == borrowerAddress,
-    outputWithBorrowerToken.datum == InlineDatum(requestRef),
+    if shouldBorrowerBondBeLocked {
+      expect VerificationKey(payment_credential_hash) =
+        borrowerAddress.payment_credential
+      and {
+        outputWithBorrowerToken.address == Address(
+          Script(lockedBorrowerManagerSpendScriptHash),
+          borrowerAddress.stake_credential,
+        ),
+        outputWithBorrowerToken.datum == InlineDatum(
+          LockedBorrowerManagerDatum {
+            originRef: requestRef,
+            borrowerAuth: CardanoSignature { hash: payment_credential_hash },
+          },
+        ),
+      }
+    } else {
+      and {
+        outputWithBorrowerToken.address == borrowerAddress,
+        outputWithBorrowerToken.datum == InlineDatum(requestRef),
+      }
+    },
     quantity_of(outputWithBorrowerToken.value, borrowerBondPolicyId, bondId) == 1,
     quantity_of(
       outputWithBorrowerToken.value,

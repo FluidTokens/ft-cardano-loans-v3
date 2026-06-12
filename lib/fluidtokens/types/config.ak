@@ -30,4 +30,5 @@ pub type ConfigDatum {
   poolManagerSpendScriptHash: ByteArray,
   poolManagerPolicyId: ByteArray,
   assetManagerSpendScriptHash: ByteArray,
+  lockedBorrowerManagerSpendScriptHash: ByteArray,
 }
