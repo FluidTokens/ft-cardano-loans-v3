@@ -51,11 +51,16 @@ validator poolManager(
         smartTokensSpendScriptHash,
       )
 
-    let zeroPoolInputs = list.length(poolInputs) == 0
-    let sameNumberOfPoolsandPoolManagers =
-      list.length(poolInputs) == list.length(poolManagerInputs)
     and {
-      //Cancel action must be executed
+      //Pools must be spent
+      list.length(poolInputs) > 0,
+      //Same number of pools and pool managers being cancelled
+      list.length(poolInputs) == list.length(poolManagerInputs),
+      //Same number of pool managers and their NFT asset names
+      list.length(poolManagerInputs) == list.length(
+        redeemer.poolManagerNFTAssetNames,
+      ),
+      //Pool cancel action must be executed
       {
         let poolWithdrawRedeemer =
           safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
@@ -80,19 +85,20 @@ validator poolManager(
           let poolInput = safe_list_at(poolInputs, index)
 
           and {
-            or {
-              zeroPoolInputs,
-              and {
-                //No extra pools spent, otherwise they can be stolen
-                sameNumberOfPoolsandPoolManagers,
-                //Pool must have same NFT of pool manager
-                quantity_of(
-                  poolInput.output.value,
-                  poolPolicyId,
-                  poolManagerNFTAssetName,
-                ) == 1,
-              },
-            },
+            //Pool must have same NFT of pool manager
+            quantity_of(
+              poolInput.output.value,
+              poolPolicyId,
+              poolManagerNFTAssetName,
+            ) == 1,
+            //Pool manager must have this NFT
+            quantity_of(
+              input.output.value,
+              poolManagerPolicyId,
+              poolManagerNFTAssetName,
+            ) == 1,
+            //The pool manager NFT must be burnt
+            quantity_of(self.mint, poolManagerPolicyId, poolManagerNFTAssetName) == -1,
             //Authorize the pool owner to execute this action
             authorize_action(
               create_auth(
@@ -103,12 +109,6 @@ validator poolManager(
                 self.mint,
               ),
             ),
-            quantity_of(
-              input.output.value,
-              poolManagerPolicyId,
-              poolManagerNFTAssetName,
-            ) == 1,
-            quantity_of(self.mint, poolManagerPolicyId, poolManagerNFTAssetName) == -1,
           }
         },
       ),
