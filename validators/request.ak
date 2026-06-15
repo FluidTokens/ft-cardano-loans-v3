@@ -385,7 +385,7 @@ fn check_lend(
       datum.borrowerAddress,
       givenPrincipalAmount,
       datum.commonData.principalAsset,
-      datum.commonData.shouldBorrowerBondBeLocked,
+      datum.commonData.borrowerBondDestinationScriptHash,
       lockedBorrowerManagerSpendScriptHash,
     ),
   }
@@ -432,12 +432,12 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
   borrowerAddress: Address,
   givenPrincipalAmount: Int,
   principalAsset: Asset,
-  shouldBorrowerBondBeLocked: Bool,
+  borrowerBondDestinationScriptHash: ByteArray,
   lockedBorrowerManagerSpendScriptHash: ByteArray,
 ) {
   expect InlineDatum(_) = outputWithBorrowerToken.datum
   and {
-    if shouldBorrowerBondBeLocked {
+    if borrowerBondDestinationScriptHash != "" {
       expect VerificationKey(payment_credential_hash) =
         borrowerAddress.payment_credential
       and {

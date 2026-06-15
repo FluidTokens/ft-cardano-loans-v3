@@ -35,9 +35,9 @@ pub type CommonData {
   penaltyFeeForLateRepayment: Int,
   //If true, each payment for claim, recast and repay must be accompanied by a minted repayment receipt NFT
   repaymentReceipts: Bool,
-  //True if the borrower bond should stay locked in a smart contract to avoid transferability
-  //False if the bond should go in the borrower wallet
-  shouldBorrowerBondBeLocked: Bool,
+  //If "" then the borrower wallet gets the bond, otherwise it's the script hash that receives it
+  //with a standard Inline LockedBorrowerManagerDatum 
+  borrowerBondDestinationScriptHash: ByteArray,
 }
 
 pub type PoolDatum {

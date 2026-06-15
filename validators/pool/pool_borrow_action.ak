@@ -207,7 +207,7 @@ validator pool_borrow_action(
             poolDatum.lenderBondInlineDatumHash,
             outputWithBorrowerToken,
             borrowerAddress,
-            poolDatum.commonData.shouldBorrowerBondBeLocked,
+            poolDatum.commonData.borrowerBondDestinationScriptHash,
             lockedBorrowerManagerSpendScriptHash,
             poolInput.output_reference,
           ),
@@ -327,13 +327,13 @@ fn bonds_sent_to_both_parties(
   lenderBondInlineDatumHash: ByteArray,
   outputWithBorrowerToken: Output,
   borrowerAddress: Address,
-  shouldBorrowerBondBeLocked: Bool,
+  borrowerBondDestinationScriptHash: ByteArray,
   lockedBorrowerManagerSpendScriptHash: ByteArray,
   poolRef: OutputReference,
 ) {
   expect InlineDatum(outputWithLenderTokenDatum) = outputWithLenderToken.datum
   and {
-    if shouldBorrowerBondBeLocked {
+    if borrowerBondDestinationScriptHash != "" {
       expect VerificationKey(payment_credential_hash) =
         borrowerAddress.payment_credential
       and {
