@@ -436,28 +436,23 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
   lockedBorrowerManagerSpendScriptHash: ByteArray,
 ) {
   expect InlineDatum(_) = outputWithBorrowerToken.datum
+  expect VerificationKey(payment_credential_hash) =
+    borrowerAddress.payment_credential
   and {
     if borrowerBondDestinationScriptHash != "" {
-      expect VerificationKey(payment_credential_hash) =
-        borrowerAddress.payment_credential
-      and {
-        outputWithBorrowerToken.address == Address(
-          Script(lockedBorrowerManagerSpendScriptHash),
-          borrowerAddress.stake_credential,
-        ),
-        outputWithBorrowerToken.datum == InlineDatum(
-          LockedBorrowerManagerDatum {
-            originRef: requestRef,
-            borrowerAuth: CardanoSignature { hash: payment_credential_hash },
-          },
-        ),
-      }
+      outputWithBorrowerToken.address == Address(
+        Script(lockedBorrowerManagerSpendScriptHash),
+        borrowerAddress.stake_credential,
+      )
     } else {
-      and {
-        outputWithBorrowerToken.address == borrowerAddress,
-        outputWithBorrowerToken.datum == InlineDatum(requestRef),
-      }
+      outputWithBorrowerToken.address == borrowerAddress
     },
+    outputWithBorrowerToken.datum == InlineDatum(
+      LockedBorrowerManagerDatum {
+        originRef: requestRef,
+        borrowerAuth: CardanoSignature { hash: payment_credential_hash },
+      },
+    ),
     quantity_of(outputWithBorrowerToken.value, borrowerBondPolicyId, bondId) == 1,
     quantity_of(
       outputWithBorrowerToken.value,
