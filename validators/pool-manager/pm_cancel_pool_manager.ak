@@ -15,7 +15,6 @@ validator poolManager(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
   poolSpendScriptHash: ByteArray,
-  poolWithdrawScriptHash: ByteArray,
   poolPolicyId: ByteArray,
   smartTokensSpendScriptHash: ByteArray,
 ) {
@@ -64,8 +63,7 @@ validator poolManager(
       {
         let poolWithdrawRedeemer =
           safe_list_at(self.redeemers, redeemer.poolWithdrawRedeemerIndex)
-        expect
-          poolWithdrawRedeemer.1st == Withdraw(Script(poolWithdrawScriptHash))
+        expect poolWithdrawRedeemer.1st == Withdraw(Script(poolPolicyId))
         expect poolRedeemer: PoolWithdrawRedeemer = poolWithdrawRedeemer.2nd
 
         when poolRedeemer.action is {
