@@ -106,7 +106,7 @@ validator dutch_auction(
                 expect Some(borrowerAssetManagerDatum) =
                   datum.borrowerAssetManagerDatum
                 let borrowerOutput =
-                  utils.safe_list_at(self.outputs, index * 2 + 1)
+                  utils.safe_list_at(asset_manager_outputs, index * 2 + 1)
                 and {
                   correctAmountSentToUser(
                     input.output_reference,
