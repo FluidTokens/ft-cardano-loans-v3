@@ -16,7 +16,7 @@ pub type ConfigDatum {
   loanRepayActionScriptHash: ByteArray,
   loanChangeCollateralActionScriptHash: ByteArray,
   loanRecastActionScriptHash: ByteArray,
-  repaymentSpendScriptHash: ByteArray,
+  assetManagerSpendScriptHash: ByteArray,
   dutchAuctionSpendScriptHash: ByteArray,
   dutchAuctionWithdrawScriptHash: ByteArray,
   dutchAuctionStartingIncreasePerMille: Int,
@@ -29,5 +29,4 @@ pub type ConfigDatum {
   poolCompoundActionScriptHash: ByteArray,
   poolManagerSpendScriptHash: ByteArray,
   poolManagerPolicyId: ByteArray,
-  assetManagerSpendScriptHash: ByteArray,
 }
