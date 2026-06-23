@@ -37,7 +37,6 @@ pub type UpdatePoolManagerActionWithdrawRedeemer {
 }
 
 pub type CompoundLiquidityActionWithdrawRedeemer {
-  configRefInputIndex: Int,
   poolWithdrawRedeemerIndex: Int,
   lenderManagerWithdrawRedeemerIndex: Int,
 }

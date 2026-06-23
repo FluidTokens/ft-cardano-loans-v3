@@ -64,7 +64,7 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
     let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
     let lockedBorrowerManagerSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(config, 29))
+      builtin.un_b_data(utils.safe_list_at(config, 28))
     let requestInputs =
       get_inputs_from_smart_credential(
         self.inputs,

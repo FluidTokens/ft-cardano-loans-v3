@@ -26,7 +26,7 @@ validator poolManager(
       )
     let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lockedBorrowerManagerSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(config, 29))
+      builtin.un_b_data(utils.safe_list_at(config, 28))
 
     let lockedBorrowerManagerInputs =
       list.filter(
