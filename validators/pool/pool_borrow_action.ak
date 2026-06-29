@@ -347,6 +347,7 @@ fn bonds_sent_to_both_parties(
             borrowerAuth: CardanoSignature { hash: payment_credential_hash },
           },
         ),
+        quantity_of(outputWithBorrowerToken.value, borrowerBondPolicyId, bondId) == 1,
       }
     } else {
       True
