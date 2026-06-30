@@ -65,8 +65,6 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
-    let lockedBorrowerManagerSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(config, 28))
     let requestInputs =
       get_inputs_from_smart_credential(
         self.inputs,
@@ -125,7 +123,6 @@ validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
               smartTokensSpendScriptHash,
               borrowerBondPolicyId,
               lenderBondPolicyId,
-              lockedBorrowerManagerSpendScriptHash,
             )
         }
       },
@@ -263,7 +260,6 @@ fn check_lend(
   smartTokensSpendScriptHash: ByteArray,
   borrowerBondPolicyId: ByteArray,
   lenderBondPolicyId: ByteArray,
-  lockedBorrowerManagerSpendScriptHash: ByteArray,
 ) {
   expect (Finite(validFrom), Finite(validTo)) =
     (
@@ -390,7 +386,6 @@ fn check_lend(
       givenPrincipalAmount,
       datum.commonData.principalAsset,
       datum.commonData.borrowerBondDestinationScriptHash,
-      lockedBorrowerManagerSpendScriptHash,
       smartTokensSpendScriptHash,
     ),
   }
@@ -439,7 +434,6 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
   givenPrincipalAmount: Int,
   principalAsset: Asset,
   borrowerBondDestinationScriptHash: ByteArray,
-  lockedBorrowerManagerSpendScriptHash: ByteArray,
   smartTokensSpendScriptHash: ByteArray,
 ) {
   and {
@@ -462,7 +456,7 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
     },
     if borrowerBondDestinationScriptHash != "" {
       outputWithBorrowerToken.address == Address(
-        Script(lockedBorrowerManagerSpendScriptHash),
+        Script(borrowerBondDestinationScriptHash),
         borrowerAddress.stake_credential,
       )
     } else {

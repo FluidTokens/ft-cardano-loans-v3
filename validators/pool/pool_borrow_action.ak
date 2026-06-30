@@ -65,8 +65,6 @@ validator pool_borrow_action(
     let loanPolicyId = builtin.un_b_data(utils.safe_list_at(config, 6))
     let borrowerBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 4))
     let lenderBondPolicyId = builtin.un_b_data(utils.safe_list_at(config, 5))
-    let lockedBorrowerManagerSpendScriptHash =
-      builtin.un_b_data(utils.safe_list_at(config, 28))
     let poolInputs =
       get_inputs_from_smart_credential(
         inputs,
@@ -208,7 +206,6 @@ validator pool_borrow_action(
             outputWithBorrowerToken,
             borrowerAddress,
             poolDatum.commonData.borrowerBondDestinationScriptHash,
-            lockedBorrowerManagerSpendScriptHash,
             poolInput.output_reference,
           ),
           //The pool must return with the remaining liquidity even if completely emptied.
@@ -328,7 +325,6 @@ fn bonds_sent_to_both_parties(
   outputWithBorrowerToken: Output,
   borrowerAddress: Address,
   borrowerBondDestinationScriptHash: ByteArray,
-  lockedBorrowerManagerSpendScriptHash: ByteArray,
   poolRef: OutputReference,
 ) {
   expect InlineDatum(outputWithLenderTokenDatum) = outputWithLenderToken.datum
@@ -338,7 +334,7 @@ fn bonds_sent_to_both_parties(
         borrowerAddress.payment_credential
       and {
         outputWithBorrowerToken.address == Address(
-          Script(lockedBorrowerManagerSpendScriptHash),
+          Script(borrowerBondDestinationScriptHash),
           borrowerAddress.stake_credential,
         ),
         outputWithBorrowerToken.datum == InlineDatum(
