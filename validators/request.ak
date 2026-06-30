@@ -36,6 +36,7 @@ use fluidtokens/utils.{
 }
 use smart_tokens/utils.{
   get_inputs_from_smart_credential, get_outputs_to_smart_credential,
+  is_output_to_user_smart_credential,
 } as st_utils
 
 validator request(configNFTPolicyId: PolicyId, configNFTAssetName: ByteArray) {
@@ -282,6 +283,7 @@ fn check_lend(
       index,
     )
   let outputWithBorrowerToken = safe_list_at(self.outputs, index)
+  let outputWithPrincipal = safe_list_at(self.outputs, index + 1)
 
   expect Some(minPrincipal) =
     rational.new(datum.minPrincipal, datum.minPrincipalDivider)
@@ -379,6 +381,7 @@ fn check_lend(
       input.output_reference,
       self.mint,
       outputWithBorrowerToken,
+      outputWithPrincipal,
       borrowerBondPolicyId,
       lenderBondPolicyId,
       inputUtxoId,
@@ -387,6 +390,7 @@ fn check_lend(
       datum.commonData.principalAsset,
       datum.commonData.borrowerBondDestinationScriptHash,
       lockedBorrowerManagerSpendScriptHash,
+      smartTokensSpendScriptHash,
     ),
   }
 }
@@ -426,6 +430,7 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
   requestRef: OutputReference,
   mintedValue: Value,
   outputWithBorrowerToken: Output,
+  outputWithPrincipal: Output,
   borrowerBondPolicyId: ByteArray,
   lenderBondPolicyId: ByteArray,
   bondId: ByteArray,
@@ -434,11 +439,29 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
   principalAsset: Asset,
   borrowerBondDestinationScriptHash: ByteArray,
   lockedBorrowerManagerSpendScriptHash: ByteArray,
+  smartTokensSpendScriptHash: ByteArray,
 ) {
-  expect InlineDatum(_) = outputWithBorrowerToken.datum
   expect VerificationKey(payment_credential_hash) =
     borrowerAddress.payment_credential
+
   and {
+    is_output_to_user_smart_credential(
+      outputWithPrincipal,
+      borrowerAddress.payment_credential,
+      borrowerAddress.stake_credential,
+      smartTokensSpendScriptHash,
+    ),
+    outputWithPrincipal.datum == InlineDatum(requestRef),
+    quantity_of(
+      outputWithPrincipal.value,
+      principalAsset.policyId,
+      principalAsset.assetName,
+    ) >= givenPrincipalAmount,
+    length(flatten(outputWithPrincipal.value)) == if principalAsset.policyId == ada_policy_id {
+      1
+    } else {
+      2
+    },
     if borrowerBondDestinationScriptHash != "" {
       outputWithBorrowerToken.address == Address(
         Script(lockedBorrowerManagerSpendScriptHash),
@@ -454,16 +477,7 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
       },
     ),
     quantity_of(outputWithBorrowerToken.value, borrowerBondPolicyId, bondId) == 1,
-    quantity_of(
-      outputWithBorrowerToken.value,
-      principalAsset.policyId,
-      principalAsset.assetName,
-    ) >= givenPrincipalAmount,
-    length(flatten(outputWithBorrowerToken.value)) == if principalAsset.policyId == ada_policy_id {
-      2
-    } else {
-      3
-    },
+    length(flatten(outputWithBorrowerToken.value)) == 2,
     quantity_of(mintedValue, lenderBondPolicyId, bondId) == 1,
   }
 }
