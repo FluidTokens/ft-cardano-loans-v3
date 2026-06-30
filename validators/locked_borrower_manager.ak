@@ -38,6 +38,16 @@ validator poolManager(
         },
       )
 
+    let lockedBorrowerManagerOutputs =
+      list.filter(
+        self.outputs,
+        fn(output) {
+          output.address.payment_credential == Script(
+            lockedBorrowerManagerSpendScriptHash,
+          )
+        },
+      )
+
     utils.indexed_all(
       lockedBorrowerManagerInputs,
       fn(index, input) {
@@ -47,7 +57,8 @@ validator poolManager(
         let borrowerBondAssetName =
           safe_list_at(redeemer.borrowerBondAssetNames, index)
 
-        let borrowerBondOutput = safe_list_at(self.outputs, index)
+        let borrowerBondOutput =
+          safe_list_at(lockedBorrowerManagerOutputs, index)
 
         and {
           //Input must have the borrower bond
