@@ -15,7 +15,7 @@ use fluidtokens/finance.{
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/general.{
-  Asset, CardanoSignature, CollateralAsset, Liquidation,
+  Asset, CardanoSignature, CardanoSpendScript, CollateralAsset, Liquidation,
 }
 use fluidtokens/types/loan.{LoanDatum}
 use fluidtokens/types/locked_borrower_manager.{LockedBorrowerManagerDatum}
@@ -330,8 +330,6 @@ fn bonds_sent_to_both_parties(
   expect InlineDatum(outputWithLenderTokenDatum) = outputWithLenderToken.datum
   and {
     if borrowerBondDestinationScriptHash != "" {
-      expect VerificationKey(payment_credential_hash) =
-        borrowerAddress.payment_credential
       and {
         outputWithBorrowerToken.address == Address(
           Script(borrowerBondDestinationScriptHash),
@@ -340,7 +338,12 @@ fn bonds_sent_to_both_parties(
         outputWithBorrowerToken.datum == InlineDatum(
           LockedBorrowerManagerDatum {
             originRef: poolRef,
-            borrowerAuth: CardanoSignature { hash: payment_credential_hash },
+            borrowerAuth: when borrowerAddress.payment_credential is {
+              VerificationKey(payment_credential_hash) ->
+                CardanoSignature { hash: payment_credential_hash }
+              Script(payment_credential_hash) ->
+                CardanoSpendScript { hash: payment_credential_hash }
+            },
           },
         ),
         quantity_of(outputWithBorrowerToken.value, borrowerBondPolicyId, bondId) == 1,
