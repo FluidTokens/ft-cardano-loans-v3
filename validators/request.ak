@@ -280,7 +280,7 @@ fn check_lend(
       index,
     )
   let outputWithBorrowerToken = safe_list_at(self.outputs, index)
-  let outputWithPrincipal = safe_list_at(self.outputs, index + 1)
+  let outputWithPrincipal = safe_list_at(self.outputs, index * 2 + 1)
 
   expect Some(minPrincipal) =
     rational.new(datum.minPrincipal, datum.minPrincipalDivider)
