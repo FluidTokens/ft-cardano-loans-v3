@@ -21,7 +21,8 @@ use fluidtokens/finance.{
 }
 use fluidtokens/oracle.{retrieve_oracle_data}
 use fluidtokens/types/general.{
-  Asset, AuthorizationMethod, CardanoSignature, CollateralAsset, Liquidation,
+  Asset, AuthorizationMethod, CardanoSignature, CardanoSpendScript,
+  CollateralAsset, Liquidation,
 }
 use fluidtokens/types/loan.{LoanDatum}
 use fluidtokens/types/locked_borrower_manager.{LockedBorrowerManagerDatum}
@@ -441,9 +442,6 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
   lockedBorrowerManagerSpendScriptHash: ByteArray,
   smartTokensSpendScriptHash: ByteArray,
 ) {
-  expect VerificationKey(payment_credential_hash) =
-    borrowerAddress.payment_credential
-
   and {
     is_output_to_user_smart_credential(
       outputWithPrincipal,
@@ -473,7 +471,12 @@ fn bonds_sent_to_both_parties_and_principal_sent_to_borrower(
     outputWithBorrowerToken.datum == InlineDatum(
       LockedBorrowerManagerDatum {
         originRef: requestRef,
-        borrowerAuth: CardanoSignature { hash: payment_credential_hash },
+        borrowerAuth: when borrowerAddress.payment_credential is {
+          VerificationKey(payment_credential_hash) ->
+            CardanoSignature { hash: payment_credential_hash }
+          Script(payment_credential_hash) ->
+            CardanoSpendScript { hash: payment_credential_hash }
+        },
       },
     ),
     quantity_of(outputWithBorrowerToken.value, borrowerBondPolicyId, bondId) == 1,
