@@ -344,6 +344,7 @@ fn bonds_sent_to_both_parties(
           },
         ),
         quantity_of(outputWithBorrowerToken.value, borrowerBondPolicyId, bondId) == 1,
+        length(flatten(outputWithBorrowerToken.value)) == 2,
       }
     } else {
       True

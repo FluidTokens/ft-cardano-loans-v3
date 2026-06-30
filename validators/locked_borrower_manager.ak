@@ -1,7 +1,7 @@
 use aiken/builtin
-use aiken/collection/list
+use aiken/collection/list.{length}
 use cardano/address.{Address, Credential, Script}
-use cardano/assets.{quantity_of}
+use cardano/assets.{flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use fluidtokens/authorizer.{authorize_action, create_auth}
 use fluidtokens/types/locked_borrower_manager.{
@@ -61,6 +61,8 @@ validator lockedBorrowerManager(
           safe_list_at(lockedBorrowerManagerOutputs, index)
 
         and {
+          //Input must only have a bond and lovelace
+          length(flatten(input.output.value)) == 2,
           //Input must have the borrower bond
           quantity_of(
             input.output.value,
