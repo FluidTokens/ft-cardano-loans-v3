@@ -9,7 +9,7 @@ use fluidtokens/types/locked_borrower_manager.{
 }
 use fluidtokens/utils.{safe_list_at}
 
-validator poolManager(
+validator lockedBorrowerManager(
   configNFTPolicyId: ByteArray,
   configNFTAssetName: ByteArray,
 ) {

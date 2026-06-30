@@ -1557,7 +1557,7 @@
       "hash": "6b28dda7ea05e494e8535faa796aa7b1c4d972c055f747972cf3ad0e"
     },
     {
-      "title": "locked_borrower_manager.poolManager.withdraw",
+      "title": "locked_borrower_manager.lockedBorrowerManager.withdraw",
       "redeemer": {
         "title": "redeemer",
         "schema": {
@@ -1582,7 +1582,7 @@
       "hash": "0a16642899671f87496fd0bfe0df2680d8e9296c67f5bdbb9471eac2"
     },
     {
-      "title": "locked_borrower_manager.poolManager.else",
+      "title": "locked_borrower_manager.lockedBorrowerManager.else",
       "redeemer": {
         "schema": {}
       },
