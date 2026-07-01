@@ -130,7 +130,7 @@ validator actionValidator(
         loanInputs,
         dict.empty,
         fn(index, loanInput, result) {
-          let (collateralOracleRefInputIndex, principalOracleRefInputIndex) =
+          let (principalOracleRefInputIndex, collateralOracleRefInputIndex) =
             safe_list_at(
               redeemer.principalAndCollateralOracleRefInputIndexes,
               index,

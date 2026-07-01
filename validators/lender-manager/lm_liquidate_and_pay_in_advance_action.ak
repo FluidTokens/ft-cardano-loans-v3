@@ -90,7 +90,7 @@ validator actionValidator(
       utils.indexed_all(
         loanInputs,
         fn(index, loanInput) {
-          let (collateralOracleRefInputIndex, principalOracleRefInputIndex) =
+          let (principalOracleRefInputIndex, collateralOracleRefInputIndex) =
             safe_list_at(
               redeemer.principalAndCollateralOracleRefInputIndexes,
               index,
